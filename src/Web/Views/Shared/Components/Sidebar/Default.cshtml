@@ -1,0 +1,68 @@
+@model List<PakistanAccountingERP.Web.Models.NavMenuItem>
+@{
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+}
+
+<nav class="sidebar-nav">
+    <ul class="nav flex-column">
+        @foreach (var item in Model)
+        {
+            if (item.IsGroup)
+            {
+                var groupId = $"menu-{item.Title.Replace(" ", "").ToLower()}";
+                var groupActive = item.Children.Any(c =>
+                    !string.IsNullOrEmpty(c.Controller)
+                    && string.Equals(c.Controller, controller, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(c.Action ?? "Index", action, StringComparison.OrdinalIgnoreCase));
+                <li class="nav-item sidebar-group">
+                    <a class="nav-link sidebar-group-toggle @(groupActive ? "" : "collapsed")" data-bs-toggle="collapse" href="#@groupId" role="button" aria-expanded="@groupActive.ToString().ToLower()">
+                        @if (!string.IsNullOrEmpty(item.Icon))
+                        {
+                            <i class="fa-solid @item.Icon sidebar-icon"></i>
+                        }
+                        <span>@item.Title</span>
+                        <i class="fa-solid fa-chevron-down sidebar-chevron ms-auto"></i>
+                    </a>
+                    <div class="collapse @(groupActive ? "show" : "")" id="@groupId">
+                        <ul class="nav flex-column sidebar-submenu">
+                            @foreach (var child in item.Children)
+                            {
+                                var childActive = !string.IsNullOrEmpty(child.Controller)
+                                    && string.Equals(child.Controller, controller, StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals(child.Action ?? "Index", action, StringComparison.OrdinalIgnoreCase);
+                                <li class="nav-item">
+                                    @if (!string.IsNullOrEmpty(child.Controller))
+                                    {
+                                        <a class="nav-link sidebar-sublink @(childActive ? "active" : "")"
+                                           asp-controller="@child.Controller"
+                                           asp-action="@(child.Action ?? "Index")">@child.Title</a>
+                                    }
+                                    else
+                                    {
+                                        <a class="nav-link sidebar-sublink" href="@(child.Url ?? "#")">@child.Title</a>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </li>
+            }
+            else
+            {
+                var isActive = string.Equals(item.Controller, controller, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(item.Action, action, StringComparison.OrdinalIgnoreCase);
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(isActive ? "active" : "")"
+                       asp-controller="@item.Controller" asp-action="@item.Action">
+                        @if (!string.IsNullOrEmpty(item.Icon))
+                        {
+                            <i class="fa-solid @item.Icon sidebar-icon"></i>
+                        }
+                        <span>@item.Title</span>
+                    </a>
+                </li>
+            }
+        }
+    </ul>
+</nav>

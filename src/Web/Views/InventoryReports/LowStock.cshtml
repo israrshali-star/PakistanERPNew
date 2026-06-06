@@ -1,0 +1,71 @@
+@{
+    ViewData["Title"] = "Low Stock Alert";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
+    <div>
+        <h4 class="text-primary mb-1">Low Stock Alert</h4>
+        <p class="text-muted small mb-0">Items below minimum stock or at reorder level</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
+            <i class="fa-solid fa-print me-1"></i>Print / Save PDF
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-load-report">
+            <i class="fa-solid fa-rotate me-1"></i>Refresh
+        </button>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+    </div>
+</div>
+
+<div id="report-company-warning" class="alert alert-warning d-none mb-3 no-print"></div>
+
+<div class="card p-4 report-print-area" id="report-content">
+    <div class="text-center mb-4">
+        <h5 class="text-primary mb-1">Low Stock Alert Report</h5>
+        <p class="text-muted small mb-0" id="report-generated">Loading...</p>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Item Code</th>
+                    <th>Item Name</th>
+                    <th>Category</th>
+                    <th>UOM</th>
+                    <th class="text-end">Current</th>
+                    <th class="text-end">Minimum</th>
+                    <th class="text-end">Reorder</th>
+                    <th class="text-end">Shortfall</th>
+                </tr>
+            </thead>
+            <tbody id="report-lines">
+                <tr><td colspan="8" class="text-muted text-center">Loading...</td></tr>
+            </tbody>
+            <tfoot id="report-footer" class="d-none table-light">
+                <tr>
+                    <th colspan="7" class="text-end">Items requiring attention</th>
+                    <th class="text-end" id="report-item-count">0</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        @@media print {
+            .sidebar, .top-navbar, .content-header, .app-footer, .no-print { display: none !important; }
+            .main-wrapper { margin: 0 !important; }
+            .content-area { padding: 0 !important; }
+            .report-print-area { border: none !important; box-shadow: none !important; }
+        }
+    </style>
+}
+
+@section Scripts {
+    <script src="~/js/modules/inventory-report-low-stock.js" asp-append-version="true"></script>
+}

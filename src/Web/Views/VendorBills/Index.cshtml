@@ -1,0 +1,47 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Vendor Bills";
+    var canCreate = await PermissionService.HasPermissionAsync("Purchase.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Purchase.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Purchase.Delete");
+}
+
+<div id="bill-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+<div id="bill-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Vendor Bills</h4>
+        <p class="text-muted small mb-0">Draft and approved purchase bills</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary btn-sm" permission="Purchase.Create">
+        <i class="fa-solid fa-plus me-1"></i>Enter Bill
+    </a>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="vendor-bills-table">
+            <thead>
+                <tr>
+                    <th>Bill #</th>
+                    <th>Vendor</th>
+                    <th>Date</th>
+                    <th class="text-end">Net Amount</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/vendor-bills.js" asp-append-version="true"></script>
+}

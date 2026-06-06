@@ -1,0 +1,136 @@
+@{
+    ViewData["Title"] = "Create Sales Invoice";
+}
+
+<div id="invoice-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Create Sales Invoice</h4>
+        <p class="text-muted small mb-0">Draft invoice with customer, FBR scenario, and line items</p>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-arrow-left me-1"></i>Back to Sales List
+    </a>
+</div>
+
+<form id="sales-invoice-form">
+    <div class="card p-3 mb-3">
+        <h6 class="text-primary mb-3">Invoice Header</h6>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label" for="invoice-number">Invoice Number</label>
+                <input type="text" class="form-control" id="invoice-number" readonly />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="invoice-date">Invoice Date</label>
+                <input type="text" class="form-control datepicker" id="invoice-date" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="invoice-type">Invoice Type</label>
+                <select class="form-select" id="invoice-type">
+                    <option value="1">Sales Invoice</option>
+                    <option value="2">Debit Note</option>
+                    <option value="3">Credit Note</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="customer-id">Customer</label>
+                <select class="form-select select2" id="customer-id" required>
+                    <option value="">— Select customer —</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="scenario-id">FBR Scenario</label>
+                <select class="form-select select2" id="scenario-id" required></select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="province-id">Province</label>
+                <select class="form-select select2" id="province-id">
+                    <option value="">— Select —</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="buyer-ntn">Buyer NTN</label>
+                <input type="text" class="form-control" id="buyer-ntn" maxlength="50" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="buyer-cnic">Buyer CNIC</label>
+                <input type="text" class="form-control" id="buyer-cnic" maxlength="20" />
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="buyer-address">Buyer Address</label>
+                <textarea class="form-control" id="buyer-address" rows="2" maxlength="500"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="text-primary mb-0">Line Items</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-line">
+                <i class="fa-solid fa-plus me-1"></i>Add Line
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="invoice-lines-table">
+                <thead>
+                    <tr>
+                        <th style="min-width:200px">Item</th>
+                        <th style="min-width:100px">HS Code</th>
+                        <th style="min-width:90px">Stack No</th>
+                        <th style="min-width:90px">Lot No</th>
+                        <th class="text-end" style="width:80px">Cartons</th>
+                        <th class="text-end" style="width:80px">Qty</th>
+                        <th style="width:60px">Unit</th>
+                        <th class="text-end" style="width:100px">Price</th>
+                        <th class="text-end" style="width:70px">Tax %</th>
+                        <th class="text-end" style="width:90px">Discount</th>
+                        <th class="text-end" style="width:110px">Line Total</th>
+                        <th style="width:40px"></th>
+                    </tr>
+                </thead>
+                <tbody id="invoice-lines-body"></tbody>
+            </table>
+        </div>
+        <p class="text-muted small mt-2 mb-0 d-none" id="no-items-hint">No active items found. Restart the app to seed a demo item automatically.</p>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-8"></div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal</span>
+                    <span class="text-currency" id="total-subtotal">0.00</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Discount</span>
+                    <span class="text-currency" id="total-discount">0.00</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Tax</span>
+                    <span class="text-currency" id="total-tax">0.00</span>
+                </div>
+                <hr class="my-2" />
+                <div class="d-flex justify-content-between fw-semibold">
+                    <span>Net Total</span>
+                    <span class="text-currency text-primary" id="total-net">0.00</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-danger d-none" id="invoice-form-error"></div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary" id="btn-save-invoice">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Draft Invoice
+        </button>
+        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/modules/sales-invoice-create.js" asp-append-version="true"></script>
+}

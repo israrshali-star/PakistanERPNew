@@ -1,0 +1,69 @@
+@{
+    ViewData["Title"] = "Sales Reports";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+        <h4 class="text-primary mb-0">Sales Reports</h4>
+        <p class="text-muted small mb-0">Sales register, customer analysis, and output tax summary</p>
+    </div>
+</div>
+
+<div id="report-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-primary fs-3"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Sales Register</h6>
+                    <p class="text-muted small mb-3">Posted invoices by date range with subtotal, tax, and net totals</p>
+                    <a asp-action="SalesRegister" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-success fs-3"><i class="fa-solid fa-users"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Sales by Customer</h6>
+                    <p class="text-muted small mb-3">Customer-wise sales totals for a selected period</p>
+                    <a asp-action="SalesByCustomer" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-warning fs-3"><i class="fa-solid fa-percent"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Sales Tax Summary</h6>
+                    <p class="text-muted small mb-3">Output tax and related charges for posted sales invoices</p>
+                    <a asp-action="SalesTaxSummary" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            $.getJSON('/api/company/current').fail(function () {
+                $('#report-company-warning')
+                    .removeClass('d-none')
+                    .text('Select a company from the top navbar to run sales reports.');
+            });
+        })();
+    </script>
+}

@@ -1,0 +1,43 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Sales Invoices";
+    var canEdit = await PermissionService.HasPermissionAsync("Sales.Edit");
+}
+
+<div id="sales-invoice-permissions" class="d-none" data-can-edit="@canEdit.ToString().ToLower()"></div>
+
+<div id="sales-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Sales Invoices</h4>
+        <p class="text-muted small mb-0">Draft and posted sales invoices</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary btn-sm" permission="Sales.Create">
+        <i class="fa-solid fa-plus me-1"></i>Create Invoice
+    </a>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="sales-invoices-table">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th class="text-end">Net Total</th>
+                    <th>Status</th>
+                    <th>FBR #</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/sales-invoices.js" asp-append-version="true"></script>
+}

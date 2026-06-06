@@ -1,0 +1,94 @@
+@using PakistanAccountingERP.Application.DTOs
+@{
+    ViewData["Title"] = "Customer Statement";
+    var customer = ViewBag.Customer as CustomerDto;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
+    <div>
+        <h4 class="text-primary mb-1">Customer Statement</h4>
+        <p class="text-muted mb-0"><strong>@customer?.BuyerName</strong> — <code>@customer?.BuyerId</code></p>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-statement">
+            <i class="fa-solid fa-print me-1"></i>Print / Save PDF
+        </button>
+        <a asp-action="Ledger" asp-route-id="@customer?.Id" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-book me-1"></i>Ledger
+        </a>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+    </div>
+</div>
+
+<div class="card p-3 mb-3 no-print">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="statement-from">From Date</label>
+            <input type="text" class="form-control datepicker" id="statement-from" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="statement-to">To Date</label>
+            <input type="text" class="form-control datepicker" id="statement-to" />
+        </div>
+        <div class="col-md-3">
+            <button type="button" class="btn btn-primary" id="btn-load-statement">
+                <i class="fa-solid fa-magnifying-glass me-1"></i>Load Statement
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card p-4 statement-print-area" id="statement-content">
+    <div class="text-center mb-4">
+        <h5 class="text-primary mb-1">Customer Statement</h5>
+        <p class="mb-0"><strong id="stmt-customer-name">@customer?.BuyerName</strong></p>
+        <p class="text-muted small mb-0">
+            <span id="stmt-buyer-id">@customer?.BuyerId</span>
+            <span id="stmt-ntn-wrap" class="@(string.IsNullOrEmpty(customer?.NTN) ? "d-none" : "")"> | NTN: <span id="stmt-ntn">@customer?.NTN</span></span>
+        </p>
+        <p class="text-muted small" id="stmt-period">Select a date range and click Load Statement</p>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th class="text-end">Debit (PKR)</th>
+                    <th class="text-end">Credit (PKR)</th>
+                    <th class="text-end">Balance (PKR)</th>
+                </tr>
+            </thead>
+            <tbody id="statement-entries">
+                <tr><td colspan="6" class="text-muted text-center">No data loaded.</td></tr>
+            </tbody>
+            <tfoot id="statement-footer" class="d-none">
+                <tr class="table-light">
+                    <th colspan="5" class="text-end">Closing Balance</th>
+                    <th class="text-end" id="stmt-closing-balance">0.00</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<input type="hidden" id="statement-customer-id" value="@customer?.Id" />
+
+@section Styles {
+    <style>
+        @@media print {
+            .sidebar, .top-navbar, .content-header, .app-footer, .no-print { display: none !important; }
+            .main-wrapper { margin: 0 !important; }
+            .content-area { padding: 0 !important; }
+            .statement-print-area { border: none !important; box-shadow: none !important; }
+        }
+    </style>
+}
+
+@section Scripts {
+    <script src="~/js/modules/customer-statement.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,95 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Bank Reconciliation";
+    var canEdit = await PermissionService.HasPermissionAsync("Banking.Edit");
+}
+
+<div id="recon-permissions" class="d-none" data-can-edit="@canEdit.ToString().ToLower()"></div>
+<div id="recon-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Bank Reconciliation</h4>
+        <p class="text-muted small mb-0">Match bank statement with book balance and mark transactions reconciled</p>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card p-3 mb-3">
+            <h6 class="text-primary mb-3">Reconcile Bank Account</h6>
+            <div class="mb-3">
+                <label class="form-label" for="recon-bank-id">Bank Account</label>
+                <select class="form-select select2" id="recon-bank-id">
+                    <option value="">— Select bank —</option>
+                </select>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="statement-date">Statement Date</label>
+                    <input type="date" class="form-control" id="statement-date" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="statement-balance">Statement Balance (PKR)</label>
+                    <input type="number" class="form-control" id="statement-balance" step="0.01" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="text-muted small">Book Balance</div>
+                <div class="fs-5 fw-semibold text-currency" id="book-balance">—</div>
+            </div>
+            <div class="mb-3">
+                <div class="text-muted small">Unreconciled Transactions</div>
+                <div class="fw-semibold" id="unreconciled-count">—</div>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-complete-recon" permission="Banking.Edit">
+                <i class="fa-solid fa-check-double me-1"></i>Complete Reconciliation
+            </button>
+            <div class="alert alert-danger d-none mt-3" id="recon-form-error"></div>
+            <div class="alert alert-success d-none mt-3" id="recon-form-success"></div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card p-3 mb-3">
+            <h6 class="text-primary mb-3">Unreconciled Transactions</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all-txn" checked /></th>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th class="text-end">Amount</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unreconciled-body">
+                        <tr><td colspan="5" class="text-muted text-center">Select a bank account</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card p-3">
+            <h6 class="text-primary mb-3">Reconciliation History</h6>
+            <div class="table-responsive">
+                <table class="table table-hover w-100" id="recon-history-table">
+                    <thead>
+                        <tr>
+                            <th>Bank</th>
+                            <th>Statement Date</th>
+                            <th class="text-end">Statement Bal.</th>
+                            <th class="text-end">Book Bal.</th>
+                            <th class="text-end">Difference</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/bank-reconciliations.js" asp-append-version="true"></script>
+}

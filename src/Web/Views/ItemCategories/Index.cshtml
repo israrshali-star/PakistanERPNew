@@ -1,0 +1,74 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Item Categories";
+    var canCreate = await PermissionService.HasPermissionAsync("Items.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Items.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Items.Delete");
+}
+
+<div id="category-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+<div id="category-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Item Categories</h4>
+        <p class="text-muted small mb-0">Group items for reporting and filtering</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-category" permission="Items.Create">
+        <i class="fa-solid fa-folder-plus me-1"></i>New Category
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="item-categories-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th class="text-end">Items</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="categoryModalLabel">Item Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="category-form">
+                <div class="modal-body">
+                    <input type="hidden" id="category-id" />
+                    <div class="mb-3">
+                        <label class="form-label" for="category-name">Name</label>
+                        <input type="text" class="form-control" id="category-name" required maxlength="200" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="category-description">Description</label>
+                        <textarea class="form-control" id="category-description" rows="3" maxlength="500"></textarea>
+                    </div>
+                    <div class="alert alert-danger d-none" id="category-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/item-categories.js" asp-append-version="true"></script>
+}

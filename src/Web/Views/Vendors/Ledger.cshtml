@@ -1,0 +1,92 @@
+@model PakistanAccountingERP.Application.DTOs.VendorLedgerDto
+@{
+    ViewData["Title"] = "Vendor Ledger";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-1">@Model.Vendor.VendorName</h4>
+        <p class="text-muted mb-0">
+            <code>@Model.Vendor.VendorCode</code>
+            @if (!string.IsNullOrEmpty(Model.Vendor.NTN))
+            {
+                <span class="ms-2">NTN: @Model.Vendor.NTN</span>
+            }
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Statement" asp-route-id="@Model.Vendor.Id" class="btn btn-outline-primary btn-sm">
+            <i class="fa-solid fa-file-lines me-1"></i>Statement
+        </a>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Opening Balance</div>
+            <div class="kpi-value text-currency">@Model.Vendor.OpeningBalance.ToString("N2")</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Outstanding Payable</div>
+            <div class="kpi-value text-currency">@Model.ClosingBalance.ToString("N2")</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Default Tax Rate</div>
+            <div class="kpi-value">@Model.Vendor.DefaultSalesTaxRate.ToString("N2")%</div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th class="text-end">Debit</th>
+                    <th class="text-end">Credit</th>
+                    <th class="text-end">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Entries.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-muted text-center">No ledger entries yet.</td></tr>
+                }
+                else
+                {
+                    foreach (var entry in Model.Entries)
+                    {
+                        <tr>
+                            <td>@(entry.Date == DateTime.MinValue ? "—" : entry.Date.ToString("dd/MM/yyyy"))</td>
+                            <td><code>@entry.Reference</code></td>
+                            <td>@entry.Description</td>
+                            <td class="text-end text-currency">@(entry.Debit > 0 ? entry.Debit.ToString("N2") : "—")</td>
+                            <td class="text-end text-currency">@(entry.Credit > 0 ? entry.Credit.ToString("N2") : "—")</td>
+                            <td class="text-end text-currency fw-semibold">@entry.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+            @if (Model.Entries.Count > 0)
+            {
+                <tfoot>
+                    <tr class="table-light">
+                        <th colspan="5" class="text-end">Closing Balance</th>
+                        <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+</div>

@@ -1,0 +1,15 @@
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\bin\Debug\net8.0\PakistanAccountingERP.Application.deps.json
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\bin\Debug\net8.0\PakistanAccountingERP.Application.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\bin\Debug\net8.0\PakistanAccountingERP.Application.pdb
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\bin\Debug\net8.0\PakistanAccountingERP.Domain.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\bin\Debug\net8.0\PakistanAccountingERP.Domain.pdb
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.csproj.AssemblyReference.cache
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.AssemblyInfoInputs.cache
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.AssemblyInfo.cs
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.csproj.CoreCompileInputs.cache
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\Pakistan.6613D316.Up2Date
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\refint\PakistanAccountingERP.Application.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\PakistanAccountingERP.Application.pdb
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Debug\net8.0\ref\PakistanAccountingERP.Application.dll

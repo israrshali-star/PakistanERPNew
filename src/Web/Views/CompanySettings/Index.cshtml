@@ -1,0 +1,112 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Company & FBR Settings";
+    var canEdit = await PermissionService.HasPermissionAsync("Settings.Edit");
+}
+
+<div id="settings-permissions" class="d-none" data-can-edit="@canEdit.ToString().ToLower()"></div>
+<div id="settings-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Company & FBR Settings</h4>
+        <p class="text-muted small mb-0">Company profile, FBR e-invoicing API, and default tax rates</p>
+    </div>
+    <div id="fbr-status-badge"></div>
+</div>
+
+<form id="company-settings-form">
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card p-3 h-100">
+                <h6 class="text-primary mb-3"><i class="fa-solid fa-building me-1"></i>Company Profile</h6>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="company-name">Company Name</label>
+                        <input type="text" class="form-control" id="company-name" required maxlength="450" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="company-ntn">NTN (Seller)</label>
+                        <input type="text" class="form-control" id="company-ntn" maxlength="50" placeholder="Used on FBR submissions" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="province-id">Province</label>
+                        <select class="form-select" id="province-id">
+                            <option value="">— Select —</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="company-address">Address</label>
+                        <textarea class="form-control" id="company-address" rows="2" maxlength="500"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="company-phone">Phone</label>
+                        <input type="text" class="form-control" id="company-phone" maxlength="50" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="company-email">Email</label>
+                        <input type="email" class="form-control" id="company-email" maxlength="200" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card p-3 h-100">
+                <h6 class="text-primary mb-3"><i class="fa-solid fa-paper-plane me-1"></i>FBR E-Invoicing</h6>
+                <div class="alert alert-info small" id="fbr-mode-hint">
+                    Loading FBR configuration status...
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fbr-post-url">FBR Post URL</label>
+                    <input type="url" class="form-control" id="fbr-post-url" placeholder="https://gw.fbr.gov.pk/..." />
+                    <div class="form-text">Leave blank to use simulation mode on invoice submission.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="api-token">API Token</label>
+                    <input type="password" class="form-control" id="api-token" placeholder="Enter new token to update" autocomplete="new-password" />
+                    <div class="form-text" id="api-token-hint"></div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="clear-api-token" />
+                    <label class="form-check-label" for="clear-api-token">Clear stored API token</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12" id="tax-section">
+            <div class="card p-3">
+                <h6 class="text-primary mb-3"><i class="fa-solid fa-percent me-1"></i>Tax Settings</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label" for="tax-group-name">Tax Group</label>
+                        <input type="text" class="form-control" id="tax-group-name" readonly />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="sales-tax-rate">Registered Sales Tax %</label>
+                        <input type="number" class="form-control" id="sales-tax-rate" step="0.01" min="0" max="100" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="unreg-tax-rate">Unregistered Sales Tax %</label>
+                        <input type="number" class="form-control" id="unreg-tax-rate" step="0.01" min="0" max="100" required />
+                    </div>
+                </div>
+                <p class="text-muted small mb-0 mt-2">Default rates used when creating sales invoices and items.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-danger d-none mt-3" id="settings-form-error"></div>
+    <div class="alert alert-success d-none mt-3" id="settings-form-success"></div>
+
+    <div class="mt-3" permission="Settings.Edit">
+        <button type="submit" class="btn btn-primary" id="btn-save-settings">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Settings
+        </button>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/modules/company-settings.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,101 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Bank Accounts";
+    var canCreate = await PermissionService.HasPermissionAsync("Banking.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Banking.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Banking.Delete");
+}
+
+<div id="bank-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+<div id="bank-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Bank Accounts</h4>
+        <p class="text-muted small mb-0">Company bank accounts linked to cash & bank GL accounts</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-bank" permission="Banking.Create">
+        <i class="fa-solid fa-building-columns me-1"></i>New Bank Account
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="banks-table">
+            <thead>
+                <tr>
+                    <th>Bank</th>
+                    <th>Account Title</th>
+                    <th>Account #</th>
+                    <th class="text-end">Balance</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="bankModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="bankModalLabel">Bank Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="bank-form">
+                <div class="modal-body">
+                    <input type="hidden" id="bank-id" />
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="bank-name">Bank Name</label>
+                            <input type="text" class="form-control" id="bank-name" required maxlength="200" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="account-title">Account Title</label>
+                            <input type="text" class="form-control" id="account-title" required maxlength="200" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="account-number">Account Number</label>
+                            <input type="text" class="form-control" id="account-number" required maxlength="50" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="iban">IBAN</label>
+                            <input type="text" class="form-control" id="iban" maxlength="50" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="opening-balance">Opening Balance (PKR)</label>
+                            <input type="number" class="form-control" id="opening-balance" step="0.01" value="0" />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label" for="chart-of-account-id">GL Account (Cash & Bank)</label>
+                            <select class="form-select select2" id="chart-of-account-id">
+                                <option value="">— Optional —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="bank-active" checked />
+                                <label class="form-check-label" for="bank-active">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="bank-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/banks.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,69 @@
+@{
+    ViewData["Title"] = "Purchase Reports";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+        <h4 class="text-primary mb-0">Purchase Reports</h4>
+        <p class="text-muted small mb-0">Purchase register, vendor analysis, and input tax summary</p>
+    </div>
+</div>
+
+<div id="report-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-primary fs-3"><i class="fa-solid fa-file-invoice"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Purchase Register</h6>
+                    <p class="text-muted small mb-3">Approved vendor bills by date range with tax and net amounts</p>
+                    <a asp-action="PurchaseRegister" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-success fs-3"><i class="fa-solid fa-truck-field"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Purchase by Vendor</h6>
+                    <p class="text-muted small mb-3">Vendor-wise purchase totals for a selected period</p>
+                    <a asp-action="PurchaseByVendor" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-warning fs-3"><i class="fa-solid fa-receipt"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Input Tax Summary</h6>
+                    <p class="text-muted small mb-3">Recoverable input tax from approved purchase bills</p>
+                    <a asp-action="InputTaxSummary" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            $.getJSON('/api/company/current').fail(function () {
+                $('#report-company-warning')
+                    .removeClass('d-none')
+                    .text('Select a company from the top navbar to run purchase reports.');
+            });
+        })();
+    </script>
+}

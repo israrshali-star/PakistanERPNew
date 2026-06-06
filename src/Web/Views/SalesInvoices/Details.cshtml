@@ -1,0 +1,171 @@
+@using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Application.Interfaces.Services
+@using PakistanAccountingERP.Domain.Enums
+@inject IPermissionService PermissionService
+@model SalesInvoiceDetailDto
+@{
+    ViewData["Title"] = "Invoice " + Model.InvoiceNumber;
+    var canEdit = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var canPost = canEdit && Model.Status == InvoiceStatus.Draft;
+    var canCancel = canEdit && Model.Status == InvoiceStatus.Draft;
+    var canSubmitFbr = canEdit && Model.Status == InvoiceStatus.Posted && Model.FbrSubmittedAt is null;
+}
+
+<div id="invoice-detail"
+     data-id="@Model.Id"
+     data-can-post="@canPost.ToString().ToLower()"
+     data-can-cancel="@canCancel.ToString().ToLower()"
+     data-can-submit-fbr="@canSubmitFbr.ToString().ToLower()"></div>
+
+<div id="invoice-action-message" class="alert d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">@Model.InvoiceNumber</h4>
+        <p class="text-muted small mb-0">@Model.CustomerCode — @Model.CustomerName</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back to list
+        </a>
+        @if (canPost)
+        {
+            <button type="button" class="btn btn-success btn-sm" id="btn-post-invoice">
+                <i class="fa-solid fa-book me-1"></i>Post to GL
+            </button>
+        }
+        @if (canSubmitFbr)
+        {
+            <button type="button" class="btn btn-primary btn-sm" id="btn-submit-fbr">
+                <i class="fa-solid fa-paper-plane me-1"></i>Submit to FBR
+            </button>
+        }
+        @if (canCancel)
+        {
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-cancel-invoice">
+                <i class="fa-solid fa-ban me-1"></i>Cancel Draft
+            </button>
+        }
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
+            <i class="fa-solid fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Status</div>
+            <div class="fw-semibold">
+                @{
+                    var statusClass = Model.Status switch
+                    {
+                        InvoiceStatus.Posted => "text-success",
+                        InvoiceStatus.Cancelled => "text-danger",
+                        _ => "text-secondary"
+                    };
+                }
+                <span class="@statusClass">@Model.Status</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Invoice Date</div>
+            <div class="fw-semibold">@Model.InvoiceDate.ToString("dd/MM/yyyy")</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">FBR Scenario</div>
+            <div class="fw-semibold">@(Model.ScenarioCode ?? "—")</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">FBR Invoice #</div>
+            <div class="fw-semibold">@(Model.FbrInvoiceNumber ?? "Not submitted")</div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-3 mb-3">
+    <h6 class="text-primary">Buyer Details</h6>
+    <div class="row g-2 small">
+        <div class="col-md-6"><strong>Address:</strong> @(Model.BuyerAddress ?? "—")</div>
+        <div class="col-md-3"><strong>NTN:</strong> @(Model.BuyerNTN ?? "—")</div>
+        <div class="col-md-3"><strong>CNIC:</strong> @(Model.BuyerCNIC ?? "—")</div>
+        <div class="col-md-3"><strong>Type:</strong> @Model.InvoiceType</div>
+        @if (Model.JournalEntryNumber is not null)
+        {
+            <div class="col-md-3"><strong>Journal Entry:</strong> <code>@Model.JournalEntryNumber</code></div>
+        }
+    </div>
+</div>
+
+<div class="card p-3 mb-3">
+    <h6 class="text-primary mb-3">Line Items</h6>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>HS Code</th>
+                    <th>Stack</th>
+                    <th>Lot</th>
+                    <th class="text-end">Qty</th>
+                    <th>Unit</th>
+                    <th class="text-end">Price</th>
+                    <th class="text-end">Tax %</th>
+                    <th class="text-end">Discount</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in Model.Lines)
+                {
+                    <tr>
+                        <td>
+                            <div><code>@line.ItemCode</code> @line.ItemName</div>
+                            @if (!string.IsNullOrWhiteSpace(line.ProductDescription))
+                            {
+                                <div class="text-muted small">@line.ProductDescription</div>
+                            }
+                        </td>
+                        <td>@(line.HsCode ?? "—")</td>
+                        <td>@(line.StackNo ?? "—")</td>
+                        <td>@(line.LotNo ?? "—")</td>
+                        <td class="text-end">@line.Quantity.ToString("N2")</td>
+                        <td>@(line.Unit ?? "—")</td>
+                        <td class="text-end text-currency">@line.Price.ToString("N2")</td>
+                        <td class="text-end">@line.TaxRate.ToString("N2")</td>
+                        <td class="text-end text-currency">@line.Discount.ToString("N2")</td>
+                        <td class="text-end text-currency fw-semibold">@line.LineTotal.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="9" class="text-end">Subtotal</td>
+                    <td class="text-end text-currency">@Model.SubTotal.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td colspan="9" class="text-end">Discount</td>
+                    <td class="text-end text-currency">@Model.DiscountAmount.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td colspan="9" class="text-end">Sales Tax</td>
+                    <td class="text-end text-currency">@Model.TaxAmount.ToString("N2")</td>
+                </tr>
+                <tr class="fw-bold">
+                    <td colspan="9" class="text-end">Net Total</td>
+                    <td class="text-end text-currency">@Model.NetTotal.ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/sales-invoice-details.js" asp-append-version="true"></script>
+}

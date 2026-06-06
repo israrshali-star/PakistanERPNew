@@ -1,0 +1,81 @@
+@{
+    ViewData["Title"] = "New Journal Entry";
+}
+
+<div id="je-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">New Journal Entry</h4>
+        <p class="text-muted small mb-0">Create a balanced manual journal entry (saved as draft)</p>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-arrow-left me-1"></i>Back to list
+    </a>
+</div>
+
+<form id="journal-entry-form">
+    <div class="card p-3 mb-3">
+        <h6 class="text-primary mb-3">Entry Header</h6>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label" for="entry-number">Entry Number</label>
+                <input type="text" class="form-control" id="entry-number" readonly />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="entry-date">Entry Date</label>
+                <input type="date" class="form-control" id="entry-date" required />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="entry-description">Description</label>
+                <input type="text" class="form-control" id="entry-description" maxlength="500" placeholder="Optional narration" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="text-primary mb-0">Journal Lines</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-line">
+                <i class="fa-solid fa-plus me-1"></i>Add Line
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="min-width:220px">Account</th>
+                        <th class="text-end" style="width:120px">Debit</th>
+                        <th class="text-end" style="width:120px">Credit</th>
+                        <th style="min-width:160px">Memo</th>
+                        <th style="width:40px"></th>
+                    </tr>
+                </thead>
+                <tbody id="je-lines-body"></tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <th class="text-end">Totals</th>
+                        <th class="text-end text-currency" id="total-debit">0.00</th>
+                        <th class="text-end text-currency" id="total-credit">0.00</th>
+                        <th colspan="2">
+                            <span id="balance-status" class="badge bg-secondary">Balanced</span>
+                        </th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-danger d-none" id="je-form-error"></div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Draft
+        </button>
+        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/modules/journal-entry-create.js" asp-append-version="true"></script>
+}

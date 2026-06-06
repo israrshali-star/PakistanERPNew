@@ -1,0 +1,48 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Journal Entries";
+    var canCreate = await PermissionService.HasPermissionAsync("JournalEntries.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("JournalEntries.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("JournalEntries.Delete");
+}
+
+<div id="je-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+<div id="je-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Journal Entries</h4>
+        <p class="text-muted small mb-0">Manual and system-posted general ledger entries</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary btn-sm" permission="JournalEntries.Create">
+        <i class="fa-solid fa-plus me-1"></i>New Journal Entry
+    </a>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="journal-entries-table">
+            <thead>
+                <tr>
+                    <th>Entry #</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Source</th>
+                    <th class="text-end">Amount</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/journal-entries.js" asp-append-version="true"></script>
+}

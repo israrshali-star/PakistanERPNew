@@ -1,0 +1,126 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Vendor Payments";
+    var canCreate = await PermissionService.HasPermissionAsync("Purchase.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Purchase.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Purchase.Delete");
+}
+
+<div id="payment-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+@if (TempData["Error"] is string pageError)
+{
+    <div class="alert alert-danger">@pageError</div>
+}
+
+<div id="payment-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Vendor Payments</h4>
+        <p class="text-muted small mb-0">Record payments made to vendors against outstanding payables</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-payment" permission="Purchase.Create">
+        <i class="fa-solid fa-money-bill-transfer me-1"></i>New Payment
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="vendor-payments-table">
+            <thead>
+                <tr>
+                    <th>Payment #</th>
+                    <th>Vendor</th>
+                    <th>Date</th>
+                    <th class="text-end">Amount</th>
+                    <th>Payment Mode</th>
+                    <th>Bank</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="paymentModalLabel">Vendor Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="payment-form">
+                <div class="modal-body">
+                    <input type="hidden" id="payment-id" />
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="payment-number">Payment #</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="payment-number" required maxlength="50" />
+                                <button type="button" class="btn btn-outline-secondary" id="btn-generate-payment-number" title="Generate number">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="payment-date">Payment Date</label>
+                            <input type="date" class="form-control" id="payment-date" required />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="payment-amount">Amount (PKR)</label>
+                            <input type="number" class="form-control" id="payment-amount" step="0.01" min="0.01" required />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label" for="payment-vendor-id">Vendor</label>
+                            <select class="form-select select2" id="payment-vendor-id" required>
+                                <option value="">— Select vendor —</option>
+                            </select>
+                            <div class="form-text" id="payment-vendor-balance"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="payment-method">Payment Mode</label>
+                            <select class="form-select" id="payment-method" required>
+                                <option value="1">Cash</option>
+                                <option value="2">Cheque</option>
+                                <option value="3">Bank Transfer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 bank-fields d-none">
+                            <label class="form-label" for="payment-bank-id">Bank Account</label>
+                            <select class="form-select select2" id="payment-bank-id">
+                                <option value="">— Select bank —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 cheque-fields d-none">
+                            <label class="form-label" for="cheque-number">Cheque #</label>
+                            <input type="text" class="form-control" id="cheque-number" maxlength="50" />
+                        </div>
+                        <div class="col-md-3 cheque-fields d-none">
+                            <label class="form-label" for="cheque-date">Cheque Date</label>
+                            <input type="date" class="form-control" id="cheque-date" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="payment-notes">Notes</label>
+                            <textarea class="form-control" id="payment-notes" rows="2" maxlength="500"></textarea>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="payment-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save-payment">Save Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/vendor-payments.js" asp-append-version="true"></script>
+}

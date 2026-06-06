@@ -1,0 +1,27 @@
+@{
+    var title = ViewData["Title"]?.ToString() ?? "Page";
+    var parent = ViewData["BreadcrumbParent"]?.ToString();
+    var parentUrl = ViewData["BreadcrumbParentUrl"]?.ToString();
+}
+
+<nav aria-label="breadcrumb" class="app-breadcrumb">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item">
+            <a asp-controller="Home" asp-action="Index"><i class="fa-solid fa-house-chimney me-1"></i>Home</a>
+        </li>
+        @if (!string.IsNullOrEmpty(parent))
+        {
+            <li class="breadcrumb-item">
+                @if (!string.IsNullOrEmpty(parentUrl))
+                {
+                    <a href="@parentUrl">@parent</a>
+                }
+                else
+                {
+                    @parent
+                }
+            </li>
+        }
+        <li class="breadcrumb-item active" aria-current="page">@title</li>
+    </ol>
+</nav>

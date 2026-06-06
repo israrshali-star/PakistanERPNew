@@ -1,0 +1,102 @@
+@{
+    ViewData["Title"] = "Enter Vendor Bill";
+}
+
+<div id="bill-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Enter Vendor Bill</h4>
+        <p class="text-muted small mb-0">Create a draft purchase bill with line items</p>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-arrow-left me-1"></i>Back to Bills
+    </a>
+</div>
+
+<form id="vendor-bill-form">
+    <div class="card p-3 mb-3">
+        <h6 class="text-primary mb-3">Bill Header</h6>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label" for="bill-number">Bill Number</label>
+                <input type="text" class="form-control" id="bill-number" readonly />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="bill-date">Bill Date</label>
+                <input type="date" class="form-control" id="bill-date" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="vendor-id">Vendor</label>
+                <select class="form-select select2" id="vendor-id" required>
+                    <option value="">— Select vendor —</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="ref-no">Supplier Ref #</label>
+                <input type="text" class="form-control" id="ref-no" maxlength="100" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="tax-rate">Tax Rate %</label>
+                <input type="number" class="form-control" id="tax-rate" step="0.01" min="0" value="18" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="text-primary mb-0">Line Items</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-line">
+                <i class="fa-solid fa-plus me-1"></i>Add Line
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="min-width:160px">Item</th>
+                        <th style="min-width:140px">Description</th>
+                        <th style="width:90px">Stack No</th>
+                        <th style="width:90px">Lot No</th>
+                        <th class="text-end" style="width:80px">Cartons</th>
+                        <th class="text-end" style="width:80px">Qty</th>
+                        <th class="text-end" style="width:100px">Rate</th>
+                        <th class="text-end" style="width:100px">Amount</th>
+                        <th style="width:40px"></th>
+                    </tr>
+                </thead>
+                <tbody id="bill-lines-body"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="7" class="text-end fw-semibold">Subtotal</td>
+                        <td class="text-end text-currency fw-semibold" id="total-subtotal">0.00</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="7" class="text-end">Sales Tax</td>
+                        <td class="text-end text-currency" id="total-tax">0.00</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="7" class="text-end fw-bold">Net Total</td>
+                        <td class="text-end text-currency fw-bold" id="total-net">0.00</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-danger d-none" id="bill-form-error"></div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Draft Bill
+        </button>
+        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/modules/vendor-bill-create.js" asp-append-version="true"></script>
+}

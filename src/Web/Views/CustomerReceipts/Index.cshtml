@@ -1,0 +1,126 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Customer Receipts";
+    var canCreate = await PermissionService.HasPermissionAsync("Sales.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Sales.Delete");
+}
+
+<div id="receipt-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+@if (TempData["Error"] is string pageError)
+{
+    <div class="alert alert-danger">@pageError</div>
+}
+
+<div id="receipt-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Customer Receipts</h4>
+        <p class="text-muted small mb-0">Record payments received from customers against outstanding balances</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-receipt" permission="Sales.Create">
+        <i class="fa-solid fa-money-bill-wave me-1"></i>New Receipt
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="customer-receipts-table">
+            <thead>
+                <tr>
+                    <th>Receipt #</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th class="text-end">Amount</th>
+                    <th>Payment Mode</th>
+                    <th>Bank</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="receiptModalLabel">Customer Receipt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="receipt-form">
+                <div class="modal-body">
+                    <input type="hidden" id="receipt-id" />
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="receipt-number">Receipt #</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="receipt-number" required maxlength="50" />
+                                <button type="button" class="btn btn-outline-secondary" id="btn-generate-receipt-number" title="Generate number">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="receipt-date">Receipt Date</label>
+                            <input type="date" class="form-control" id="receipt-date" required />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="receipt-amount">Amount (PKR)</label>
+                            <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label" for="receipt-customer-id">Customer</label>
+                            <select class="form-select select2" id="receipt-customer-id" required>
+                                <option value="">— Select customer —</option>
+                            </select>
+                            <div class="form-text" id="receipt-customer-balance"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="payment-method">Payment Mode</label>
+                            <select class="form-select" id="payment-method" required>
+                                <option value="1">Cash</option>
+                                <option value="2">Cheque</option>
+                                <option value="3">Bank Transfer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 bank-fields d-none">
+                            <label class="form-label" for="receipt-bank-id">Bank Account</label>
+                            <select class="form-select select2" id="receipt-bank-id">
+                                <option value="">— Select bank —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 cheque-fields d-none">
+                            <label class="form-label" for="cheque-number">Cheque #</label>
+                            <input type="text" class="form-control" id="cheque-number" maxlength="50" />
+                        </div>
+                        <div class="col-md-3 cheque-fields d-none">
+                            <label class="form-label" for="cheque-date">Cheque Date</label>
+                            <input type="date" class="form-control" id="cheque-date" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="receipt-notes">Notes</label>
+                            <textarea class="form-control" id="receipt-notes" rows="2" maxlength="500"></textarea>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="receipt-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save-receipt">Save Receipt</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/customer-receipts.js" asp-append-version="true"></script>
+}

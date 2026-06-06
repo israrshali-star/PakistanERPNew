@@ -1,0 +1,162 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Items";
+    var canCreate = await PermissionService.HasPermissionAsync("Items.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Items.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Items.Delete");
+}
+
+<div id="item-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+<div id="item-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Items</h4>
+        <p class="text-muted small mb-0">Product and service master for sales, purchases, and inventory</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-item" permission="Items.Create">
+        <i class="fa-solid fa-box me-1"></i>New Item
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="items-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Category</th>
+                    <th>UOM</th>
+                    <th class="text-end">Sale Rate</th>
+                    <th class="text-end">Stock</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="itemModal" tabindex="-1" aria-labelledby="itemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="itemModalLabel">Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="item-form">
+                <div class="modal-body">
+                    <input type="hidden" id="item-id" />
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="item-code">Item Code</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="item-code" required maxlength="50" />
+                                <button type="button" class="btn btn-outline-secondary" id="btn-generate-item-code" title="Generate code">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label" for="item-name">Item Name</label>
+                            <input type="text" class="form-control" id="item-name" required maxlength="200" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="item-type">Type</label>
+                            <select class="form-select" id="item-type" required>
+                                <option value="1">Goods</option>
+                                <option value="2">Service</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="costing-method">Costing</label>
+                            <select class="form-select" id="costing-method" required>
+                                <option value="1">FIFO</option>
+                                <option value="2">Average</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="item-category-id">Category</label>
+                            <select class="form-select select2" id="item-category-id">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="unit-of-measure-id">Unit of Measure</label>
+                            <select class="form-select select2" id="unit-of-measure-id" required>
+                                <option value="">— Select —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="hs-code">HS Code</label>
+                            <input type="text" class="form-control" id="hs-code" maxlength="20" placeholder="e.g. 0101.2100" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="stack-no">Stack No</label>
+                            <input type="text" class="form-control" id="stack-no" maxlength="50" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="lot-no">Lot No</label>
+                            <input type="text" class="form-control" id="lot-no" maxlength="50" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="barcode">Barcode</label>
+                            <input type="text" class="form-control" id="barcode" maxlength="50" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="purchase-rate">Purchase Rate (PKR)</label>
+                            <input type="number" class="form-control" id="purchase-rate" step="0.01" min="0" value="0" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="sale-rate">Sale Rate (PKR)</label>
+                            <input type="number" class="form-control" id="sale-rate" step="0.01" min="0" value="0" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="minimum-stock">Minimum Stock</label>
+                            <input type="number" class="form-control" id="minimum-stock" step="0.01" min="0" value="0" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="reorder-level">Reorder Level</label>
+                            <input type="number" class="form-control" id="reorder-level" step="0.01" min="0" value="0" />
+                        </div>
+                        <div class="col-md-3" id="opening-stock-group">
+                            <label class="form-label" for="opening-stock">Opening Stock</label>
+                            <input type="number" class="form-control" id="opening-stock" step="0.01" min="0" value="0" />
+                        </div>
+                        <div class="col-md-3 d-none" id="current-stock-group">
+                            <label class="form-label" for="current-stock-display">Current Stock</label>
+                            <input type="text" class="form-control" id="current-stock-display" readonly />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="item-description">Description</label>
+                            <textarea class="form-control" id="item-description" rows="2" maxlength="500"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="item-active" checked />
+                                <label class="form-check-label" for="item-active">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="item-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save-item">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/items.js" asp-append-version="true"></script>
+}
