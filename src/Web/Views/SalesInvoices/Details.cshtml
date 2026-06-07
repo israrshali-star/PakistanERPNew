@@ -190,13 +190,14 @@
 
     <div class="mb-3"><span class="fw-semibold">Amount in words::</span> @AmountInWords.ToPakistaniRupees(Model.NetTotal)</div>
 
-    <div class="text-center fw-bold mb-1">@FbrInvoiceLayout.PdfFooterNotice</div>
-    <div class="text-center text-muted small">FBR Digital Invoice - Printed @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div>
+    @* <div class="text-center fw-bold mb-1">@FbrInvoiceLayout.PdfFooterNotice</div>
+    <div class="text-center text-muted small">FBR Digital Invoice - Printed @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div> *@
+    <div class="alert alert-light border text-center small mt-3 mb-0 no-print" id="invoice-footer-notice">
+        <strong>@ScreenFooterNotice</strong>
+    </div>
 </div>
 
-<div class="alert alert-light border text-center small mt-3 mb-0 no-print" id="invoice-footer-notice">
-    <strong>@ScreenFooterNotice</strong>
-</div>
+
 
 <partial name="_FbrPayloadModal" />
 
