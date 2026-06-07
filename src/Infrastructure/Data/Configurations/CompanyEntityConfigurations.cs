@@ -135,6 +135,25 @@ public class WarehouseConfiguration : IEntityTypeConfiguration<Warehouse>
     }
 }
 
+public class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYear>
+{
+    public void Configure(EntityTypeBuilder<FiscalYear> builder)
+    {
+        builder.ToTable("FiscalYears");
+        builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
+        builder.HasIndex(x => x.CompanyId).HasDatabaseName("IX_FiscalYears_CompanyId");
+        builder.HasIndex(x => new { x.CompanyId, x.Code })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0")
+            .HasDatabaseName("UX_FiscalYears_Code");
+        builder.HasOne(x => x.Company)
+            .WithMany()
+            .HasForeignKey(x => x.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class InventoryTransactionConfiguration : IEntityTypeConfiguration<InventoryTransaction>
 {
     public void Configure(EntityTypeBuilder<InventoryTransaction> builder)
@@ -277,5 +296,34 @@ public class BankTransactionConfiguration : IEntityTypeConfiguration<BankTransac
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.BankId, x.TransactionDate }).HasDatabaseName("IX_BankTransactions_BankId_Date");
         builder.HasIndex(x => x.TransferToBankId).HasDatabaseName("IX_BankTransactions_TransferTo");
+    }
+}
+
+public class DatabaseBackupHistoryConfiguration : IEntityTypeConfiguration<DatabaseBackupHistory>
+{
+    public void Configure(EntityTypeBuilder<DatabaseBackupHistory> builder)
+    {
+        builder.ToTable("DatabaseBackupHistories");
+        builder.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+        builder.Property(x => x.FilePath).HasMaxLength(500).IsRequired();
+        builder.Property(x => x.ErrorMessage).HasMaxLength(1000);
+        builder.HasIndex(x => x.StartedAt).HasDatabaseName("IX_DatabaseBackupHistories_StartedAt");
+    }
+}
+
+public class DataExportHistoryConfiguration : IEntityTypeConfiguration<DataExportHistory>
+{
+    public void Configure(EntityTypeBuilder<DataExportHistory> builder)
+    {
+        builder.ToTable("DataExportHistories");
+        builder.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+        builder.Property(x => x.FilePath).HasMaxLength(500).IsRequired();
+        builder.Property(x => x.ErrorMessage).HasMaxLength(1000);
+        builder.HasIndex(x => x.CompanyId).HasDatabaseName("IX_DataExportHistories_CompanyId");
+        builder.HasIndex(x => x.StartedAt).HasDatabaseName("IX_DataExportHistories_StartedAt");
+        builder.HasOne(x => x.Company)
+            .WithMany()
+            .HasForeignKey(x => x.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

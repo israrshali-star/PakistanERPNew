@@ -1,0 +1,94 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "User Management";
+    var canCreate = await PermissionService.HasPermissionAsync("Users.Create");
+    var canEdit = await PermissionService.HasPermissionAsync("Users.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Users.Delete");
+}
+
+<div id="users-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">User Management</h4>
+        <p class="text-muted small mb-0">Create and manage users, roles, and company assignments</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-user" permission="Users.Create">
+        <i class="fa-solid fa-user-plus me-1"></i>New User
+    </button>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="users-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Full Name</th>
+                    <th>Status</th>
+                    <th>Roles</th>
+                    <th>Companies</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="userModalLabel">User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="user-form">
+                <div class="modal-body">
+                    <input type="hidden" id="user-id" />
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="user-email">Email</label>
+                            <input type="email" class="form-control" id="user-email" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="user-full-name">Full Name</label>
+                            <input type="text" class="form-control" id="user-full-name" required maxlength="200" />
+                        </div>
+                        <div class="col-md-6" id="password-wrapper">
+                            <label class="form-label" for="user-password">Password</label>
+                            <input type="password" class="form-control" id="user-password" minlength="8" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="user-roles">Roles</label>
+                            <select class="form-select" id="user-roles" multiple></select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="user-companies">Company Assignments</label>
+                            <select class="form-select" id="user-companies" multiple></select>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="user-active" checked />
+                                <label class="form-check-label" for="user-active">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="user-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/users.js" asp-append-version="true"></script>
+}

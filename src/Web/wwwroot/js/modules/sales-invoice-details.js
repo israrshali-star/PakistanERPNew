@@ -84,5 +84,54 @@
         if ($detail.data('has-fbr-pdf') === true) {
             $('#btn-download-pdf, .btn-download-pdf-inline').on('click', downloadPdf);
         }
+
+        $('#invoice-attachment-upload').on('change', function () {
+            var invoiceId = $detail.data('id');
+            var input = this;
+            if (!input.files || input.files.length === 0) {
+                return;
+            }
+
+            var uploads = Array.prototype.map.call(input.files, function (file) {
+                var formData = new FormData();
+                formData.append('file', file);
+                return $.ajax({
+                    url: '/api/sales-invoices/' + invoiceId + '/attachments',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false
+                });
+            });
+
+            $.when.apply($, uploads)
+                .done(function () {
+                    window.location.reload();
+                })
+                .fail(function (xhr) {
+                    showMessage('danger', getApiErrorMessage(xhr, 'Failed to upload attachment.'));
+                })
+                .always(function () {
+                    input.value = '';
+                });
+        });
+
+        $('#invoice-attachments-card').on('click', '.btn-delete-attachment', function () {
+            var attachmentId = $(this).data('id');
+            if (!confirm('Delete this attachment?')) {
+                return;
+            }
+
+            $.ajax({
+                url: '/api/sales-invoices/attachments/' + attachmentId,
+                method: 'DELETE'
+            })
+                .done(function () {
+                    window.location.reload();
+                })
+                .fail(function (xhr) {
+                    showMessage('danger', getApiErrorMessage(xhr, 'Failed to delete attachment.'));
+                });
+        });
     });
 })();

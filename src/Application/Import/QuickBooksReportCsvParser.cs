@@ -1,0 +1,481 @@
+using System.Globalization;
+using System.Text;
+using ClosedXML.Excel;
+
+namespace PakistanAccountingERP.Application.Import;
+
+public sealed class QuickBooksNameBalanceRow
+{
+    public required string Name { get; init; }
+    public decimal Balance { get; init; }
+}
+
+public sealed class QuickBooksOpenInvoiceRow
+{
+    public required string CustomerName { get; init; }
+    public required string InvoiceNumber { get; init; }
+    public DateTime InvoiceDate { get; init; }
+    public decimal Amount { get; init; }
+}
+
+public sealed class QuickBooksOpenBillRow
+{
+    public required string VendorName { get; init; }
+    public required string BillNumber { get; init; }
+    public DateTime BillDate { get; init; }
+    public decimal Amount { get; init; }
+}
+
+public static class QuickBooksReportCsvParser
+{
+    public static IReadOnlyList<QuickBooksNameBalanceRow> ParseNameBalanceReport(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+
+        var detailHeaderIndex = FindDetailBalanceHeaderRowIndex(rows);
+        if (detailHeaderIndex >= 0)
+        {
+            return ParseCustomerBalanceDetailRows(rows, detailHeaderIndex);
+        }
+
+        var headerIndex = FindHeaderRowIndex(rows, ["customer", "vendor"], ["balance", "amount", "total"]);
+        if (headerIndex < 0)
+        {
+            throw new InvalidOperationException(
+                "Could not find customer/vendor balance columns. Expected columns like Customer and Balance in the Excel or CSV export from QuickBooks.");
+        }
+
+        var headers = rows[headerIndex];
+        var nameIndex = FindColumnIndex(headers, ["customer", "vendor", "name"]);
+        var balanceIndex = FindColumnIndex(headers, ["balance", "total balance", "amount", "open balance"]);
+
+        if (nameIndex < 0 || balanceIndex < 0)
+        {
+            throw new InvalidOperationException("CSV is missing name or balance columns.");
+        }
+
+        var result = new List<QuickBooksNameBalanceRow>();
+        for (var i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0 || row.All(string.IsNullOrWhiteSpace))
+            {
+                continue;
+            }
+
+            if (nameIndex >= row.Count || balanceIndex >= row.Count)
+            {
+                continue;
+            }
+
+            var name = row[nameIndex].Trim();
+            if (string.IsNullOrWhiteSpace(name)
+                || name.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("Grand", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var balance = ParseDecimal(row[balanceIndex]);
+            if (balance == 0m)
+            {
+                continue;
+            }
+
+            result.Add(new QuickBooksNameBalanceRow { Name = name, Balance = balance });
+        }
+
+        return result;
+    }
+
+    private static int FindDetailBalanceHeaderRowIndex(IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var normalized = rows[i].Select(NormalizeHeader).ToList();
+            var hasType = normalized.Any(cell => cell == "type");
+            var hasBalance = normalized.Any(cell => cell.Contains("balance", StringComparison.Ordinal));
+            if (hasType && hasBalance)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static IReadOnlyList<QuickBooksNameBalanceRow> ParseCustomerBalanceDetailRows(
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        int headerIndex)
+    {
+        var headers = rows[headerIndex];
+        var balanceIndex = FindColumnIndex(headers, ["balance"]);
+        const int nameColumnIndex = 1;
+
+        if (balanceIndex < 0)
+        {
+            throw new InvalidOperationException("Customer balance detail report is missing a Balance column.");
+        }
+
+        var result = new List<QuickBooksNameBalanceRow>();
+        for (var i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count <= nameColumnIndex)
+            {
+                continue;
+            }
+
+            var label = row[nameColumnIndex].Trim();
+            if (!label.StartsWith("Total ", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var name = label["Total ".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            var balance = ParseDecimal(GetCell(row, balanceIndex));
+            result.Add(new QuickBooksNameBalanceRow { Name = name, Balance = balance });
+        }
+
+        return result;
+    }
+
+    public static IReadOnlyList<QuickBooksOpenInvoiceRow> ParseOpenInvoicesReport(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        var headerIndex = FindHeaderRowIndex(rows, ["customer", "name"], ["num", "invoice", "open"]);
+        if (headerIndex < 0)
+        {
+            throw new InvalidOperationException(
+                "Could not find open invoice columns in the CSV. Export the Open Invoices report from QuickBooks.");
+        }
+
+        var headers = rows[headerIndex];
+        var customerIndex = FindColumnIndex(headers, ["customer", "name"]);
+        var numberIndex = FindColumnIndex(headers, ["num", "invoice #", "invoice no", "number", "doc num"]);
+        var dateIndex = FindColumnIndex(headers, ["date", "invoice date", "txn date"]);
+        var amountIndex = FindColumnIndex(headers, ["open balance", "amount due", "balance", "amount"]);
+
+        if (customerIndex < 0 || amountIndex < 0)
+        {
+            throw new InvalidOperationException("CSV is missing customer or amount columns for open invoices.");
+        }
+
+        var result = new List<QuickBooksOpenInvoiceRow>();
+        for (var i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0 || row.All(string.IsNullOrWhiteSpace))
+            {
+                continue;
+            }
+
+            var customer = GetCell(row, customerIndex);
+            if (string.IsNullOrWhiteSpace(customer)
+                || customer.StartsWith("Total", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var amount = ParseDecimal(GetCell(row, amountIndex));
+            if (amount == 0m)
+            {
+                continue;
+            }
+
+            var invoiceNumber = GetCell(row, numberIndex);
+            if (string.IsNullOrWhiteSpace(invoiceNumber))
+            {
+                invoiceNumber = $"QB-INV-{i}";
+            }
+
+            result.Add(new QuickBooksOpenInvoiceRow
+            {
+                CustomerName = customer,
+                InvoiceNumber = invoiceNumber,
+                InvoiceDate = ParseDate(GetCell(row, dateIndex)) ?? DateTime.UtcNow.Date,
+                Amount = amount
+            });
+        }
+
+        return result;
+    }
+
+    public static IReadOnlyList<QuickBooksOpenBillRow> ParseOpenBillsReport(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        var headerIndex = FindHeaderRowIndex(rows, ["vendor", "name"], ["num", "ref", "open", "due"]);
+        if (headerIndex < 0)
+        {
+            throw new InvalidOperationException(
+                "Could not find open bill columns in the CSV. Export the Unpaid Bills report from QuickBooks.");
+        }
+
+        var headers = rows[headerIndex];
+        var vendorIndex = FindColumnIndex(headers, ["vendor", "name"]);
+        var numberIndex = FindColumnIndex(headers, ["num", "ref no", "bill #", "number", "ref"]);
+        var dateIndex = FindColumnIndex(headers, ["date", "bill date", "due date", "txn date"]);
+        var amountIndex = FindColumnIndex(headers, ["open balance", "amount due", "balance", "amount"]);
+
+        if (vendorIndex < 0 || amountIndex < 0)
+        {
+            throw new InvalidOperationException("CSV is missing vendor or amount columns for open bills.");
+        }
+
+        var result = new List<QuickBooksOpenBillRow>();
+        for (var i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0 || row.All(string.IsNullOrWhiteSpace))
+            {
+                continue;
+            }
+
+            var vendor = GetCell(row, vendorIndex);
+            if (string.IsNullOrWhiteSpace(vendor)
+                || vendor.StartsWith("Total", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var amount = ParseDecimal(GetCell(row, amountIndex));
+            if (amount == 0m)
+            {
+                continue;
+            }
+
+            var billNumber = GetCell(row, numberIndex);
+            if (string.IsNullOrWhiteSpace(billNumber))
+            {
+                billNumber = $"QB-BILL-{i}";
+            }
+
+            result.Add(new QuickBooksOpenBillRow
+            {
+                VendorName = vendor,
+                BillNumber = billNumber,
+                BillDate = ParseDate(GetCell(row, dateIndex)) ?? DateTime.UtcNow.Date,
+                Amount = amount
+            });
+        }
+
+        return result;
+    }
+
+    private static List<List<string>> ReadReportRows(string filePath)
+    {
+        var extension = Path.GetExtension(filePath);
+        return extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
+               || extension.Equals(".xlsm", StringComparison.OrdinalIgnoreCase)
+            ? ReadExcelRows(filePath)
+            : ReadCsvRows(filePath);
+    }
+
+    private static List<List<string>> ReadExcelRows(string filePath)
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheets
+            .OrderByDescending(ws => ws.LastRowUsed()?.RowNumber() ?? 0)
+            .First();
+        var usedRange = worksheet.RangeUsed();
+        if (usedRange is null)
+        {
+            return [];
+        }
+
+        var rows = new List<List<string>>();
+        foreach (var row in usedRange.Rows())
+        {
+            var cells = row.CellsUsed().ToList();
+            if (cells.Count == 0)
+            {
+                continue;
+            }
+
+            var lastColumn = cells.Max(c => c.Address.ColumnNumber);
+            var values = new string[lastColumn];
+            foreach (var cell in cells)
+            {
+                values[cell.Address.ColumnNumber - 1] = GetExcelCellValue(cell);
+            }
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                values[i] ??= string.Empty;
+            }
+
+            rows.Add(values.ToList());
+        }
+
+        return rows;
+    }
+
+    private static string GetExcelCellValue(IXLCell cell)
+    {
+        if (cell.DataType == XLDataType.Number)
+        {
+            return cell.GetDouble().ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (cell.DataType == XLDataType.DateTime)
+        {
+            return cell.GetDateTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        return cell.GetFormattedString().Trim();
+    }
+
+    private static List<List<string>> ReadCsvRows(string filePath)
+    {
+        var rows = new List<List<string>>();
+        using var reader = new StreamReader(filePath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        while (!reader.EndOfStream)
+        {
+            var line = reader.ReadLine();
+            if (line is null)
+            {
+                continue;
+            }
+
+            rows.Add(ParseCsvLine(line));
+        }
+
+        return rows;
+    }
+
+    private static List<string> ParseCsvLine(string line)
+    {
+        var cells = new List<string>();
+        var current = new StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+
+                continue;
+            }
+
+            if (c == ',' && !inQuotes)
+            {
+                cells.Add(current.ToString());
+                current.Clear();
+                continue;
+            }
+
+            current.Append(c);
+        }
+
+        cells.Add(current.ToString());
+        return cells;
+    }
+
+    private static int FindHeaderRowIndex(
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        IReadOnlyList<string> nameKeywords,
+        IReadOnlyList<string> valueKeywords)
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var normalized = rows[i]
+                .Select(NormalizeHeader)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            if (normalized.Count == 0)
+            {
+                continue;
+            }
+
+            var hasName = normalized.Any(cell => nameKeywords.Any(keyword => cell.Contains(keyword, StringComparison.Ordinal)));
+            var hasValue = normalized.Any(cell => valueKeywords.Any(keyword => cell.Contains(keyword, StringComparison.Ordinal)));
+            if (hasName && hasValue)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int FindColumnIndex(IReadOnlyList<string> headers, IReadOnlyList<string> candidates)
+    {
+        for (var i = 0; i < headers.Count; i++)
+        {
+            var header = NormalizeHeader(headers[i]);
+            if (candidates.Any(candidate => header.Contains(candidate, StringComparison.Ordinal)))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string NormalizeHeader(string value) =>
+        value.Trim().Trim('"').ToLowerInvariant();
+
+    private static string GetCell(IReadOnlyList<string> row, int index) =>
+        index >= 0 && index < row.Count ? row[index].Trim().Trim('"') : string.Empty;
+
+    private static decimal ParseDecimal(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0m;
+        }
+
+        var normalized = value.Trim().Trim('"')
+            .Replace(",", string.Empty)
+            .Replace("PKR", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("(", "-", StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        return decimal.TryParse(normalized, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var amount)
+            ? amount
+            : 0m;
+    }
+
+    private static DateTime? ParseDate(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var formats = new[]
+        {
+            "MM/dd/yyyy",
+            "M/d/yyyy",
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "yyyy-MM-dd"
+        };
+
+        if (DateTime.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
+        {
+            return exact.Date;
+        }
+
+        return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed.Date
+            : null;
+    }
+}

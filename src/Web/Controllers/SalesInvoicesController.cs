@@ -58,16 +58,21 @@ public class SalesInvoicesController : Controller
 [Route("api/sales-invoices")]
 public class SalesInvoicesApiController : ControllerBase
 {
+    private const long MaxAttachmentUploadBytes = 10 * 1024 * 1024;
+
     private readonly ISalesInvoiceService _salesInvoiceService;
+    private readonly ISalesInvoiceAttachmentService _attachmentService;
     private readonly IStackLotInventoryService _stackLotInventory;
     private readonly ISalesInvoicePdfService _salesInvoicePdfService;
 
     public SalesInvoicesApiController(
         ISalesInvoiceService salesInvoiceService,
+        ISalesInvoiceAttachmentService attachmentService,
         IStackLotInventoryService stackLotInventory,
         ISalesInvoicePdfService salesInvoicePdfService)
     {
         _salesInvoiceService = salesInvoiceService;
+        _attachmentService = attachmentService;
         _stackLotInventory = stackLotInventory;
         _salesInvoicePdfService = salesInvoicePdfService;
     }
@@ -312,6 +317,89 @@ public class SalesInvoicesApiController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new SalesInvoiceSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("{id:int}/attachments")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> Attachments(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _attachmentService.GetByInvoiceIdAsync(id, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/attachments")]
+    [RequirePermission("Sales.Create")]
+    [IgnoreAntiforgeryToken]
+    [RequestSizeLimit(MaxAttachmentUploadBytes)]
+    public async Task<IActionResult> UploadAttachment(
+        int id,
+        IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new SalesInvoiceAttachmentSaveResult(false, "Please select a file to upload.", null));
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await _attachmentService.UploadAsync(
+                id,
+                file.FileName,
+                file.ContentType,
+                stream,
+                file.Length,
+                cancellationToken);
+
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new SalesInvoiceAttachmentSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("attachments/{attachmentId:int}/download")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> DownloadAttachment(int attachmentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var file = await _attachmentService.DownloadAsync(attachmentId, cancellationToken);
+            if (file is null)
+            {
+                return NotFound();
+            }
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("attachments/{attachmentId:int}")]
+    [RequirePermission("Sales.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> DeleteAttachment(int attachmentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _attachmentService.DeleteAsync(attachmentId, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new SalesInvoiceAttachmentSaveResult(false, ex.Message, null));
         }
     }
 }

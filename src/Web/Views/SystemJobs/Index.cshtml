@@ -1,0 +1,98 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Backup & Exports";
+    var canEdit = await PermissionService.HasPermissionAsync("Settings.Edit");
+}
+
+<div id="system-jobs-permissions" class="d-none"
+     data-can-edit="@canEdit.ToString().ToLower()"></div>
+<div id="system-jobs-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Backup & Exports</h4>
+        <p class="text-muted small mb-0">Run database backups and data exports, then review history</p>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="system-jobs-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="backups-tab" data-bs-toggle="tab" data-bs-target="#backups-pane" type="button" role="tab">
+            Database Backups
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="exports-tab" data-bs-toggle="tab" data-bs-target="#exports-pane" type="button" role="tab">
+            Data Exports
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="backups-pane" role="tabpanel">
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="text-primary mb-0">Database Backup History</h6>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-run-backup" permission="Settings.Edit">
+                    <i class="fa-solid fa-database me-1"></i>Run Backup
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover w-100" id="backups-table">
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Run Type</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Completed</th>
+                            <th>By</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="exports-pane" role="tabpanel">
+        <div class="card p-3 mb-3">
+            <div class="d-flex flex-wrap align-items-end gap-2">
+                <div>
+                    <label class="form-label mb-1" for="export-type-select">Export Type</label>
+                    <select class="form-select" id="export-type-select" style="min-width: 280px;"></select>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-run-export" permission="Settings.Edit">
+                    <i class="fa-solid fa-file-export me-1"></i>Run Export
+                </button>
+            </div>
+        </div>
+        <div class="card p-3">
+            <h6 class="text-primary mb-3">Data Export History</h6>
+            <div class="table-responsive">
+                <table class="table table-hover w-100" id="exports-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Completed</th>
+                            <th>By</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/system-jobs.js" asp-append-version="true"></script>
+}

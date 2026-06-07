@@ -42,7 +42,8 @@ public record VendorBillDetailDto(
     BillStatus Status,
     int? JournalEntryId,
     string? JournalEntryNumber,
-    IReadOnlyList<VendorBillLineDto> Lines);
+    IReadOnlyList<VendorBillLineDto> Lines,
+    IReadOnlyList<DocumentAttachmentDto> Attachments);
 
 public class VendorBillLineSaveRequest
 {

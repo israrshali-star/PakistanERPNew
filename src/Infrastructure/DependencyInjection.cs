@@ -8,6 +8,8 @@ using PakistanAccountingERP.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using PakistanAccountingERP.Infrastructure.Data;
 using PakistanAccountingERP.Infrastructure.Identity;
+using PakistanAccountingERP.Application.Options;
+using PakistanAccountingERP.Infrastructure.Options;
 using PakistanAccountingERP.Infrastructure.Repositories;
 using PakistanAccountingERP.Infrastructure.Services;
 
@@ -19,6 +21,9 @@ public static class DependencyInjection
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+        services.Configure<BackupOptions>(configuration.GetSection("Backup"));
+        services.Configure<ExportOptions>(configuration.GetSection("Export"));
+        services.Configure<AttachmentOptions>(configuration.GetSection("Attachments"));
 
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>
             {
@@ -55,8 +60,11 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentCompanyService, CurrentCompanyService>();
         services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IRolePermissionManagementService, RolePermissionManagementService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IFbrSubmissionService, FbrSubmissionService>();
+        services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
         services.AddHttpClient("FbrApi");
 
         return services;

@@ -30,6 +30,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ItemCategory> ItemCategories => Set<ItemCategory>();
     public DbSet<Item> Items => Set<Item>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
     public DbSet<Bank> Banks => Set<Bank>();
     public DbSet<BankTransaction> BankTransactions => Set<BankTransaction>();
@@ -38,10 +39,14 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
     public DbSet<SalesInvoice> SalesInvoices => Set<SalesInvoice>();
     public DbSet<SalesInvoiceLine> SalesInvoiceLines => Set<SalesInvoiceLine>();
+    public DbSet<SalesInvoiceAttachment> SalesInvoiceAttachments => Set<SalesInvoiceAttachment>();
     public DbSet<CustomerReceipt> CustomerReceipts => Set<CustomerReceipt>();
     public DbSet<VendorBill> VendorBills => Set<VendorBill>();
     public DbSet<VendorBillLine> VendorBillLines => Set<VendorBillLine>();
+    public DbSet<VendorBillAttachment> VendorBillAttachments => Set<VendorBillAttachment>();
     public DbSet<VendorPayment> VendorPayments => Set<VendorPayment>();
+    public DbSet<DatabaseBackupHistory> DatabaseBackupHistories => Set<DatabaseBackupHistory>();
+    public DbSet<DataExportHistory> DataExportHistories => Set<DataExportHistory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

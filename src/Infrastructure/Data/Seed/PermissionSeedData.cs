@@ -7,7 +7,7 @@ public static class PermissionSeedData
     private static readonly string[] Modules =
     [
         "Dashboard", "ChartOfAccounts", "Customers", "Sales", "Vendors", "Purchase",
-        "Items", "Inventory", "Banking", "Reports", "Settings", "Users", "AuditLogs", "JournalEntries"
+        "Items", "Inventory", "Banking", "Reports", "Settings", "Users", "AuditLogs", "JournalEntries", "Roles"
     ];
 
     private static readonly string[] Actions = ["View", "Create", "Edit", "Delete"];

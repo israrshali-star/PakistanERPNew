@@ -88,10 +88,12 @@ public class SidebarViewComponent : ViewComponent
             [
                 new() { Title = "Company Settings", Controller = "CompanySettings", Action = "Index", Permission = "Settings.View" },
                 new() { Title = "Tax Settings", Url = "/CompanySettings#tax", Permission = "Settings.View" },
-                new() { Title = "User Management", Url = "#", Permission = "Users.View" },
-                new() { Title = "Roles & Permissions", Url = "#", Permission = "Users.View" },
-                new() { Title = "Audit Logs", Url = "#", Permission = "AuditLogs.View" },
-                new() { Title = "Fiscal Years", Url = "#", Permission = "Settings.View" }
+                new() { Title = "User Management", Controller = "Users", Action = "Index", Permission = "Users.View" },
+                new() { Title = "Roles & Permissions", Controller = "Roles", Action = "Index", Permission = "Users.View" },
+                new() { Title = "Audit Logs", Controller = "AuditLogs", Action = "Index", Permission = "AuditLogs.View" },
+                new() { Title = "Fiscal Years", Controller = "FiscalYears", Action = "Index", Permission = "Settings.View" },
+                new() { Title = "Backup & Exports", Controller = "SystemJobs", Action = "Index", Permission = "Settings.View" },
+                new() { Title = "System Health", Controller = "SystemHealth", Action = "Index", Permission = "Settings.View" }
             ]
         }
     ];

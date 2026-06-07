@@ -5,6 +5,10 @@
     var items = [];
     var itemsById = {};
     var lineCounter = 0;
+    var pendingAttachments = [];
+    var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+    var MAX_ATTACHMENT_COUNT = 10;
+    var ALLOWED_ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.pdf'];
 
     function showError(message) {
         $('#bill-form-error').removeClass('d-none').text(message);
@@ -177,6 +181,90 @@
         });
     }
 
+    function formatFileSize(bytes) {
+        if (bytes < 1024) {
+            return bytes + ' B';
+        }
+        return (bytes / 1024).toFixed(1) + ' KB';
+    }
+
+    function getFileExtension(name) {
+        var dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(dot).toLowerCase() : '';
+    }
+
+    function isAllowedAttachment(file) {
+        return ALLOWED_ATTACHMENT_EXT.indexOf(getFileExtension(file.name)) >= 0;
+    }
+
+    function renderAttachmentPreview() {
+        var $list = $('#attachment-preview-list');
+        $list.empty();
+
+        pendingAttachments.forEach(function (file, index) {
+            $list.append(
+                '<li class="list-group-item d-flex justify-content-between align-items-center px-0">' +
+                '<span><i class="fa-solid fa-file me-1"></i>' + $('<div>').text(file.name).html() +
+                ' <span class="text-muted small">(' + formatFileSize(file.size) + ')</span></span>' +
+                '<button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-attachment" data-index="' + index + '">' +
+                '<i class="fa-solid fa-xmark"></i></button></li>'
+            );
+        });
+    }
+
+    function onAttachmentsSelected() {
+        clearError();
+        var input = $('#bill-attachments')[0];
+        if (!input || !input.files) {
+            return;
+        }
+
+        Array.prototype.forEach.call(input.files, function (file) {
+            if (pendingAttachments.length >= MAX_ATTACHMENT_COUNT) {
+                showError('Maximum ' + MAX_ATTACHMENT_COUNT + ' attachments allowed.');
+                return;
+            }
+
+            if (!isAllowedAttachment(file)) {
+                showError('Only JPG, PNG, and PDF files are allowed.');
+                return;
+            }
+
+            if (file.size > MAX_ATTACHMENT_BYTES) {
+                showError('Each attachment must be 10 MB or smaller.');
+                return;
+            }
+
+            pendingAttachments.push(file);
+        });
+
+        input.value = '';
+        renderAttachmentPreview();
+    }
+
+    function uploadAttachments(billId) {
+        if (!pendingAttachments.length) {
+            return $.Deferred().resolve().promise();
+        }
+
+        var chain = $.Deferred().resolve().promise();
+        pendingAttachments.forEach(function (file) {
+            chain = chain.then(function () {
+                var formData = new FormData();
+                formData.append('file', file);
+                return $.ajax({
+                    url: '/api/vendor-bills/' + billId + '/attachments',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false
+                });
+            });
+        });
+
+        return chain;
+    }
+
     function saveBill(e) {
         e.preventDefault();
         clearError();
@@ -249,9 +337,21 @@
         })
             .done(function (result) {
                 var billId = result && (result.billId || result.BillId);
-                window.location.href = billId
-                    ? '/VendorBills/Details/' + billId
-                    : '/VendorBills';
+                if (!billId) {
+                    window.location.href = '/VendorBills';
+                    return;
+                }
+
+                uploadAttachments(billId)
+                    .done(function () {
+                        window.location.href = '/VendorBills/Details/' + billId;
+                    })
+                    .fail(function (xhr) {
+                        showError(getApiErrorMessage(xhr, 'Bill saved but some attachments failed to upload.'));
+                        setTimeout(function () {
+                            window.location.href = '/VendorBills/Details/' + billId;
+                        }, 2000);
+                    });
             })
             .fail(function (xhr) {
                 showError(getApiErrorMessage(xhr, 'Failed to save bill.'));
@@ -299,5 +399,11 @@
         });
 
         $('#vendor-bill-form').on('submit', saveBill);
+        $('#bill-attachments').on('change', onAttachmentsSelected);
+        $('#attachment-preview-list').on('click', '.btn-remove-attachment', function () {
+            var index = parseInt($(this).data('index'), 10);
+            pendingAttachments.splice(index, 1);
+            renderAttachmentPreview();
+        });
     });
 })();

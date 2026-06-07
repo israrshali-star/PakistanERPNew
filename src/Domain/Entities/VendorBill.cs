@@ -21,4 +21,5 @@ public class VendorBill : CompanyAuditableEntity
     public JournalEntry? JournalEntry { get; set; }
     public Company Company { get; set; } = null!;
     public ICollection<VendorBillLine> Lines { get; set; } = new List<VendorBillLine>();
+    public ICollection<VendorBillAttachment> Attachments { get; set; } = new List<VendorBillAttachment>();
 }

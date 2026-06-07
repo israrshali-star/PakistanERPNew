@@ -1,0 +1,68 @@
+@using PakistanAccountingERP.Application.DTOs
+@model AuditLogDetailDto
+@{
+    ViewData["Title"] = $"Audit Log #{Model.Id}";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Audit Log #@Model.Id</h4>
+        <p class="text-muted small mb-0">@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy hh:mm tt")</p>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-arrow-left me-1"></i>Back to list
+    </a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Action</div>
+            <div class="fw-semibold">@Model.Action</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Table</div>
+            <div class="fw-semibold">@(Model.TableName ?? "—")</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Record</div>
+            <div class="fw-semibold">@(Model.RecordId ?? "—")</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Company</div>
+            <div class="fw-semibold">@(Model.CompanyName ?? "Global")</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <h6 class="text-primary mb-2">Actor</h6>
+            <div><span class="text-muted small">User:</span> @(Model.UserName ?? "System")</div>
+            <div><span class="text-muted small">UserId:</span> @(Model.UserId ?? "—")</div>
+            <div><span class="text-muted small">IP:</span> @(Model.IpAddress ?? "—")</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <h6 class="text-primary mb-2">Payload</h6>
+            <div class="row g-2">
+                <div class="col-12">
+                    <label class="form-label small text-muted mb-1">Old Value</label>
+                    <pre class="bg-light border rounded p-2 small mb-0 text-wrap">@(string.IsNullOrWhiteSpace(Model.OldValue) ? "—" : Model.OldValue)</pre>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small text-muted mb-1">New Value</label>
+                    <pre class="bg-light border rounded p-2 small mb-0 text-wrap">@(string.IsNullOrWhiteSpace(Model.NewValue) ? "—" : Model.NewValue)</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

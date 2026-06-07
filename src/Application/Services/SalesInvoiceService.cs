@@ -423,7 +423,14 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     l.TaxRate,
                     l.TaxAmount,
                     l.Discount,
-                    l.LineTotal)).ToList()))
+                    l.LineTotal)).ToList(),
+                i.Attachments.Select(a => new SalesInvoiceAttachmentDto(
+                    a.Id,
+                    a.FileName,
+                    a.ContentType,
+                    a.FileSizeBytes,
+                    a.CreatedAt,
+                    a.CreatedBy)).ToList()))
             .FirstOrDefaultAsync(cancellationToken);
     }
 

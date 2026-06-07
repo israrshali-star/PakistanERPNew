@@ -9,6 +9,10 @@
     var SN002_CODE = 'SN002';
     var lineCounter = 0;
     var stockHintTimers = {};
+    var pendingAttachments = [];
+    var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+    var MAX_ATTACHMENT_COUNT = 10;
+    var ALLOWED_ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.pdf'];
     var CREDIT_NOTE_TYPE = 3;
 
     function showError(message) {
@@ -375,6 +379,91 @@
         });
     }
 
+    function formatFileSize(bytes) {
+        if (bytes < 1024) {
+            return bytes + ' B';
+        }
+        return (bytes / 1024).toFixed(1) + ' KB';
+    }
+
+    function getFileExtension(name) {
+        var dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(dot).toLowerCase() : '';
+    }
+
+    function isAllowedAttachment(file) {
+        var ext = getFileExtension(file.name);
+        return ALLOWED_ATTACHMENT_EXT.indexOf(ext) >= 0;
+    }
+
+    function renderAttachmentPreview() {
+        var $list = $('#attachment-preview-list');
+        $list.empty();
+
+        pendingAttachments.forEach(function (file, index) {
+            $list.append(
+                '<li class="list-group-item d-flex justify-content-between align-items-center px-0">' +
+                '<span><i class="fa-solid fa-file me-1"></i>' + $('<div>').text(file.name).html() +
+                ' <span class="text-muted small">(' + formatFileSize(file.size) + ')</span></span>' +
+                '<button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-attachment" data-index="' + index + '">' +
+                '<i class="fa-solid fa-xmark"></i></button></li>'
+            );
+        });
+    }
+
+    function onAttachmentsSelected() {
+        clearError();
+        var input = $('#invoice-attachments')[0];
+        if (!input || !input.files) {
+            return;
+        }
+
+        Array.prototype.forEach.call(input.files, function (file) {
+            if (pendingAttachments.length >= MAX_ATTACHMENT_COUNT) {
+                showError('Maximum ' + MAX_ATTACHMENT_COUNT + ' attachments allowed.');
+                return;
+            }
+
+            if (!isAllowedAttachment(file)) {
+                showError('Only JPG, PNG, and PDF files are allowed.');
+                return;
+            }
+
+            if (file.size > MAX_ATTACHMENT_BYTES) {
+                showError('Each attachment must be 10 MB or smaller.');
+                return;
+            }
+
+            pendingAttachments.push(file);
+        });
+
+        input.value = '';
+        renderAttachmentPreview();
+    }
+
+    function uploadAttachments(invoiceId) {
+        if (!pendingAttachments.length) {
+            return $.Deferred().resolve().promise();
+        }
+
+        var chain = $.Deferred().resolve().promise();
+        pendingAttachments.forEach(function (file) {
+            chain = chain.then(function () {
+                var formData = new FormData();
+                formData.append('file', file);
+                return $.ajax({
+                    url: '/api/sales-invoices/' + invoiceId + '/attachments',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false
+                });
+            });
+        });
+
+        return chain;
+    }
+
     function saveInvoice(e) {
         e.preventDefault();
         clearError();
@@ -468,9 +557,21 @@
                 }
 
                 var invoiceId = result && (result.invoiceId || result.InvoiceId);
-                window.location.href = invoiceId
-                    ? '/SalesInvoices/Details/' + invoiceId
-                    : '/SalesInvoices';
+                if (!invoiceId) {
+                    window.location.href = '/SalesInvoices';
+                    return;
+                }
+
+                uploadAttachments(invoiceId)
+                    .done(function () {
+                        window.location.href = '/SalesInvoices/Details/' + invoiceId;
+                    })
+                    .fail(function (xhr) {
+                        showError(getApiErrorMessage(xhr, 'Invoice saved but some attachments failed to upload.'));
+                        setTimeout(function () {
+                            window.location.href = '/SalesInvoices/Details/' + invoiceId;
+                        }, 2000);
+                    });
             })
             .fail(function (xhr) {
                 var msg = getApiErrorMessage(xhr, 'Failed to save invoice.');
@@ -538,5 +639,11 @@
         });
 
         $('#sales-invoice-form').on('submit', saveInvoice);
+        $('#invoice-attachments').on('change', onAttachmentsSelected);
+        $('#attachment-preview-list').on('click', '.btn-remove-attachment', function () {
+            var index = parseInt($(this).data('index'), 10);
+            pendingAttachments.splice(index, 1);
+            renderAttachmentPreview();
+        });
     });
 })();

@@ -1,0 +1,60 @@
+@{
+    ViewData["Title"] = "System Health";
+    var version = ViewData["ApplicationVersion"]?.ToString() ?? "1.0.0";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">System Health</h4>
+        <p class="text-muted small mb-0">Database connectivity, storage paths, and application readiness</p>
+    </div>
+    <button type="button" class="btn btn-outline-primary btn-sm" id="btn-refresh-health">
+        <i class="fa-solid fa-rotate me-1"></i>Refresh
+    </button>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Overall Status</div>
+            <div class="fw-semibold fs-5" id="health-overall-status">Checking…</div>
+            <div class="text-muted small mt-1" id="health-checked-at"></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Application Version</div>
+            <div class="fw-semibold">@version</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Public Endpoints</div>
+            <div class="small">
+                <a href="/health" target="_blank" rel="noopener">/health</a> ·
+                <a href="/health/ready" target="_blank" rel="noopener">/health/ready</a> ·
+                <a href="/health/live" target="_blank" rel="noopener">/health/live</a>
+            </div>
+            <div class="text-muted small mt-1">Anonymous JSON for load balancers and monitoring</div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-3 mb-3">
+    <h6 class="text-primary mb-3">Health Checks</h6>
+    <div id="health-checks-list" class="list-group list-group-flush">
+        <div class="list-group-item px-0 text-muted">Loading health checks…</div>
+    </div>
+</div>
+
+<div class="card p-3">
+    <h6 class="text-primary mb-2">Structured Logging</h6>
+    <p class="text-muted small mb-0">
+        Application logs are written to <code>App_Data/Logs/pa-erp-*.log</code> (rolling daily, 30-day retention)
+        and to the console. Configure levels in <code>appsettings.json</code> under <code>Serilog</code>.
+    </p>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/system-health.js" asp-append-version="true"></script>
+}

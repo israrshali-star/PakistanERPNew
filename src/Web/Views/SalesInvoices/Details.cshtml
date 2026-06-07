@@ -199,6 +199,50 @@
 
 
 
+<div class="card p-3 mb-3 no-print" id="invoice-attachments-card">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h6 class="text-primary mb-0">Supporting Documents</h6>
+            <p class="text-muted small mb-0">JPG, PNG, and PDF attachments</p>
+        </div>
+        @if (canEdit && Model.Status == InvoiceStatus.Draft)
+        {
+            <label class="btn btn-outline-primary btn-sm mb-0" for="invoice-attachment-upload">
+                <i class="fa-solid fa-paperclip me-1"></i>Add Attachment
+            </label>
+            <input type="file" class="d-none" id="invoice-attachment-upload" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
+        }
+    </div>
+    <div id="invoice-attachments-list">
+        @if (Model.Attachments.Count == 0)
+        {
+            <p class="text-muted small mb-0">No attachments uploaded.</p>
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var attachment in Model.Attachments)
+                {
+                    <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2 px-0 attachment-row" data-id="@attachment.Id">
+                        <div>
+                            <a href="/api/sales-invoices/attachments/@attachment.Id/download" class="fw-semibold text-decoration-none" target="_blank" rel="noopener">
+                                <i class="fa-solid fa-file me-1"></i>@attachment.FileName
+                            </a>
+                            <div class="text-muted small">@((attachment.FileSizeBytes / 1024.0).ToString("N1")) KB · @attachment.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                        </div>
+                        @if (canEdit && Model.Status == InvoiceStatus.Draft)
+                        {
+                            <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-delete-attachment" data-id="@attachment.Id">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
 <partial name="_FbrPayloadModal" />
 
 @section Styles {

@@ -120,7 +120,14 @@ public partial class VendorBillService : IVendorBillService
                     l.Quantity,
                     l.Cartons,
                     l.Rate,
-                    l.Amount)).ToList()
+                    l.Amount)).ToList(),
+                Attachments = b.Attachments.Select(a => new DocumentAttachmentDto(
+                    a.Id,
+                    a.FileName,
+                    a.ContentType,
+                    a.FileSizeBytes,
+                    a.CreatedAt,
+                    a.CreatedBy)).ToList()
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -147,7 +154,8 @@ public partial class VendorBillService : IVendorBillService
             bill.Status,
             bill.JournalEntryId,
             bill.JournalEntryNumber,
-            bill.Lines);
+            bill.Lines,
+            bill.Attachments);
     }
 
     public async Task<NextVendorBillNumberDto> GenerateNextBillNumberAsync(

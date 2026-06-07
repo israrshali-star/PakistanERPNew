@@ -35,4 +35,5 @@ public class SalesInvoice : CompanyAuditableEntity
     public JournalEntry? JournalEntry { get; set; }
     public Company Company { get; set; } = null!;
     public ICollection<SalesInvoiceLine> Lines { get; set; } = new List<SalesInvoiceLine>();
+    public ICollection<SalesInvoiceAttachment> Attachments { get; set; } = new List<SalesInvoiceAttachment>();
 }

@@ -63,7 +63,8 @@ public record SalesInvoiceDetailDto(
     int? JournalEntryId,
     string? JournalEntryNumber,
     bool HasFbrPdf,
-    IReadOnlyList<SalesInvoiceLineDto> Lines);
+    IReadOnlyList<SalesInvoiceLineDto> Lines,
+    IReadOnlyList<SalesInvoiceAttachmentDto> Attachments);
 
 public record SalesInvoiceActionResult(bool Success, string? Message, SalesInvoiceDetailDto? Invoice);
 

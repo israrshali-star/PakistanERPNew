@@ -293,6 +293,61 @@ public class CustomerService
 - Print-friendly layouts (Save as PDF via browser)
 - Sidebar: Reports → Financial Reports
 
+## Step 25 completed — User Management, Audit Logs, Fiscal Years, Roles & Permissions
+
+- **`IUserManagementService`** (Infrastructure implementation) — user listing, create/edit, password reset, role/company assignments
+- Guards: cannot deactivate/delete self; cannot deactivate/delete/demote the last active `SuperAdmin`
+- **`IAuditLogService`** — read-only audit logs DataTable + detailed payload view (company-filtered + global login logs)
+- **`IFiscalYearService`** — CRUD fiscal years, auto code format `FY2025-26`, single active fiscal year per company, closed-year delete protection
+- **`IRolePermissionManagementService`** (Infrastructure implementation) — role list + permission matrix updates grouped by module
+- Permission cache invalidation via `IPermissionService.InvalidateCacheAsync` after role permission updates
+- MVC + API completed:
+  - `/Users`, `/api/users/*`
+  - `/AuditLogs`, `/api/audit-logs/*`
+  - `/FiscalYears`, `/api/fiscal-years/*`
+  - `/Roles`, `/Roles/Permissions/{id}`, `/api/roles/*`
+- Sidebar settings links now route to real pages (no placeholders)
+- Demo seed now ensures one active fiscal year per company when none exists
+
+## Step 26 completed — Backup/Export Jobs
+
+- **`IDatabaseBackupService`** (Infrastructure implementation) — manual + scheduled SQL backup jobs, backup history DataTable, download and delete APIs, retention cleanup
+- **`ScheduledBackupHostedService`** — interval-based background backups using `Backup` options (`Enabled`, `IntervalHours`, `RetentionDays`, `StoragePath`)
+- **`IDataExportService`** — company-scoped export jobs for chart of accounts, customers, vendors, and items with history, file download, and delete support
+- **System Jobs UI + API:** `/SystemJobs`, `/api/system-jobs/backups/*`, `/api/system-jobs/exports/*`
+- Permissions: `Settings.View` (view/download) and `Settings.Edit` (run/delete)
+- Sidebar: Settings → Backup & Exports
+
+## Step 27 completed — Sales Invoice Document Attachments
+
+- **`ISalesInvoiceAttachmentService`** — upload, list, download, and delete supporting documents on draft sales invoices
+- **Allowed types:** JPG, JPEG, PNG, PDF (max 10 MB each, up to 10 files per invoice)
+- **Storage:** `App_Data/Attachments/{companyId}/{invoiceId}/` (configurable via `Attachments` in `appsettings.json`)
+- **Create Invoice UI** — select attachments before save; files upload automatically after the draft invoice is created
+- **Invoice Details UI** — view/download attachments; add or remove while invoice is still **Draft**
+- **API:** `GET/POST /api/sales-invoices/{id}/attachments`, `GET/DELETE /api/sales-invoices/attachments/{attachmentId}/*`
+
+## Step 28 completed — Vendor Bill Document Attachments
+
+- **`IVendorBillAttachmentService`** — upload, list, download, and delete supporting documents on draft vendor bills
+- **Allowed types:** JPG, JPEG, PNG, PDF (max 10 MB each, up to 10 files per bill)
+- **Storage:** `App_Data/Attachments/vendor-bills/{companyId}/{billId}/` (configurable via `Attachments` in `appsettings.json`)
+- **Enter Bill UI** — select attachments before save; files upload automatically after the draft bill is created
+- **Bill Details UI** — view/download attachments; add or remove while bill is still **Draft**
+- **API:** `GET/POST /api/vendor-bills/{id}/attachments`, `GET/DELETE /api/vendor-bills/attachments/{attachmentId}/*`
+
+## Step 29 completed — Production Hardening (Logging & Health Checks)
+
+- **Serilog structured logging** — console + rolling file logs at `App_Data/Logs/pa-erp-*.log` (daily rotation, 30-day retention)
+- **Request logging** — HTTP requests logged via `UseSerilogRequestLogging()`
+- **Health checks** — SQL Server database (`AddDbContextCheck`) and writable backup/export/attachment storage paths
+- **Public endpoints** (anonymous JSON for monitoring/load balancers):
+  - `/health` — full check
+  - `/health/ready` — database + storage readiness
+  - `/health/live` — process liveness
+- **System Health UI** — `/SystemHealth` (Settings → System Health) with refreshable status cards
+- **API:** `GET /api/system-health` (requires `Settings.View`)
+
 ## Next step
 
-**Step 25** — user management, audit logs UI, or fiscal years.
+**Step 30** — Multi-currency foundation (base/transaction currency, exchange rates), or additional production hardening (rate limiting, security headers).

@@ -60,6 +60,7 @@ public static class DbInitializer
             await EnsureDemoItemsAsync(context, cancellationToken);
             await EnsureDemoItemStackLotAsync(context, cancellationToken);
             await EnsureDemoWarehousesAsync(context, cancellationToken);
+            await EnsureDemoFiscalYearsAsync(context, cancellationToken);
             await EnsureDemoBanksAsync(context, cancellationToken);
             await EnsureTaxSettingsAsync(context, cancellationToken);
             return;
@@ -70,6 +71,7 @@ public static class DbInitializer
         await SeedChartOfAccountsAsync(context, company.Id, cancellationToken);
         await EnsureDemoItemsAsync(context, company.Id, cancellationToken);
         await EnsureDemoWarehousesAsync(context, company.Id, cancellationToken);
+        await EnsureDemoFiscalYearsAsync(context, company.Id, cancellationToken);
         await EnsureDemoBanksAsync(context, company.Id, cancellationToken);
         await SeedAdminUserAsync(context, userManager, company.Id, cancellationToken);
 
@@ -411,6 +413,43 @@ public static class DbInitializer
         {
             await EnsureDemoBanksAsync(context, companyId, cancellationToken);
         }
+    }
+
+    private static async Task EnsureDemoFiscalYearsAsync(AppDbContext context, CancellationToken cancellationToken)
+    {
+        var companyIds = await context.Companies.Select(c => c.Id).ToListAsync(cancellationToken);
+        foreach (var companyId in companyIds)
+        {
+            await EnsureDemoFiscalYearsAsync(context, companyId, cancellationToken);
+        }
+    }
+
+    private static async Task EnsureDemoFiscalYearsAsync(AppDbContext context, int companyId, CancellationToken cancellationToken)
+    {
+        var hasFiscalYear = await context.FiscalYears.AnyAsync(x => x.CompanyId == companyId, cancellationToken);
+        if (hasFiscalYear)
+        {
+            return;
+        }
+
+        var year = DateTime.UtcNow.Year;
+        var start = new DateTime(year, 7, 1);
+        var end = new DateTime(year + 1, 6, 30);
+
+        context.FiscalYears.Add(new FiscalYear
+        {
+            CompanyId = companyId,
+            Code = $"FY{start:yyyy}-{end:yy}",
+            Name = $"{start:yyyy}-{end:yyyy} Fiscal Year",
+            StartDate = start,
+            EndDate = end,
+            IsActive = true,
+            IsClosed = false,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = "system"
+        });
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task EnsureDemoBanksAsync(AppDbContext context, int companyId, CancellationToken cancellationToken)

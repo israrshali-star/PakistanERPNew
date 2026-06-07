@@ -1,0 +1,35 @@
+@{
+    ViewData["Title"] = "Audit Logs";
+}
+
+<div id="audit-log-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">Audit Logs</h4>
+        <p class="text-muted small mb-0">Read-only activity and security trail for selected company and global events</p>
+    </div>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="audit-logs-table">
+            <thead>
+                <tr>
+                    <th>Date & Time</th>
+                    <th>Action</th>
+                    <th>Table</th>
+                    <th>Record</th>
+                    <th>User</th>
+                    <th>Company</th>
+                    <th class="text-end">Details</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/audit-logs.js" asp-append-version="true"></script>
+}

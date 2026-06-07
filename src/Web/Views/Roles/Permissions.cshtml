@@ -1,0 +1,101 @@
+@using PakistanAccountingERP.Application.DTOs
+@model RolePermissionsDto
+@{
+    ViewData["Title"] = $"Permissions - {Model.RoleName}";
+    var groups = Model.Permissions
+        .OrderBy(x => x.Module)
+        .ThenBy(x => x.Action)
+        .GroupBy(x => x.Module)
+        .ToList();
+}
+
+<div id="role-permissions-page" data-role-id="@Model.RoleId"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">@Model.RoleName Permissions</h4>
+        <p class="text-muted small mb-0">Toggle allowed actions per module and save</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-role-permissions">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Changes
+        </button>
+    </div>
+</div>
+
+<div id="role-permissions-message" class="alert d-none mb-3"></div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle mb-0" id="role-permissions-table">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 30%;">Module</th>
+                    <th style="width: 15%;">View</th>
+                    <th style="width: 15%;">Create</th>
+                    <th style="width: 15%;">Edit</th>
+                    <th style="width: 15%;">Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var module in groups)
+                {
+                    var view = module.FirstOrDefault(x => x.Action == "View");
+                    var create = module.FirstOrDefault(x => x.Action == "Create");
+                    var edit = module.FirstOrDefault(x => x.Action == "Edit");
+                    var delete = module.FirstOrDefault(x => x.Action == "Delete");
+                    <tr data-module="@module.Key">
+                        <td class="fw-semibold">@module.Key</td>
+                        <td class="text-center">
+                            @if (view is not null)
+                            {
+                                <input type="checkbox" class="form-check-input permission-toggle" data-permission-id="@view.PermissionId" @(view.Allowed ? "checked" : null) />
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (create is not null)
+                            {
+                                <input type="checkbox" class="form-check-input permission-toggle" data-permission-id="@create.PermissionId" @(create.Allowed ? "checked" : null) />
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (edit is not null)
+                            {
+                                <input type="checkbox" class="form-check-input permission-toggle" data-permission-id="@edit.PermissionId" @(edit.Allowed ? "checked" : null) />
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (delete is not null)
+                            {
+                                <input type="checkbox" class="form-check-input permission-toggle" data-permission-id="@delete.PermissionId" @(delete.Allowed ? "checked" : null) />
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/roles.js" asp-append-version="true"></script>
+}
