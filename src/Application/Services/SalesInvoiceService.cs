@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using System.Text.Json;
 using PakistanAccountingERP.Application.DTOs;
@@ -18,6 +19,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly IFbrSubmissionService _fbrSubmissionService;
+    private readonly IStackLotInventoryService _stackLotInventory;
     private readonly ILogger<SalesInvoiceService> _logger;
 
     private const string AccountsReceivableNumber = "1200";
@@ -31,6 +33,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         ICurrentUserService currentUser,
         IAuditService auditService,
         IFbrSubmissionService fbrSubmissionService,
+        IStackLotInventoryService stackLotInventory,
         ILogger<SalesInvoiceService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -38,6 +41,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         _currentUser = currentUser;
         _auditService = auditService;
         _fbrSubmissionService = fbrSubmissionService;
+        _stackLotInventory = stackLotInventory;
         _logger = logger;
     }
 
@@ -81,6 +85,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.FbrInvoiceNumber,
                 i.Status == InvoiceStatus.Draft,
                 i.Status == InvoiceStatus.Posted && i.FbrSubmittedAt == null,
+                i.FbrSubmittedAt != null,
                 i.Status != InvoiceStatus.Cancelled))
             .ToListAsync(cancellationToken);
 
@@ -224,6 +229,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "One or more items are invalid.", null);
         }
 
+        var validationLines = new List<StackLotSaleValidationLine>();
         var lineEntities = new List<SalesInvoiceLine>();
         decimal subTotal = 0m;
         decimal discountTotal = 0m;
@@ -237,6 +243,16 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             }
 
             var item = items[line.ItemId];
+            var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? item.StackNo : line.StackNo.Trim();
+            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? item.LotNo : line.LotNo.Trim();
+
+            validationLines.Add(new StackLotSaleValidationLine(
+                line.ItemId,
+                item.ItemCode,
+                string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
+                string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
+                line.Quantity,
+                Math.Max(0m, line.Cartons)));
             var lineSubTotal = Math.Round(line.Quantity * line.Price, 2);
             var lineDiscount = Math.Round(Math.Max(0m, line.Discount), 2);
             var taxable = Math.Round(lineSubTotal - lineDiscount, 2);
@@ -247,8 +263,6 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             discountTotal += lineDiscount;
             taxTotal += lineTax;
 
-            var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? item.StackNo : line.StackNo.Trim();
-            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? item.LotNo : line.LotNo.Trim();
             var description = !string.IsNullOrWhiteSpace(item.Description)
                 ? item.Description.Trim()
                 : item.ItemName;
@@ -272,6 +286,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         }
 
         var netTotal = Math.Round(subTotal - discountTotal + taxTotal, 2);
+
+        var stockValidation = await _stackLotInventory.ValidateSaleLinesAsync(
+            request.InvoiceType,
+            validationLines,
+            excludeInvoiceId: null,
+            cancellationToken);
+
+        if (!stockValidation.Success)
+        {
+            return new SalesInvoiceSaveResult(false, stockValidation.Message, null);
+        }
+
         var now = DateTime.UtcNow;
 
         var entity = new SalesInvoice
@@ -344,8 +370,19 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.ScenarioId,
                 i.ScenarioType != null ? i.ScenarioType.Code : null,
                 i.BuyerAddress,
+                i.Province != null
+                    ? i.Province.Name
+                    : i.Customer.Province != null
+                        ? i.Customer.Province.Name
+                        : null,
                 i.BuyerNTN,
                 i.BuyerCNIC,
+                i.Company.CompanyName,
+                i.Company.NTN,
+                i.Company.Address,
+                i.Company.Province != null ? i.Company.Province.Name : null,
+                i.Company.Phone,
+                i.Company.Email,
                 i.SubTotal,
                 i.DiscountAmount,
                 i.TaxAmount,
@@ -355,6 +392,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.FbrSubmittedAt,
                 i.JournalEntryId,
                 i.JournalEntry != null ? i.JournalEntry.EntryNumber : null,
+                i.FbrSubmittedAt != null,
                 i.Lines.Select(l => new SalesInvoiceLineDto(
                     l.Id,
                     l.Item.ItemCode,
@@ -542,47 +580,16 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceActionResult(false, "FBR scenario is required before submission.", null);
         }
 
-        var company = await _unitOfWork.Repository<Company>()
-            .Query()
-            .Where(c => c.Id == companyId)
-            .Select(c => new { c.NTN, c.FbrPostUrl, c.ApiToken })
-            .FirstAsync(cancellationToken);
-
-        var itemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToList();
-        var itemNames = await _unitOfWork.Repository<Item>()
-            .Query()
-            .Where(i => itemIds.Contains(i.Id))
-            .Select(i => new { i.Id, i.ItemName })
-            .ToDictionaryAsync(i => i.Id, i => i.ItemName, cancellationToken);
-
-        var fbrRequest = new FbrSubmissionRequest(
-            invoice.Id,
-            invoice.InvoiceNumber,
-            invoice.InvoiceDate,
-            company.NTN,
-            invoice.BuyerNTN ?? invoice.Customer.NTN,
-            invoice.BuyerCNIC ?? invoice.Customer.CNIC,
-            invoice.Customer.BuyerName,
-            invoice.ScenarioId.Value,
-            invoice.ScenarioType.Code,
-            invoice.SubTotal,
-            invoice.DiscountAmount,
-            invoice.TaxAmount,
-            invoice.NetTotal,
-            invoice.Lines.Select(l => new FbrSubmissionLineRequest(
-                l.HSCode,
-                l.ProductDescription ?? itemNames.GetValueOrDefault(l.ItemId, "Item"),
-                l.Unit,
-                l.Quantity,
-                l.Price,
-                l.TaxRate,
-                l.TaxAmount,
-                l.LineTotal)).ToList());
+        var buildResult = await BuildFbrSubmissionRequestAsync(invoice, companyId, cancellationToken);
+        if (!buildResult.Success || buildResult.Request is null)
+        {
+            return new SalesInvoiceActionResult(false, buildResult.Message, null);
+        }
 
         var fbrResult = await _fbrSubmissionService.SubmitAsync(
-            fbrRequest,
-            company.FbrPostUrl,
-            company.ApiToken,
+            buildResult.Request,
+            buildResult.FbrPostUrl,
+            buildResult.ApiToken,
             cancellationToken);
 
         if (!fbrResult.Success)
@@ -612,6 +619,280 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             : "Invoice submitted to FBR successfully.";
 
         return new SalesInvoiceActionResult(true, message, detail);
+    }
+
+    public async Task<FbrPayloadPreviewDto?> GetFbrPayloadPreviewAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out _))
+        {
+            return null;
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Include(i => i.Lines)
+            .Include(i => i.Customer)
+            .Include(i => i.ScenarioType)
+            .FirstOrDefaultAsync(i => i.Id == id && i.CompanyId == companyId, cancellationToken);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        if (invoice.Status != InvoiceStatus.Posted)
+        {
+            return null;
+        }
+
+        if (invoice.FbrSubmittedAt.HasValue)
+        {
+            return null;
+        }
+
+        if (!invoice.ScenarioId.HasValue || invoice.ScenarioType is null)
+        {
+            return null;
+        }
+
+        var buildResult = await BuildFbrSubmissionRequestAsync(invoice, companyId, cancellationToken);
+        if (!buildResult.Success || buildResult.Request is null)
+        {
+            return null;
+        }
+
+        var isSimulation = string.IsNullOrWhiteSpace(buildResult.FbrPostUrl)
+                           || string.IsNullOrWhiteSpace(buildResult.ApiToken);
+
+        return new FbrPayloadPreviewDto(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            FbrPayloadBuilder.BuildJson(buildResult.Request),
+            isSimulation,
+            FbrPayloadBuilder.SystemGeneratedFooter);
+    }
+
+    public async Task<SalesInvoicePrintDto?> GetPrintDataAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out _))
+        {
+            return null;
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.Id == id && i.CompanyId == companyId && i.FbrSubmittedAt != null)
+            .Select(i => new
+            {
+                i.InvoiceNumber,
+                i.FbrInvoiceNumber,
+                i.InvoiceDate,
+                i.InvoiceType,
+                ScenarioCode = i.ScenarioType != null ? i.ScenarioType.Code : null,
+                SellerName = i.Company.CompanyName,
+                SellerNtn = i.Company.NTN,
+                SellerAddress = i.Company.Address,
+                SellerProvince = i.Company.Province != null ? i.Company.Province.Name : null,
+                SellerPhone = i.Company.Phone,
+                SellerEmail = i.Company.Email,
+                BuyerName = i.Customer.BuyerName,
+                BuyerId = i.Customer.BuyerId,
+                BuyerNtn = i.BuyerNTN ?? i.Customer.NTN,
+                BuyerCnic = i.BuyerCNIC ?? i.Customer.CNIC,
+                BuyerAddress = i.BuyerAddress ?? i.Customer.Address,
+                BuyerProvince = i.Province != null ? i.Province.Name : null,
+                i.SubTotal,
+                i.DiscountAmount,
+                i.TaxAmount,
+                i.NetTotal,
+                Lines = i.Lines.Select(l => new
+                {
+                    l.Item.ItemName,
+                    l.HSCode,
+                    l.ProductDescription,
+                    l.StackNo,
+                    l.LotNo,
+                    l.Unit,
+                    l.Quantity,
+                    l.Price,
+                    l.TaxRate,
+                    l.Discount,
+                    l.TaxAmount,
+                    l.LineTotal
+                }).ToList()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        var saleType = FbrPayloadBuilder.MapSaleType(invoice.ScenarioCode);
+        var exclusiveTotal = Math.Round(invoice.SubTotal - invoice.DiscountAmount, 2);
+        var lines = invoice.Lines.Select((l, index) =>
+        {
+            var valueExcludingSt = Math.Round(Math.Max(0m, l.Quantity * l.Price - l.Discount), 2);
+            return new SalesInvoicePrintLineDto(
+                index + 1,
+                FbrInvoiceLayout.BuildProductLine(l.ProductDescription, l.ItemName, l.LotNo, l.StackNo),
+                l.HSCode,
+                saleType,
+                Math.Round(l.Quantity, 2),
+                l.Unit,
+                FbrInvoiceLayout.FormatTaxRate(l.TaxRate),
+                valueExcludingSt,
+                Math.Round(l.TaxAmount, 2),
+                0m,
+                Math.Round(l.LineTotal, 2));
+        }).ToList();
+
+        return new SalesInvoicePrintDto(
+            invoice.InvoiceNumber,
+            invoice.FbrInvoiceNumber,
+            invoice.InvoiceDate,
+            invoice.InvoiceType,
+            invoice.ScenarioCode,
+            FbrInvoiceLayout.FormatTaxPeriod(invoice.InvoiceDate),
+            FbrInvoiceLayout.MapInvoiceTypeLabel(invoice.InvoiceType),
+            new SalesInvoicePrintPartyDto(
+                invoice.SellerName,
+                invoice.SellerNtn,
+                null,
+                invoice.SellerAddress,
+                invoice.SellerProvince,
+                invoice.SellerPhone,
+                invoice.SellerEmail),
+            new SalesInvoicePrintPartyDto(
+                invoice.BuyerName,
+                invoice.BuyerNtn,
+                invoice.BuyerCnic,
+                invoice.BuyerAddress,
+                invoice.BuyerProvince,
+                null,
+                null,
+                invoice.BuyerId),
+            exclusiveTotal,
+            Math.Round(invoice.TaxAmount, 2),
+            Math.Round(invoice.NetTotal, 2),
+            AmountInWords.ToPakistaniRupees(invoice.NetTotal),
+            DateTime.Now,
+            lines,
+            FbrInvoiceLayout.PdfFooterNotice);
+    }
+
+    private async Task<(bool Success, string? Message, FbrSubmissionRequest? Request, string? FbrPostUrl, string? ApiToken)>
+        BuildFbrSubmissionRequestAsync(
+            SalesInvoice invoice,
+            int companyId,
+            CancellationToken cancellationToken)
+    {
+        var company = await _unitOfWork.Repository<Company>()
+            .Query()
+            .Where(c => c.Id == companyId)
+            .Select(c => new
+            {
+                c.CompanyName,
+                c.NTN,
+                c.Address,
+                ProvinceName = c.Province != null ? c.Province.Name : null,
+                c.Phone,
+                c.Email,
+                c.FbrPostUrl,
+                c.ApiToken
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (company is null)
+        {
+            return (false, "Company not found.", null, null, null);
+        }
+
+        var itemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var itemLookup = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => itemIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.ItemCode, i.ItemName })
+            .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+        string? buyerProvince = null;
+        if (invoice.ProvinceId.HasValue)
+        {
+            buyerProvince = await _unitOfWork.Repository<Province>()
+                .Query()
+                .Where(p => p.Id == invoice.ProvinceId.Value)
+                .Select(p => p.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        else if (invoice.Customer.ProvinceId.HasValue)
+        {
+            buyerProvince = await _unitOfWork.Repository<Province>()
+                .Query()
+                .Where(p => p.Id == invoice.Customer.ProvinceId.Value)
+                .Select(p => p.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var saleType = FbrPayloadBuilder.MapSaleType(invoice.ScenarioType!.Code);
+        var buyerRegistrationType = FbrPayloadBuilder.MapBuyerRegistrationType(invoice.Customer.CustomerType);
+
+        var seller = new FbrPartyDto(
+            company.CompanyName,
+            company.NTN,
+            null,
+            company.Address,
+            company.ProvinceName,
+            company.Phone,
+            company.Email);
+
+        var buyer = new FbrPartyDto(
+            invoice.Customer.BuyerName,
+            invoice.BuyerNTN ?? invoice.Customer.NTN,
+            invoice.BuyerCNIC ?? invoice.Customer.CNIC,
+            invoice.BuyerAddress ?? invoice.Customer.Address,
+            buyerProvince,
+            null,
+            null,
+            invoice.Customer.BuyerId);
+
+        var lines = invoice.Lines.Select(l =>
+        {
+            var item = itemLookup.GetValueOrDefault(l.ItemId);
+            return new FbrSubmissionLineRequest(
+                item?.ItemCode,
+                l.HSCode,
+                l.ProductDescription ?? item?.ItemName ?? "Item",
+                l.Unit,
+                l.StackNo,
+                l.LotNo,
+                l.Quantity,
+                l.Cartons,
+                l.Price,
+                l.TaxRate,
+                l.TaxAmount,
+                l.Discount,
+                l.LineTotal,
+                saleType);
+        }).ToList();
+
+        var request = new FbrSubmissionRequest(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            invoice.InvoiceDate,
+            invoice.InvoiceType,
+            seller,
+            buyer,
+            buyerRegistrationType,
+            invoice.ScenarioType!.Code,
+            invoice.SubTotal,
+            invoice.DiscountAmount,
+            invoice.TaxAmount,
+            invoice.NetTotal,
+            lines);
+
+        return (true, null, request, company.FbrPostUrl, company.ApiToken);
     }
 
     private async Task<decimal> GetDefaultTaxRateAsync(int companyId, CancellationToken cancellationToken)

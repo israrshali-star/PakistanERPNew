@@ -57,3 +57,55 @@ public class PurchaseReportRequest
     public int? VendorId { get; set; }
     public bool ApprovedOnly { get; set; } = true;
 }
+
+public record StackLotMovementDto(
+    string MovementType,
+    string ReferenceNumber,
+    DateTime Date,
+    decimal Cartons,
+    decimal Weight,
+    decimal Amount);
+
+public record StackLotTrackingLineDto(
+    int ItemId,
+    string ItemCode,
+    string ItemName,
+    string? StackNo,
+    string? LotNo,
+    decimal PurchasedCartons,
+    decimal PurchasedWeight,
+    decimal PurchasedAmount,
+    decimal SoldCartons,
+    decimal SoldWeight,
+    decimal SoldAmount,
+    decimal RemainingCartons,
+    decimal RemainingWeight,
+    IReadOnlyList<StackLotMovementDto> Movements);
+
+public record StackLotTrackingReportDto(
+    int? ItemId,
+    string? ItemLabel,
+    string? LotNo,
+    string? StackNo,
+    decimal TotalPurchasedCartons,
+    decimal TotalPurchasedWeight,
+    decimal TotalPurchasedAmount,
+    decimal TotalSoldCartons,
+    decimal TotalSoldWeight,
+    decimal TotalSoldAmount,
+    decimal TotalRemainingCartons,
+    decimal TotalRemainingWeight,
+    IReadOnlyList<StackLotTrackingLineDto> Lines);
+
+public record StackLotReportItemLookupDto(int Id, string ItemCode, string Name);
+
+public record StackLotFilterLookupDto(
+    IReadOnlyList<string> StackNos,
+    IReadOnlyList<string> LotNos);
+
+public class StackLotTrackingRequest
+{
+    public int? ItemId { get; set; }
+    public string? LotNo { get; set; }
+    public string? StackNo { get; set; }
+}

@@ -164,6 +164,8 @@ public class CustomerService
 - **MVC:** `/Customers` list (DataTables server-side), `/Customers/Ledger/{id}`, `/Customers/Statement/{id}`
 - **API:** `/api/customers/*` — datatable, CRUD, ledger, statement
 - Customer ledger: opening balance + posted invoices with running balance
+- Opening balance posts to **Accounts Receivable (1200)** via system journal entry
+- Customer receipts credit AR and debit Cash/Bank; bank balance updated when applicable
 - Statement: date filter + print-friendly view (Save as PDF via browser)
 - Delete blocked when sales invoices exist
 
@@ -173,6 +175,8 @@ public class CustomerService
 - **MVC:** `/Vendors` list (DataTables), `/Vendors/Ledger/{id}`, `/Vendors/Statement/{id}`
 - **API:** `/api/vendors/*` — datatable, CRUD, ledger, statement
 - Vendor ledger: opening balance + approved bills with running payable balance
+- Opening balance posts to **Accounts Payable (2100)** via system journal entry
+- Vendor payments debit AP and credit Cash/Bank; bank balance reduced when applicable
 - Statement: date filter + print-friendly view
 - Delete blocked when vendor bills exist
 
@@ -260,8 +264,9 @@ public class CustomerService
 ## Step 22 completed — Sales & Purchase Reports
 
 - **`ISalesReportService`** — sales register, sales by customer, sales tax summary
-- **`IPurchaseReportService`** — purchase register, purchase by vendor, input tax summary
-- **MVC:** `/SalesReports`, `/PurchaseReports` — report hubs with 3 reports each
+- **`IPurchaseReportService`** — purchase register, purchase by vendor, input tax summary, stack &amp; lot tracking
+- **MVC:** `/SalesReports`, `/PurchaseReports` — report hubs (purchase includes stack/lot tracking)
+- **Stack &amp; Lot Tracking** — purchased vs sold cartons/weight by item, lot no, and stack no from vendor bills and sales invoices
 - **API:** `/api/sales-reports/*`, `/api/purchase-reports/*`
 - Date-range filters with customer/vendor lookup; posted/approved-only toggle
 - Print-friendly layouts (Save as PDF via browser)

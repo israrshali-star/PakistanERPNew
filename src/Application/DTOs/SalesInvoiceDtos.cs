@@ -12,6 +12,7 @@ public record SalesInvoiceListItemDto(
     string? FbrInvoiceNumber,
     bool CanPost,
     bool CanSubmitFbr,
+    bool HasFbrPdf,
     bool IsActive);
 
 public record SalesInvoiceLineDto(
@@ -42,8 +43,15 @@ public record SalesInvoiceDetailDto(
     int? ScenarioId,
     string? ScenarioCode,
     string? BuyerAddress,
+    string? BuyerProvince,
     string? BuyerNTN,
     string? BuyerCNIC,
+    string? SellerCompanyName,
+    string? SellerNtn,
+    string? SellerAddress,
+    string? SellerProvince,
+    string? SellerPhone,
+    string? SellerEmail,
     decimal SubTotal,
     decimal DiscountAmount,
     decimal TaxAmount,
@@ -53,6 +61,7 @@ public record SalesInvoiceDetailDto(
     DateTime? FbrSubmittedAt,
     int? JournalEntryId,
     string? JournalEntryNumber,
+    bool HasFbrPdf,
     IReadOnlyList<SalesInvoiceLineDto> Lines);
 
 public record SalesInvoiceActionResult(bool Success, string? Message, SalesInvoiceDetailDto? Invoice);

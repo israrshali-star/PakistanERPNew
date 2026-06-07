@@ -17,6 +17,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly ICustomerGlPostingService _customerGlPosting;
     private readonly ILogger<CustomerReceiptService> _logger;
 
     public CustomerReceiptService(
@@ -24,12 +25,14 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        ICustomerGlPostingService customerGlPosting,
         ILogger<CustomerReceiptService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _customerGlPosting = customerGlPosting;
         _logger = logger;
     }
 
@@ -200,11 +203,23 @@ public partial class CustomerReceiptService : ICustomerReceiptService
 
         try
         {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             await _unitOfWork.Repository<CustomerReceipt>().AddAsync(entity, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var glResult = await _customerGlPosting.PostCustomerReceiptAsync(entity, cancellationToken);
+            if (!glResult.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new CustomerReceiptSaveResult(false, glResult.Message, null);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to create customer receipt");
             return new CustomerReceiptSaveResult(
                 false,
@@ -247,6 +262,10 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             return new CustomerReceiptSaveResult(false, "Receipt not found.", null);
         }
 
+        var previousAmount = entity.Amount;
+        var previousBankId = entity.BankId;
+        var previousPaymentMethod = entity.PaymentMethod;
+
         var oldSnapshot = JsonSerializer.Serialize(new
         {
             entity.ReceiptNumber,
@@ -274,11 +293,29 @@ public partial class CustomerReceiptService : ICustomerReceiptService
 
         try
         {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             _unitOfWork.Repository<CustomerReceipt>().Update(entity);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var glResult = await _customerGlPosting.SyncCustomerReceiptAsync(
+                entity,
+                previousAmount,
+                previousBankId,
+                previousPaymentMethod,
+                cancellationToken);
+
+            if (!glResult.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new CustomerReceiptSaveResult(false, glResult.Message, null);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to update customer receipt {ReceiptId}", request.Id);
             return new CustomerReceiptSaveResult(
                 false,
@@ -308,12 +345,22 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             return new CustomerReceiptSaveResult(false, "Receipt not found.", null);
         }
 
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        var glResult = await _customerGlPosting.RemoveCustomerReceiptAsync(entity.Id, cancellationToken);
+        if (!glResult.Success)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            return new CustomerReceiptSaveResult(false, glResult.Message, null);
+        }
+
         entity.IsDeleted = true;
         entity.DeletedAt = DateTime.UtcNow;
         entity.DeletedBy = _currentUser.UserName;
 
         _unitOfWork.Repository<CustomerReceipt>().Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
         await TryAuditAsync("Delete", id.ToString(), JsonSerializer.Serialize(entity), null, cancellationToken);
 

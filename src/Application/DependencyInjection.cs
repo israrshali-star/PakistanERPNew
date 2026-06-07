@@ -15,6 +15,9 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IChartOfAccountsService, ChartOfAccountsService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<ICustomerGlPostingService, CustomerGlPostingService>();
+        services.AddScoped<IStackLotInventoryService, StackLotInventoryService>();
+        services.AddScoped<ISalesInvoicePdfService, SalesInvoicePdfService>();
         services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
         services.AddScoped<ICustomerReceiptService, CustomerReceiptService>();
         services.AddScoped<IItemService, ItemService>();
@@ -28,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IFinancialReportService, FinancialReportService>();
         services.AddScoped<IJournalEntryService, JournalEntryService>();
         services.AddScoped<IVendorBillService, VendorBillService>();
+        services.AddScoped<IVendorGlPostingService, VendorGlPostingService>();
         services.AddScoped<IVendorPaymentService, VendorPaymentService>();
         services.AddScoped<IBankService, BankService>();
         services.AddScoped<IBankTransactionService, BankTransactionService>();

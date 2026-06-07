@@ -6,9 +6,30 @@
     var itemsById = {};
     var scenarios = [];
     var lineCounter = 0;
+    var stockHintTimers = {};
+    var CREDIT_NOTE_TYPE = 3;
 
     function showError(message) {
         $('#invoice-form-error').removeClass('d-none').text(message);
+    }
+
+    function showStockAlert(message) {
+        showError(message);
+        if (message) {
+            window.alert(message);
+        }
+    }
+
+    function isStockCheckRequired() {
+        return (parseInt($('#invoice-type').val(), 10) || 1) !== CREDIT_NOTE_TYPE;
+    }
+
+    function formatQty(value) {
+        var n = parseFloat(value);
+        if (isNaN(n)) {
+            return '0.00';
+        }
+        return n.toFixed(2);
     }
 
     function clearError() {
@@ -101,6 +122,96 @@
         $row.find('.line-price').val((item.saleRate || 0).toFixed(2));
         $row.find('.line-tax').val((item.defaultTaxRate || 18).toFixed(2));
         recalcTotals();
+        updateStockHint($row);
+    }
+
+    function setStockHint($hint, cssClass, message) {
+        $hint.removeClass('text-success text-danger text-muted').addClass(cssClass).text(message || '');
+    }
+
+    function updateStockHint($row) {
+        var rowId = $row.data('line-id');
+        var $hint = $row.find('.line-stock-hint');
+
+        if (!isStockCheckRequired()) {
+            setStockHint($hint, 'text-muted', '');
+            return;
+        }
+
+        var itemId = parseInt($row.find('.line-item').val(), 10);
+        var stackNo = $row.find('.line-stack').val().trim();
+        var lotNo = $row.find('.line-lot').val().trim();
+
+        if (!itemId) {
+            setStockHint($hint, 'text-muted', '');
+            return;
+        }
+
+        if (!stackNo) {
+            setStockHint($hint, 'text-danger', 'Stack number is required.');
+            return;
+        }
+
+        if (stockHintTimers[rowId]) {
+            clearTimeout(stockHintTimers[rowId]);
+        }
+
+        setStockHint($hint, 'text-muted', 'Checking stock…');
+
+        stockHintTimers[rowId] = setTimeout(function () {
+            $.getJSON('/api/sales-invoices/stack-availability', {
+                itemId: itemId,
+                stackNo: stackNo,
+                lotNo: lotNo || undefined
+            })
+                .done(function (data) {
+                    if (!data || data.exists === false) {
+                        var lotPart = lotNo ? ' / lot ' + lotNo : '';
+                        setStockHint($hint, 'text-danger', 'Stack ' + stackNo + lotPart + ' not found in purchases.');
+                        return;
+                    }
+
+                    var qty = parseFloat($row.find('.line-qty').val()) || 0;
+                    var cartons = parseFloat($row.find('.line-cartons').val()) || 0;
+                    var remainingWeight = data.remainingWeight != null ? data.remainingWeight : data.RemainingWeight;
+                    var remainingCartons = data.remainingCartons != null ? data.remainingCartons : data.RemainingCartons;
+                    var purchasedCartons = data.purchasedCartons != null ? data.purchasedCartons : data.PurchasedCartons;
+                    var soldWeight = data.soldWeight != null ? data.soldWeight : data.SoldWeight;
+
+                    var msg = 'Available: ' + formatQty(remainingWeight) + ' weight';
+                    if ((purchasedCartons || 0) > 0) {
+                        msg += ', ' + formatQty(remainingCartons) + ' cartons';
+                    }
+                    if ((soldWeight || 0) > 0) {
+                        msg += ' (sold: ' + formatQty(soldWeight) + ')';
+                    }
+
+                    var exceedsWeight = qty > remainingWeight;
+                    var exceedsCartons = (purchasedCartons || 0) > 0 && cartons > remainingCartons;
+
+                    if (exceedsWeight || exceedsCartons) {
+                        var detail = msg;
+                        if (exceedsWeight) {
+                            detail += ' — exceeds available weight';
+                        }
+                        if (exceedsCartons) {
+                            detail += exceedsWeight ? ' and cartons' : ' — exceeds available cartons';
+                        }
+                        setStockHint($hint, 'text-danger', detail);
+                    } else {
+                        setStockHint($hint, 'text-success', msg);
+                    }
+                })
+                .fail(function (xhr) {
+                    setStockHint($hint, 'text-danger', getApiErrorMessage(xhr, 'Could not check stack availability.'));
+                });
+        }, 300);
+    }
+
+    function refreshAllStockHints() {
+        $('#invoice-lines-body tr').each(function () {
+            updateStockHint($(this));
+        });
     }
 
     function addLine(prefill) {
@@ -110,7 +221,8 @@
             '<tr data-line-id="' + rowId + '">' +
             '<td><select class="form-select form-select-sm line-item" required>' + buildItemOptions(prefill && prefill.itemId) + '</select></td>' +
             '<td><input type="text" class="form-control form-control-sm line-hs" readonly /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" /></td>' +
+            '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" />' +
+            '<div class="line-stock-hint small mt-1"></div></td>' +
             '<td><input type="text" class="form-control form-control-sm line-lot" maxlength="50" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
@@ -140,6 +252,7 @@
         }
 
         recalcTotals();
+        updateStockHint($row);
     }
 
     function onCustomerChange() {
@@ -304,14 +417,29 @@
             contentType: 'application/json',
             data: JSON.stringify(payload)
         })
-            .done(function () {
+            .done(function (result) {
+                if (result && result.success === false) {
+                    var msg = result.message || 'Failed to save invoice.';
+                    if (/stack|weight|carton|purchase/i.test(msg)) {
+                        showStockAlert(msg);
+                    } else {
+                        showError(msg);
+                    }
+                    return;
+                }
+
                 var invoiceId = result && (result.invoiceId || result.InvoiceId);
                 window.location.href = invoiceId
                     ? '/SalesInvoices/Details/' + invoiceId
                     : '/SalesInvoices';
             })
             .fail(function (xhr) {
-                showError(getApiErrorMessage(xhr, 'Failed to save invoice.'));
+                var msg = getApiErrorMessage(xhr, 'Failed to save invoice.');
+                if (/stack|weight|carton|purchase/i.test(msg)) {
+                    showStockAlert(msg);
+                } else {
+                    showError(msg);
+                }
             })
             .always(function () {
                 $btn.prop('disabled', false);
@@ -338,16 +466,26 @@
             });
 
         $('#customer-id').on('change', onCustomerChange);
+        $('#invoice-type').on('change', refreshAllStockHints);
         $('#invoice-lines-body').on('change', '.line-item', function () {
             onItemChange($(this));
         });
         $('#invoice-lines-body').on('input', '.line-qty, .line-price, .line-tax, .line-discount', recalcTotals);
+        $('#invoice-lines-body').on('input', '.line-stack, .line-lot, .line-qty, .line-cartons', function () {
+            updateStockHint($(this).closest('tr'));
+        });
         $('#invoice-lines-body').on('click', '.btn-remove-line', function () {
-            var $select = $(this).closest('tr').find('.line-item');
+            var $row = $(this).closest('tr');
+            var rowId = $row.data('line-id');
+            if (rowId && stockHintTimers[rowId]) {
+                clearTimeout(stockHintTimers[rowId]);
+                delete stockHintTimers[rowId];
+            }
+            var $select = $row.find('.line-item');
             if ($select.data('select2')) {
                 $select.select2('destroy');
             }
-            $(this).closest('tr').remove();
+            $row.remove();
             recalcTotals();
         });
 

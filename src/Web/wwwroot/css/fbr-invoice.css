@@ -1,0 +1,100 @@
+.fbr-invoice-doc {
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    padding: 1.25rem;
+    font-size: 0.82rem;
+}
+
+.fbr-invoice-doc .fbr-green {
+    color: #1f6b45;
+}
+
+.fbr-invoice-doc .fbr-header-logo {
+    border: 1px solid #1f6b45;
+    padding: 0.35rem 0.5rem;
+    text-align: center;
+    width: 95px;
+}
+
+.fbr-invoice-doc .fbr-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1f6b45;
+}
+
+.fbr-invoice-doc .fbr-number-bar {
+    background: #f2f2f2;
+    border: 1px solid #d0d0d0;
+    padding: 0.45rem 0.75rem;
+    font-weight: 600;
+}
+
+.fbr-invoice-doc .fbr-party-box {
+    border: 1px solid #d0d0d0;
+    padding: 0.75rem;
+    height: 100%;
+}
+
+.fbr-invoice-doc .fbr-meta-bar {
+    background: #d9f0e3;
+    border: 1px solid #d0d0d0;
+    padding: 0.6rem 0.75rem;
+}
+
+.fbr-invoice-doc .fbr-meta-label {
+    color: #1f6b45;
+    font-weight: 600;
+    font-size: 0.72rem;
+}
+
+.fbr-invoice-doc .fbr-table th {
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.fbr-invoice-doc .fbr-table td {
+    font-size: 0.75rem;
+    vertical-align: top;
+}
+
+.fbr-invoice-doc .fbr-summary {
+    background: #f2f2f2;
+    border: 1px solid #d0d0d0;
+    padding: 0.75rem;
+    width: 260px;
+    margin-left: auto;
+}
+
+.fbr-invoice-doc .fbr-inclusive-total {
+    color: #1f6b45;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.fbr-invoice-doc .fbr-qr-placeholder {
+    width: 88px;
+    height: 88px;
+    border: 1px solid #d0d0d0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    color: #666;
+    text-align: center;
+}
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .fbr-invoice-doc {
+        border: none;
+        padding: 0;
+    }
+
+    body {
+        background: #fff;
+    }
+}

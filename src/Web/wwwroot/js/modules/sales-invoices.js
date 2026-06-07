@@ -85,8 +85,15 @@
                 {
                     data: 'fbrInvoiceNumber',
                     defaultContent: '—',
-                    render: function (d) {
-                        return d ? '<code>' + escapeHtml(d) + '</code>' : '—';
+                    render: function (d, type, row) {
+                        if (!d) {
+                            return '—';
+                        }
+                        var html = '<code>' + escapeHtml(d) + '</code>';
+                        if (row.hasFbrPdf) {
+                            html += ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 btn-download-pdf" data-id="' + row.id + '" title="Download PDF"><i class="fa-solid fa-file-pdf text-danger"></i></button>';
+                        }
+                        return html;
                     }
                 },
                 {
@@ -133,7 +140,25 @@
         });
 
         $('#sales-invoices-table').on('click', '.btn-submit-fbr', function () {
-            runInvoiceAction($(this).data('id'), '/submit-fbr', 'Submit this invoice to FBR?', true);
+            var id = $(this).data('id');
+            if (window.SalesInvoiceFbr) {
+                window.SalesInvoiceFbr.showFbrPreviewAndSubmit(id, function () {
+                    if (dataTable) {
+                        dataTable.ajax.reload(null, false);
+                    }
+                });
+                return;
+            }
+            runInvoiceAction(id, '/submit-fbr', 'Submit this invoice to FBR?', true);
+        });
+
+        $('#sales-invoices-table').on('click', '.btn-download-pdf', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var id = $(this).data('id');
+            if (window.SalesInvoiceFbr) {
+                window.SalesInvoiceFbr.downloadInvoicePdf(id);
+            }
         });
 
         $('#sales-invoices-table').on('click', '.btn-cancel-invoice', function () {

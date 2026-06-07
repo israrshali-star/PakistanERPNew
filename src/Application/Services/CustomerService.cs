@@ -17,6 +17,7 @@ public partial class CustomerService : ICustomerService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly ICustomerGlPostingService _customerGlPosting;
     private readonly ILogger<CustomerService> _logger;
 
     public CustomerService(
@@ -24,12 +25,14 @@ public partial class CustomerService : ICustomerService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        ICustomerGlPostingService customerGlPosting,
         ILogger<CustomerService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _customerGlPosting = customerGlPosting;
         _logger = logger;
     }
 
@@ -191,11 +194,28 @@ public partial class CustomerService : ICustomerService
 
         try
         {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             await _unitOfWork.Repository<Customer>().AddAsync(entity, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var glResult = await _customerGlPosting.SyncCustomerOpeningBalanceAsync(
+                entity.Id,
+                entity.BuyerName,
+                entity.OpeningBalance,
+                cancellationToken);
+
+            if (!glResult.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new CustomerSaveResult(false, glResult.Message, null);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to create customer {BuyerId}", request.BuyerId);
             return new CustomerSaveResult(
                 false,
@@ -238,6 +258,8 @@ public partial class CustomerService : ICustomerService
             return new CustomerSaveResult(false, "Customer not found.", null);
         }
 
+        var previousOpeningBalance = entity.OpeningBalance;
+
         var oldSnapshot = JsonSerializer.Serialize(new
         {
             entity.BuyerId,
@@ -268,11 +290,31 @@ public partial class CustomerService : ICustomerService
 
         try
         {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             _unitOfWork.Repository<Customer>().Update(entity);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (previousOpeningBalance != entity.OpeningBalance)
+            {
+                var glResult = await _customerGlPosting.SyncCustomerOpeningBalanceAsync(
+                    entity.Id,
+                    entity.BuyerName,
+                    entity.OpeningBalance,
+                    cancellationToken);
+
+                if (!glResult.Success)
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return new CustomerSaveResult(false, glResult.Message, null);
+                }
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to update customer {CustomerId}", request.Id);
             return new CustomerSaveResult(
                 false,
@@ -311,8 +353,21 @@ public partial class CustomerService : ICustomerService
         }
 
         var oldSnapshot = JsonSerializer.Serialize(new { entity.BuyerId, entity.BuyerName });
-        _unitOfWork.Repository<Customer>().Remove(entity);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _customerGlPosting.RemoveCustomerOpeningBalanceAsync(entity.Id, cancellationToken);
+            _unitOfWork.Repository<Customer>().Remove(entity);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to delete customer {CustomerId}", id);
+            return new CustomerSaveResult(false, "Could not delete customer.", null);
+        }
 
         await _auditService.LogAsync("Delete", "Customers", id.ToString(), oldSnapshot, null, cancellationToken);
         return new CustomerSaveResult(true, "Customer deleted successfully.", null);

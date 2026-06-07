@@ -2,18 +2,49 @@
 @inject IPermissionService PermissionService
 @{
     ViewData["Title"] = "Company & FBR Settings";
+    var canCreate = await PermissionService.HasPermissionAsync("Settings.Create");
     var canEdit = await PermissionService.HasPermissionAsync("Settings.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Settings.Delete");
 }
 
-<div id="settings-permissions" class="d-none" data-can-edit="@canEdit.ToString().ToLower()"></div>
+<div id="settings-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
 <div id="settings-company-warning" class="alert alert-warning d-none mb-3"></div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="text-primary mb-0">Company & FBR Settings</h4>
-        <p class="text-muted small mb-0">Company profile, FBR e-invoicing API, and default tax rates</p>
+        <p class="text-muted small mb-0">Manage companies, profile, FBR e-invoicing API, and default tax rates</p>
     </div>
     <div id="fbr-status-badge"></div>
+</div>
+
+<div class="card p-3 mb-3" id="companies-section">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h6 class="text-primary mb-0"><i class="fa-solid fa-building me-1"></i>Companies</h6>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-add-company" permission="Settings.Create">
+            <i class="fa-solid fa-plus me-1"></i>Add Company
+        </button>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="companies-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>NTN</th>
+                    <th>Province</th>
+                    <th>Contact</th>
+                    <th class="text-center">Default</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="companies-table-body">
+                <tr><td colspan="6" class="text-muted text-center">Loading companies…</td></tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <form id="company-settings-form">
@@ -106,6 +137,59 @@
         </button>
     </div>
 </form>
+
+<div class="modal fade" id="companyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="companyModalLabel">Company</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="company-form">
+                <div class="modal-body">
+                    <input type="hidden" id="manage-company-id" />
+                    <div class="mb-3">
+                        <label class="form-label" for="manage-company-name">Company Name</label>
+                        <input type="text" class="form-control" id="manage-company-name" required maxlength="450" />
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="manage-company-ntn">NTN</label>
+                            <input type="text" class="form-control" id="manage-company-ntn" maxlength="50" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="manage-province-id">Province</label>
+                            <select class="form-select" id="manage-province-id">
+                                <option value="">— Select —</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="manage-company-address">Address</label>
+                            <textarea class="form-control" id="manage-company-address" rows="2" maxlength="500"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="manage-company-phone">Phone</label>
+                            <input type="text" class="form-control" id="manage-company-phone" maxlength="50" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="manage-company-email">Email</label>
+                            <input type="email" class="form-control" id="manage-company-email" maxlength="200" />
+                        </div>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="manage-company-default" />
+                        <label class="form-check-label" for="manage-company-default">Set as default company (used on login)</label>
+                    </div>
+                    <div class="alert alert-danger d-none mt-3" id="company-form-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save-company">Save Company</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <script src="~/js/modules/company-settings.js" asp-append-version="true"></script>

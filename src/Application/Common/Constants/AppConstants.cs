@@ -24,6 +24,8 @@ public static class SessionKeys
 
 public static class ReferenceTypes
 {
+    public const string Customer = "Customer";
+    public const string Vendor = "Vendor";
     public const string SalesInvoice = "SalesInvoice";
     public const string VendorBill = "VendorBill";
     public const string BankTransaction = "BankTransaction";
@@ -33,6 +35,7 @@ public static class ReferenceTypes
     public const string Bank = "Bank";
     public const string BankReconciliation = "BankReconciliation";
     public const string CompanySettings = "CompanySettings";
+    public const string Company = "Company";
     public const string Item = "Item";
     public const string ItemCategory = "ItemCategory";
     public const string UnitOfMeasure = "UnitOfMeasure";

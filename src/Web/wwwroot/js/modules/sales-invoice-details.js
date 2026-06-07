@@ -33,6 +33,13 @@
             });
     }
 
+    function downloadPdf() {
+        var invoiceId = $('#invoice-detail').data('id');
+        if (window.SalesInvoiceFbr) {
+            window.SalesInvoiceFbr.downloadInvoicePdf(invoiceId);
+        }
+    }
+
     $(function () {
         var $detail = $('#invoice-detail');
 
@@ -47,10 +54,21 @@
 
         if ($detail.data('can-submit-fbr') === true) {
             $('#btn-submit-fbr').on('click', function () {
-                if (!confirm('Submit this invoice to FBR?')) {
+                var invoiceId = $detail.data('id');
+                if (!window.SalesInvoiceFbr) {
+                    if (!confirm('Submit this invoice to FBR?')) {
+                        return;
+                    }
+                    postAction('/submit-fbr', 'Invoice submitted to FBR.');
                     return;
                 }
-                postAction('/submit-fbr', 'Invoice submitted to FBR.');
+
+                window.SalesInvoiceFbr.showFbrPreviewAndSubmit(invoiceId, function (result) {
+                    showMessage('success', result.message || 'Invoice submitted to FBR.');
+                    setTimeout(function () {
+                        window.location.reload();
+                    }, 800);
+                });
             });
         }
 
@@ -61,6 +79,10 @@
                 }
                 postAction('/cancel', 'Invoice cancelled.');
             });
+        }
+
+        if ($detail.data('has-fbr-pdf') === true) {
+            $('#btn-download-pdf, .btn-download-pdf-inline').on('click', downloadPdf);
         }
     });
 })();

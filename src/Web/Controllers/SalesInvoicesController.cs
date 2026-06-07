@@ -59,10 +59,17 @@ public class SalesInvoicesController : Controller
 public class SalesInvoicesApiController : ControllerBase
 {
     private readonly ISalesInvoiceService _salesInvoiceService;
+    private readonly IStackLotInventoryService _stackLotInventory;
+    private readonly ISalesInvoicePdfService _salesInvoicePdfService;
 
-    public SalesInvoicesApiController(ISalesInvoiceService salesInvoiceService)
+    public SalesInvoicesApiController(
+        ISalesInvoiceService salesInvoiceService,
+        IStackLotInventoryService stackLotInventory,
+        ISalesInvoicePdfService salesInvoicePdfService)
     {
         _salesInvoiceService = salesInvoiceService;
+        _stackLotInventory = stackLotInventory;
+        _salesInvoicePdfService = salesInvoicePdfService;
     }
 
     [HttpGet("datatable")]
@@ -115,6 +122,36 @@ public class SalesInvoicesApiController : ControllerBase
         try
         {
             return Ok(await _salesInvoiceService.GetCustomerLookupsAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("stack-availability")]
+    [RequirePermission("Sales.Create")]
+    public async Task<IActionResult> StackAvailability(
+        [FromQuery] int itemId,
+        [FromQuery] string? stackNo,
+        [FromQuery] string? lotNo,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (itemId <= 0)
+            {
+                return BadRequest(new { message = "Item is required." });
+            }
+
+            var availability = await _stackLotInventory.GetAvailabilityAsync(
+                itemId,
+                stackNo,
+                lotNo,
+                excludeInvoiceId: null,
+                cancellationToken);
+
+            return availability is null ? NotFound() : Ok(availability);
         }
         catch (InvalidOperationException ex)
         {
@@ -180,6 +217,48 @@ public class SalesInvoicesApiController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new SalesInvoiceActionResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("{id:int}/fbr-payload")]
+    [RequirePermission("Sales.Edit")]
+    public async Task<IActionResult> FbrPayload(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var preview = await _salesInvoiceService.GetFbrPayloadPreviewAsync(id, cancellationToken);
+            if (preview is null)
+            {
+                return BadRequest(new { message = "FBR payload is not available for this invoice." });
+            }
+
+            return Ok(preview);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/pdf")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> Pdf(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var printData = await _salesInvoiceService.GetPrintDataAsync(id, cancellationToken);
+            if (printData is null)
+            {
+                return BadRequest(new { message = "PDF is available only after FBR submission." });
+            }
+
+            var pdfBytes = _salesInvoicePdfService.GeneratePdf(printData);
+            var fileName = $"{printData.InvoiceNumber}.pdf".Replace('/', '-');
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

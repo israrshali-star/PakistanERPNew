@@ -27,4 +27,8 @@ public interface ISalesInvoiceService
     Task<SalesInvoiceActionResult> CancelAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> SubmitToFbrAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<FbrPayloadPreviewDto?> GetFbrPayloadPreviewAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<SalesInvoicePrintDto?> GetPrintDataAsync(int id, CancellationToken cancellationToken = default);
 }

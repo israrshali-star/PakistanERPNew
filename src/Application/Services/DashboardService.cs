@@ -37,20 +37,37 @@ public class DashboardService : IDashboardService
             .Where(i => i.InvoiceDate >= monthStart && i.InvoiceDate < monthEnd)
             .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
 
-        var postedInvoiceTotal = await invoiceQuery
-            .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
-
-        var customerOpeningBalances = await _unitOfWork.Repository<Customer>()
+        var customerBalances = await _unitOfWork.Repository<Customer>()
             .Query()
             .Where(c => c.CompanyId == companyId && c.IsActive)
-            .SumAsync(c => (decimal?)c.OpeningBalance, cancellationToken) ?? 0m;
+            .Select(c => new
+            {
+                c.OpeningBalance,
+                InvoiceTotal = c.SalesInvoices
+                    .Where(si => si.Status == InvoiceStatus.Posted)
+                    .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal),
+                ReceiptTotal = c.CustomerReceipts.Sum(r => r.Amount)
+            })
+            .ToListAsync(cancellationToken);
 
-        var outstandingReceivables = customerOpeningBalances + postedInvoiceTotal;
+        var outstandingReceivables = customerBalances.Sum(c =>
+            c.OpeningBalance + c.InvoiceTotal - c.ReceiptTotal);
 
-        var outstandingPayables = await _unitOfWork.Repository<VendorBill>()
+        var vendorBalances = await _unitOfWork.Repository<Vendor>()
             .Query()
-            .Where(b => b.CompanyId == companyId && b.Status == BillStatus.Approved)
-            .SumAsync(b => (decimal?)b.NetAmount, cancellationToken) ?? 0m;
+            .Where(v => v.CompanyId == companyId && v.IsActive)
+            .Select(v => new
+            {
+                v.OpeningBalance,
+                BillTotal = v.VendorBills
+                    .Where(b => b.Status == BillStatus.Approved)
+                    .Sum(b => b.NetAmount),
+                PaymentTotal = v.VendorPayments.Sum(p => p.Amount)
+            })
+            .ToListAsync(cancellationToken);
+
+        var outstandingPayables = vendorBalances.Sum(v =>
+            v.OpeningBalance + v.BillTotal - v.PaymentTotal);
 
         var inventoryValue = await _unitOfWork.Repository<Item>()
             .Query()

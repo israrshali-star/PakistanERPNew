@@ -1,14 +1,25 @@
+using PakistanAccountingERP.Domain.Enums;
+
 namespace PakistanAccountingERP.Application.DTOs;
+
+public record FbrPartyDto(
+    string Name,
+    string? Ntn,
+    string? Cnic,
+    string? Address,
+    string? Province,
+    string? Phone,
+    string? Email,
+    string? BuyerId = null);
 
 public record FbrSubmissionRequest(
     int SalesInvoiceId,
     string InvoiceNumber,
     DateTime InvoiceDate,
-    string? SellerNtn,
-    string? BuyerNtn,
-    string? BuyerCnic,
-    string? BuyerName,
-    int ScenarioId,
+    InvoiceType InvoiceType,
+    FbrPartyDto Seller,
+    FbrPartyDto Buyer,
+    string BuyerRegistrationType,
     string ScenarioCode,
     decimal SubTotal,
     decimal DiscountAmount,
@@ -17,14 +28,20 @@ public record FbrSubmissionRequest(
     IReadOnlyList<FbrSubmissionLineRequest> Lines);
 
 public record FbrSubmissionLineRequest(
+    string? ItemCode,
     string? HsCode,
     string ProductDescription,
     string? Unit,
+    string? StackNo,
+    string? LotNo,
     decimal Quantity,
+    decimal Cartons,
     decimal Price,
     decimal TaxRate,
     decimal TaxAmount,
-    decimal LineTotal);
+    decimal Discount,
+    decimal LineTotal,
+    string SaleType);
 
 public record FbrSubmissionResult(
     bool Success,
@@ -32,3 +49,10 @@ public record FbrSubmissionResult(
     string? FbrInvoiceNumber,
     string? ResponseJson,
     bool IsSimulation);
+
+public record FbrPayloadPreviewDto(
+    int SalesInvoiceId,
+    string InvoiceNumber,
+    string PayloadJson,
+    bool IsSimulationMode,
+    string FooterNotice);

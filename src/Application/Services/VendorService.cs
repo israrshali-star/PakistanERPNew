@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -18,17 +19,23 @@ public partial class VendorService : IVendorService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly IVendorGlPostingService _vendorGlPosting;
+    private readonly ILogger<VendorService> _logger;
 
     public VendorService(
         IUnitOfWork unitOfWork,
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
-        IAuditService auditService)
+        IAuditService auditService,
+        IVendorGlPostingService vendorGlPosting,
+        ILogger<VendorService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _vendorGlPosting = vendorGlPosting;
+        _logger = logger;
     }
 
     public async Task<DataTableResponse<VendorListItemDto>> GetDataTableAsync(
@@ -168,8 +175,33 @@ public partial class VendorService : IVendorService
             CreatedBy = _currentUser.UserName ?? "system"
         };
 
-        await _unitOfWork.Repository<Vendor>().AddAsync(entity, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            await _unitOfWork.Repository<Vendor>().AddAsync(entity, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var glResult = await _vendorGlPosting.SyncVendorOpeningBalanceAsync(
+                entity.Id,
+                entity.VendorName,
+                entity.OpeningBalance,
+                cancellationToken);
+
+            if (!glResult.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new VendorSaveResult(false, glResult.Message, null);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to create vendor {VendorCode}", request.VendorCode);
+            return new VendorSaveResult(false, "Could not save vendor.", null);
+        }
 
         await _auditService.LogAsync(
             "Create",
@@ -208,6 +240,8 @@ public partial class VendorService : IVendorService
             return new VendorSaveResult(false, "Vendor not found.", null);
         }
 
+        var previousOpeningBalance = entity.OpeningBalance;
+
         var oldSnapshot = JsonSerializer.Serialize(new
         {
             entity.VendorCode,
@@ -231,8 +265,36 @@ public partial class VendorService : IVendorService
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedBy = _currentUser.UserName;
 
-        _unitOfWork.Repository<Vendor>().Update(entity);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            _unitOfWork.Repository<Vendor>().Update(entity);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (previousOpeningBalance != entity.OpeningBalance)
+            {
+                var glResult = await _vendorGlPosting.SyncVendorOpeningBalanceAsync(
+                    entity.Id,
+                    entity.VendorName,
+                    entity.OpeningBalance,
+                    cancellationToken);
+
+                if (!glResult.Success)
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return new VendorSaveResult(false, glResult.Message, null);
+                }
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to update vendor {VendorId}", request.Id);
+            return new VendorSaveResult(false, "Could not update vendor.", null);
+        }
 
         await _auditService.LogAsync(
             "Update",
@@ -283,8 +345,21 @@ public partial class VendorService : IVendorService
         }
 
         var oldSnapshot = JsonSerializer.Serialize(new { entity.VendorCode, entity.VendorName });
-        _unitOfWork.Repository<Vendor>().Remove(entity);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _vendorGlPosting.RemoveVendorOpeningBalanceAsync(entity.Id, cancellationToken);
+            _unitOfWork.Repository<Vendor>().Remove(entity);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to delete vendor {VendorId}", id);
+            return new VendorSaveResult(false, "Could not delete vendor.", null);
+        }
 
         await _auditService.LogAsync("Delete", "Vendors", id.ToString(), oldSnapshot, null, cancellationToken);
         return new VendorSaveResult(true, "Vendor deleted successfully.", null);

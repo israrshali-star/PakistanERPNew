@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
 
@@ -26,8 +27,7 @@ public class FbrSubmissionService : IFbrSubmissionService
         string? apiToken,
         CancellationToken cancellationToken = default)
     {
-        var payload = BuildPayload(request);
-        var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
+        var payloadJson = FbrPayloadBuilder.BuildJson(request);
 
         if (string.IsNullOrWhiteSpace(fbrPostUrl) || string.IsNullOrWhiteSpace(apiToken))
         {
@@ -39,8 +39,8 @@ public class FbrSubmissionService : IFbrSubmissionService
                 message = "FBR API URL or token not configured. Simulated submission stored.",
                 fbrInvoiceNumber = simulatedNumber,
                 submittedAt = DateTime.UtcNow,
-                request = payload
-            }, JsonOptions);
+                request = FbrPayloadBuilder.BuildObject(request)
+            });
 
             return new FbrSubmissionResult(
                 true,
@@ -90,35 +90,6 @@ public class FbrSubmissionService : IFbrSubmissionService
         }
     }
 
-    private static object BuildPayload(FbrSubmissionRequest request) =>
-        new
-        {
-            invoiceType = "Sale Invoice",
-            invoiceNumber = request.InvoiceNumber,
-            invoiceDate = request.InvoiceDate.ToString("yyyy-MM-dd"),
-            sellerNTN = request.SellerNtn,
-            buyerNTN = request.BuyerNtn,
-            buyerCNIC = request.BuyerCnic,
-            buyerName = request.BuyerName,
-            scenarioId = request.ScenarioId,
-            scenarioCode = request.ScenarioCode,
-            subTotal = request.SubTotal,
-            discount = request.DiscountAmount,
-            salesTax = request.TaxAmount,
-            totalAmount = request.NetTotal,
-            items = request.Lines.Select(l => new
-            {
-                hsCode = l.HsCode,
-                productDescription = l.ProductDescription,
-                uom = l.Unit,
-                quantity = l.Quantity,
-                rate = l.Price,
-                taxRate = l.TaxRate,
-                salesTax = l.TaxAmount,
-                total = l.LineTotal
-            })
-        };
-
     private static string? TryExtractFbrInvoiceNumber(string responseBody)
     {
         try
@@ -156,9 +127,4 @@ public class FbrSubmissionService : IFbrSubmissionService
         return value[..maxLength] + "...";
     }
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
 }
