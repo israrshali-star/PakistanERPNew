@@ -19,6 +19,7 @@ public record SalesInvoiceLineDto(
     int Id,
     string ItemCode,
     string ItemName,
+    string? ItemDescription,
     string? HsCode,
     string? ProductDescription,
     string? Unit,
@@ -91,9 +92,12 @@ public record SalesInvoiceItemLookupDto(
 
 public record NextInvoiceNumberDto(string InvoiceNumber);
 
+public record SalesInvoiceTaxRatesDto(decimal RegisteredSalesTaxRate, decimal UnregisteredSalesTaxRate);
+
 public class SalesInvoiceLineSaveRequest
 {
     public int ItemId { get; set; }
+    public string? ProductDescription { get; set; }
     public string? StackNo { get; set; }
     public string? LotNo { get; set; }
     public decimal Cartons { get; set; }

@@ -142,6 +142,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             .ToListAsync(cancellationToken);
     }
 
+    private const string UnregisteredScenarioCode = "SN002";
+
+    public async Task<SalesInvoiceTaxRatesDto> GetTaxRatesAsync(CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var taxRates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
+        return new SalesInvoiceTaxRatesDto(taxRates.Registered, taxRates.Unregistered);
+    }
+
     public async Task<IReadOnlyList<SalesInvoiceItemLookupDto>> GetItemLookupsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -229,6 +238,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "One or more items are invalid.", null);
         }
 
+        var scenarioTaxRate = await ResolveScenarioTaxRateAsync(companyId, request.ScenarioId, cancellationToken);
+
         var validationLines = new List<StackLotSaleValidationLine>();
         var lineEntities = new List<SalesInvoiceLine>();
         decimal subTotal = 0m;
@@ -253,32 +264,35 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
                 line.Quantity,
                 Math.Max(0m, line.Cartons)));
+            var taxRate = scenarioTaxRate ?? line.TaxRate;
             var lineSubTotal = Math.Round(line.Quantity * line.Price, 2);
             var lineDiscount = Math.Round(Math.Max(0m, line.Discount), 2);
             var taxable = Math.Round(lineSubTotal - lineDiscount, 2);
-            var lineTax = Math.Round(taxable * Math.Max(0m, line.TaxRate) / 100m, 2);
+            var lineTax = Math.Round(taxable * Math.Max(0m, taxRate) / 100m, 2);
             var lineTotal = Math.Round(taxable + lineTax, 2);
 
             subTotal += lineSubTotal;
             discountTotal += lineDiscount;
             taxTotal += lineTax;
 
-            var description = !string.IsNullOrWhiteSpace(item.Description)
-                ? item.Description.Trim()
-                : item.ItemName;
+            var productDescription = !string.IsNullOrWhiteSpace(line.ProductDescription)
+                ? line.ProductDescription.Trim()
+                : !string.IsNullOrWhiteSpace(item.Description)
+                    ? item.Description.Trim()
+                    : item.ItemName;
 
             lineEntities.Add(new SalesInvoiceLine
             {
                 ItemId = line.ItemId,
                 HSCode = item.HSCode,
-                ProductDescription = $"{item.ItemCode} — {description}",
+                ProductDescription = productDescription,
                 Unit = item.UnitSymbol,
                 StackNo = string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
                 LotNo = string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
                 Quantity = line.Quantity,
                 Cartons = Math.Max(0m, line.Cartons),
                 Price = line.Price,
-                TaxRate = line.TaxRate,
+                TaxRate = taxRate,
                 TaxAmount = lineTax,
                 Discount = lineDiscount,
                 LineTotal = lineTotal
@@ -397,6 +411,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     l.Id,
                     l.Item.ItemCode,
                     l.Item.ItemName,
+                    l.Item.Description,
                     l.HSCode,
                     l.ProductDescription,
                     l.Unit,
@@ -709,9 +724,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.NetTotal,
                 Lines = i.Lines.Select(l => new
                 {
-                    l.Item.ItemName,
+                    l.Item.Description,
                     l.HSCode,
-                    l.ProductDescription,
                     l.StackNo,
                     l.LotNo,
                     l.Unit,
@@ -737,7 +751,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             var valueExcludingSt = Math.Round(Math.Max(0m, l.Quantity * l.Price - l.Discount), 2);
             return new SalesInvoicePrintLineDto(
                 index + 1,
-                FbrInvoiceLayout.BuildProductLine(l.ProductDescription, l.ItemName, l.LotNo, l.StackNo),
+                FbrInvoiceLayout.BuildFbrProductDescription(l.Description, l.LotNo, l.StackNo),
                 l.HSCode,
                 saleType,
                 Math.Round(l.Quantity, 2),
@@ -814,7 +828,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var itemLookup = await _unitOfWork.Repository<Item>()
             .Query()
             .Where(i => itemIds.Contains(i.Id))
-            .Select(i => new { i.Id, i.ItemCode, i.ItemName })
+            .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.Description })
             .ToDictionaryAsync(i => i.Id, cancellationToken);
 
         string? buyerProvince = null;
@@ -860,10 +874,14 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var lines = invoice.Lines.Select(l =>
         {
             var item = itemLookup.GetValueOrDefault(l.ItemId);
+            var productDescription = FbrInvoiceLayout.BuildFbrProductDescription(
+                item?.Description,
+                l.LotNo,
+                l.StackNo);
             return new FbrSubmissionLineRequest(
                 item?.ItemCode,
                 l.HSCode,
-                l.ProductDescription ?? item?.ItemName ?? "Item",
+                productDescription,
                 l.Unit,
                 l.StackNo,
                 l.LotNo,
@@ -897,13 +915,48 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
     private async Task<decimal> GetDefaultTaxRateAsync(int companyId, CancellationToken cancellationToken)
     {
-        var rate = await _unitOfWork.Repository<TaxSetting>()
+        var rates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
+        return rates.Registered;
+    }
+
+    private async Task<(decimal Registered, decimal Unregistered)> GetCompanyTaxRatesAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var rates = await _unitOfWork.Repository<TaxSetting>()
             .Query()
             .Where(t => t.CompanyId == companyId)
-            .Select(t => (decimal?)t.SalesTaxRate)
+            .Select(t => new { t.SalesTaxRate, t.UnregisteredSalesTaxRate })
             .FirstOrDefaultAsync(cancellationToken);
 
-        return rate ?? 18m;
+        return rates is null
+            ? (18m, 22m)
+            : (rates.SalesTaxRate, rates.UnregisteredSalesTaxRate);
+    }
+
+    private async Task<decimal?> ResolveScenarioTaxRateAsync(
+        int companyId,
+        int? scenarioId,
+        CancellationToken cancellationToken)
+    {
+        if (!scenarioId.HasValue)
+        {
+            return null;
+        }
+
+        var scenarioCode = await _unitOfWork.Repository<ScenarioType>()
+            .Query()
+            .Where(s => s.ScenarioId == scenarioId.Value)
+            .Select(s => s.Code)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!string.Equals(scenarioCode, UnregisteredScenarioCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var rates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
+        return rates.Unregistered;
     }
 
     private static IQueryable<SalesInvoice> ApplyOrdering(IQueryable<SalesInvoice> query, DataTableRequest request)

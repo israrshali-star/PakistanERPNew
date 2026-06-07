@@ -34,24 +34,27 @@ public static class FbrInvoiceLayout
         return !string.IsNullOrWhiteSpace(cnic) ? cnic.Trim() : "—";
     }
 
-    public static string BuildProductLine(
-        string? productDescription,
-        string itemName,
+    public static string BuildFbrProductDescription(
+        string? itemDescription,
         string? lotNo,
         string? stackNo)
     {
-        var description = string.IsNullOrWhiteSpace(productDescription) ? itemName : productDescription.Trim();
-        var suffix = new List<string>();
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(itemDescription))
+        {
+            parts.Add(itemDescription.Trim());
+        }
+
         if (!string.IsNullOrWhiteSpace(lotNo))
         {
-            suffix.Add($"Lot:{lotNo.Trim()}");
+            parts.Add($"Lot:{lotNo.Trim()}");
         }
 
         if (!string.IsNullOrWhiteSpace(stackNo))
         {
-            suffix.Add($"Stack:{stackNo.Trim()}");
+            parts.Add($"Stack:{stackNo.Trim()}");
         }
 
-        return suffix.Count == 0 ? description : $"{description} {string.Join(" ", suffix)}";
+        return string.Join(" ", parts);
     }
 }

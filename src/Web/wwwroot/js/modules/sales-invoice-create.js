@@ -5,6 +5,8 @@
     var items = [];
     var itemsById = {};
     var scenarios = [];
+    var taxRates = { registered: 18, unregistered: 22 };
+    var SN002_CODE = 'SN002';
     var lineCounter = 0;
     var stockHintTimers = {};
     var CREDIT_NOTE_TYPE = 3;
@@ -58,6 +60,26 @@
         return itemsById[String(itemId)] || null;
     }
 
+    function getSelectedScenarioCode() {
+        var scenarioId = parseInt($('#scenario-id').val(), 10);
+        var scenario = scenarios.find(function (s) { return s.id === scenarioId; });
+        return scenario ? (scenario.code || '').toUpperCase() : '';
+    }
+
+    function getScenarioTaxRate() {
+        return getSelectedScenarioCode() === SN002_CODE
+            ? taxRates.unregistered
+            : taxRates.registered;
+    }
+
+    function applyTaxRateToAllLines() {
+        var rate = getScenarioTaxRate();
+        $('#invoice-lines-body tr').each(function () {
+            $(this).find('.line-tax').val(rate.toFixed(2));
+        });
+        recalcTotals();
+    }
+
     function recalcTotals() {
         var subtotal = 0;
         var discount = 0;
@@ -106,21 +128,23 @@
 
     function applyItemToRow($row, item) {
         if (!item) {
+            $row.find('.line-desc').val('');
             $row.find('.line-hs').val('');
             $row.find('.line-stack').val('');
             $row.find('.line-lot').val('');
             $row.find('.line-unit').text('—');
             $row.find('.line-price').val('0');
-            $row.find('.line-tax').val('18');
+            $row.find('.line-tax').val(getScenarioTaxRate().toFixed(2));
             return;
         }
 
+        $row.find('.line-desc').val(item.description || item.itemName || '');
         $row.find('.line-hs').val(item.hsCode || '');
         $row.find('.line-stack').val(item.stackNo || '');
         $row.find('.line-lot').val(item.lotNo || '');
         $row.find('.line-unit').text(item.unitSymbol || 'PCS');
         $row.find('.line-price').val((item.saleRate || 0).toFixed(2));
-        $row.find('.line-tax').val((item.defaultTaxRate || 18).toFixed(2));
+        $row.find('.line-tax').val(getScenarioTaxRate().toFixed(2));
         recalcTotals();
         updateStockHint($row);
     }
@@ -220,6 +244,7 @@
         var $row = $(
             '<tr data-line-id="' + rowId + '">' +
             '<td><select class="form-select form-select-sm line-item" required>' + buildItemOptions(prefill && prefill.itemId) + '</select></td>' +
+            '<td><input type="text" class="form-control form-control-sm line-desc" maxlength="500" /></td>' +
             '<td><input type="text" class="form-control form-control-sm line-hs" readonly /></td>' +
             '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
@@ -228,7 +253,7 @@
             '<td><input type="number" class="form-control form-control-sm text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td class="text-muted small line-unit">—</td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-price" min="0" step="0.01" value="0" required /></td>' +
-            '<td><input type="number" class="form-control form-control-sm text-end line-tax" min="0" step="0.01" value="18" /></td>' +
+            '<td><input type="number" class="form-control form-control-sm text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-discount" min="0" step="0.01" value="0" /></td>' +
             '<td class="text-end text-currency line-total">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
@@ -253,6 +278,10 @@
 
         recalcTotals();
         updateStockHint($row);
+    }
+
+    function onScenarioChange() {
+        applyTaxRateToAllLines();
     }
 
     function onCustomerChange() {
@@ -281,9 +310,10 @@
             $.getJSON('/api/sales-invoices/next-invoice-number'),
             $.getJSON('/api/sales-invoices/customers'),
             $.getJSON('/api/sales-invoices/items'),
+            $.getJSON('/api/sales-invoices/tax-rates'),
             $.getJSON('/api/lookup/scenario-types'),
             $.getJSON('/api/lookup/provinces')
-        ).then(function (numberRes, customersRes, itemsRes, scenariosRes, provincesRes) {
+        ).then(function (numberRes, customersRes, itemsRes, taxRatesRes, scenariosRes, provincesRes) {
             $('#invoice-number').val(numberRes[0].invoiceNumber);
             customers = customersRes[0] || [];
             items = itemsRes[0] || [];
@@ -292,6 +322,14 @@
                 itemsById[String(item.id)] = item;
             });
             scenarios = scenariosRes[0] || [];
+            if (taxRatesRes[0]) {
+                taxRates.registered = taxRatesRes[0].registeredSalesTaxRate != null
+                    ? taxRatesRes[0].registeredSalesTaxRate
+                    : (taxRatesRes[0].RegisteredSalesTaxRate || 18);
+                taxRates.unregistered = taxRatesRes[0].unregisteredSalesTaxRate != null
+                    ? taxRatesRes[0].unregisteredSalesTaxRate
+                    : (taxRatesRes[0].UnregisteredSalesTaxRate || 22);
+            }
 
             var $customer = $('#customer-id');
             $customer.find('option:not(:first)').remove();
@@ -326,7 +364,7 @@
                         qty: 1,
                         cartons: 0,
                         price: first.saleRate,
-                        tax: first.defaultTaxRate
+                        tax: getScenarioTaxRate()
                     });
                 }
             }
@@ -375,6 +413,7 @@
 
             lines.push({
                 itemId: itemId,
+                productDescription: $row.find('.line-desc').val().trim() || null,
                 stackNo: $row.find('.line-stack').val().trim() || null,
                 lotNo: $row.find('.line-lot').val().trim() || null,
                 cartons: parseFloat($row.find('.line-cartons').val()) || 0,
@@ -466,6 +505,7 @@
             });
 
         $('#customer-id').on('change', onCustomerChange);
+        $('#scenario-id').on('change', onScenarioChange);
         $('#invoice-type').on('change', refreshAllStockHints);
         $('#invoice-lines-body').on('change', '.line-item', function () {
             onItemChange($(this));

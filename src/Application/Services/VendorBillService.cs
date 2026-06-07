@@ -14,7 +14,7 @@ public partial class VendorBillService : IVendorBillService
 {
     private const string AccountsPayableNumber = "2100";
     private const string InputTaxRecoverableNumber = "1400";
-    private const string PurchasesNumber = "5100";
+    private const string InventoryNumber = "1300";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
@@ -205,6 +205,7 @@ public partial class VendorBillService : IVendorBillService
                 i.Id,
                 i.ItemCode,
                 i.ItemName,
+                i.Description,
                 i.StackNo,
                 i.LotNo,
                 i.PurchaseRate))
@@ -353,30 +354,46 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillActionResult(false, "Bill totals are inconsistent. Cannot approve.", null);
         }
 
-        var journalLines = new List<JournalEntryLine>
+        if (subTotal <= 0m)
         {
-            new()
+            return new VendorBillActionResult(false, "Bill subtotal must be greater than zero.", null);
+        }
+
+        var itemLineIds = bill.Lines
+            .Where(l => l.ItemId.HasValue && l.ItemId > 0)
+            .Select(l => l.ItemId!.Value)
+            .Distinct()
+            .ToList();
+
+        int? warehouseId = null;
+        Dictionary<int, Item> items = [];
+
+        if (itemLineIds.Count > 0)
+        {
+            warehouseId = await GetDefaultWarehouseIdAsync(companyId, cancellationToken);
+            if (!warehouseId.HasValue)
             {
-                ChartOfAccountId = accounts.PurchasesAccountId,
-                Debit = subTotal,
-                Credit = 0m,
-                Memo = "Purchases"
-            },
-            new()
-            {
-                ChartOfAccountId = accounts.InputTaxAccountId,
-                Debit = taxAmount,
-                Credit = 0m,
-                Memo = "Input Tax Recoverable"
-            },
-            new()
-            {
-                ChartOfAccountId = accounts.PayableAccountId,
-                Debit = 0m,
-                Credit = netAmount,
-                Memo = "Accounts Payable"
+                return new VendorBillActionResult(
+                    false,
+                    "No active warehouse found. Add a warehouse before approving inventory bills.",
+                    null);
             }
-        };
+
+            items = await _unitOfWork.Repository<Item>()
+                .Query(asNoTracking: false)
+                .Where(i => i.CompanyId == companyId && itemLineIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+            if (items.Count != itemLineIds.Count)
+            {
+                return new VendorBillActionResult(false, "One or more bill items are invalid.", null);
+            }
+        }
+
+        var journalLines = new List<JournalEntryLine>();
+        AddJournalLine(journalLines, accounts.InventoryAccountId, subTotal, 0m, "Inventory");
+        AddJournalLine(journalLines, accounts.InputTaxAccountId, taxAmount, 0m, "Input Tax Recoverable");
+        AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Accounts Payable");
 
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
         var now = DateTime.UtcNow;
@@ -406,6 +423,52 @@ public partial class VendorBillService : IVendorBillService
             }
 
             await _unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(journalLines, cancellationToken);
+
+            if (warehouseId.HasValue)
+            {
+                var inventoryTransactions = new List<InventoryTransaction>();
+                foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
+                {
+                    var item = items[line.ItemId!.Value];
+                    var quantity = Math.Round(line.Quantity, 2);
+                    if (quantity <= 0m)
+                    {
+                        continue;
+                    }
+
+                    var unitCost = Math.Round(line.Rate, 2);
+                    inventoryTransactions.Add(new InventoryTransaction
+                    {
+                        CompanyId = companyId,
+                        ItemId = item.Id,
+                        WarehouseId = warehouseId.Value,
+                        TransactionType = InventoryTransactionType.StockIn,
+                        StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
+                        LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
+                        Quantity = quantity,
+                        UnitCost = unitCost,
+                        TotalCost = Math.Round(quantity * unitCost, 2),
+                        TransactionDate = bill.BillDate,
+                        ReferenceNo = bill.BillNumber,
+                        Notes = $"Vendor bill {bill.BillNumber}",
+                        CreatedAt = now,
+                        CreatedBy = userName
+                    });
+
+                    item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
+                    item.PurchaseRate = unitCost;
+                    item.UpdatedAt = now;
+                    item.UpdatedBy = userName;
+                    _unitOfWork.Repository<Item>().Update(item);
+                }
+
+                if (inventoryTransactions.Count > 0)
+                {
+                    await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                        inventoryTransactions,
+                        cancellationToken);
+                }
+            }
 
             bill.Status = BillStatus.Approved;
             bill.JournalEntryId = journalEntry.Id;
@@ -544,14 +607,14 @@ public partial class VendorBillService : IVendorBillService
             .ToList();
 
         var items = itemIds.Count == 0
-            ? new Dictionary<int, (string Code, string Name, string StackNo, string LotNo)>()
+            ? new Dictionary<int, (string Code, string Name, string? Description, string StackNo, string LotNo)>()
             : await _unitOfWork.Repository<Item>()
                 .Query()
                 .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
-                .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.StackNo, i.LotNo })
+                .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.Description, i.StackNo, i.LotNo })
                 .ToDictionaryAsync(
                     i => i.Id,
-                    i => (Code: i.ItemCode, Name: i.ItemName, StackNo: i.StackNo, LotNo: i.LotNo),
+                    i => (Code: i.ItemCode, Name: i.ItemName, Description: i.Description, StackNo: i.StackNo, LotNo: i.LotNo),
                     cancellationToken);
 
         if (items.Count != itemIds.Count)
@@ -575,7 +638,7 @@ public partial class VendorBillService : IVendorBillService
             {
                 var item = items[itemId.Value];
                 description = string.IsNullOrWhiteSpace(description)
-                    ? $"{item.Code} — {item.Name}"
+                    ? (!string.IsNullOrWhiteSpace(item.Description) ? item.Description.Trim() : item.Name)
                     : description;
             }
             else if (string.IsNullOrWhiteSpace(description))
@@ -617,12 +680,12 @@ public partial class VendorBillService : IVendorBillService
         return (true, null, entities);
     }
 
-    private async Task<(bool Success, string? Message, int PayableAccountId, int InputTaxAccountId, int PurchasesAccountId)>
+    private async Task<(bool Success, string? Message, int PayableAccountId, int InputTaxAccountId, int InventoryAccountId)>
         ResolvePostingAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
         var payable = await GetAccountIdAsync(companyId, AccountsPayableNumber, cancellationToken);
         var inputTax = await GetAccountIdAsync(companyId, InputTaxRecoverableNumber, cancellationToken);
-        var purchases = await GetAccountIdAsync(companyId, PurchasesNumber, cancellationToken);
+        var inventory = await GetAccountIdAsync(companyId, InventoryNumber, cancellationToken);
 
         if (payable is null)
         {
@@ -634,12 +697,44 @@ public partial class VendorBillService : IVendorBillService
             return (false, $"Chart of account {InputTaxRecoverableNumber} (Input Tax Recoverable) not found.", 0, 0, 0);
         }
 
-        if (purchases is null)
+        if (inventory is null)
         {
-            return (false, $"Chart of account {PurchasesNumber} (Purchases) not found.", 0, 0, 0);
+            return (false, $"Chart of account {InventoryNumber} (Inventory) not found.", 0, 0, 0);
         }
 
-        return (true, null, payable.Value, inputTax.Value, purchases.Value);
+        return (true, null, payable.Value, inputTax.Value, inventory.Value);
+    }
+
+    private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
+        await _unitOfWork.Repository<Warehouse>()
+            .Query()
+            .Where(w => w.CompanyId == companyId && w.IsActive)
+            .OrderBy(w => w.Code)
+            .Select(w => (int?)w.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static void AddJournalLine(
+        ICollection<JournalEntryLine> lines,
+        int accountId,
+        decimal debit,
+        decimal credit,
+        string memo)
+    {
+        debit = Math.Round(debit, 2);
+        credit = Math.Round(credit, 2);
+
+        if (debit == 0m && credit == 0m)
+        {
+            return;
+        }
+
+        lines.Add(new JournalEntryLine
+        {
+            ChartOfAccountId = accountId,
+            Debit = debit,
+            Credit = credit,
+            Memo = memo
+        });
     }
 
     private async Task<int?> GetAccountIdAsync(

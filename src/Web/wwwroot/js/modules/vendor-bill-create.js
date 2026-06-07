@@ -76,12 +76,14 @@
 
     function applyItemToRow($row, item) {
         if (!item) {
+            $row.find('.line-desc').val('');
             $row.find('.line-stack').val('');
             $row.find('.line-lot').val('');
             $row.find('.line-rate').val('0');
             return;
         }
 
+        $row.find('.line-desc').val(item.description || item.itemName || '');
         $row.find('.line-stack').val(item.stackNo || '');
         $row.find('.line-lot').val(item.lotNo || '');
         $row.find('.line-rate').val((item.purchaseRate || 0).toFixed(2));

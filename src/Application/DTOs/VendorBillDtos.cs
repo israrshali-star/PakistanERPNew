@@ -81,6 +81,7 @@ public record VendorBillItemLookupDto(
     int Id,
     string ItemCode,
     string ItemName,
+    string? Description,
     string StackNo,
     string LotNo,
     decimal PurchaseRate);

@@ -173,6 +173,20 @@ public class SalesInvoicesApiController : ControllerBase
         }
     }
 
+    [HttpGet("tax-rates")]
+    [RequirePermission("Sales.Create")]
+    public async Task<IActionResult> TaxRates(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _salesInvoiceService.GetTaxRatesAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("{id:int}")]
     [RequirePermission("Sales.View")]
     public async Task<IActionResult> Get(int id, CancellationToken cancellationToken)

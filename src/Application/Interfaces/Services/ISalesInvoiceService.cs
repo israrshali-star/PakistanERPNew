@@ -16,6 +16,8 @@ public interface ISalesInvoiceService
     Task<IReadOnlyList<SalesInvoiceItemLookupDto>> GetItemLookupsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<SalesInvoiceTaxRatesDto> GetTaxRatesAsync(CancellationToken cancellationToken = default);
+
     Task<SalesInvoiceSaveResult> CreateAsync(
         SalesInvoiceSaveRequest request,
         CancellationToken cancellationToken = default);
