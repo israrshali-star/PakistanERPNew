@@ -1,0 +1,494 @@
+2026-06-07 20:23:50.398 +05:00 [WRN] Entity 'ChartOfAccount' has a global query filter defined and is the required end of a relationship with the entity 'JournalEntryLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 20:23:50.451 +05:00 [WRN] Entity 'Item' has a global query filter defined and is the required end of a relationship with the entity 'SalesInvoiceLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 20:23:50.454 +05:00 [WRN] Entity 'Company' has a global query filter defined and is the required end of a relationship with the entity 'UserCompany'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 20:23:50.456 +05:00 [WRN] Entity 'VendorBill' has a global query filter defined and is the required end of a relationship with the entity 'VendorBillLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 20:23:50.590 +05:00 [WRN] The 'JournalStatus' property 'Status' on entity type 'JournalEntry' is configured with a database-generated default, but has no configured sentinel value. The database-generated default will always be used for inserts when the property has the value '0', since this is the CLR default for the 'JournalStatus' type. Consider using a nullable type, using a nullable backing field, or setting the sentinel value for the property to ensure the database default is used when, and only when, appropriate. See https://aka.ms/efcore-docs-default-values for more information.
+2026-06-07 20:23:51.662 +05:00 [INF] No pending EF migrations.
+2026-06-07 20:23:52.410 +05:00 [INF] Company data already exists; ensuring chart of accounts and demo items.
+2026-06-07 20:23:52.797 +05:00 [INF] Pakistan Accounting ERP started (Development)
+2026-06-07 20:23:53.151 +05:00 [ERR] Database backup failed.
+Microsoft.Data.SqlClient.SqlException (0x80131904): Cannot open backup device 'C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\App_Data\Backups\PakistanAccountingERP_20260607_202352.bak'. Operating system error 5(Access is denied.).
+BACKUP DATABASE is terminating abnormally.
+   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__210_1(IAsyncResult result)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 115
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+ClientConnectionId:41ba70ec-ab9d-4547-ad19-42ab4f526e54
+Error Number:3201,State:1,Class:16
+2026-06-07 20:23:53.321 +05:00 [ERR] Scheduled backup run failed.
+System.InvalidOperationException: 'PakistanAccountingERP.Infrastructure.Repositories.UnitOfWork' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.Dispose()
+   at PakistanAccountingERP.Infrastructure.Services.ScheduledBackupHostedService.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\ScheduledBackupHostedService.cs:line 44
+2026-06-07 20:23:54.456 +05:00 [INF] HTTP GET / responded 302 in 133.9947 ms
+2026-06-07 20:23:54.725 +05:00 [INF] HTTP GET /Account/Login responded 200 in 233.0220 ms
+2026-06-07 20:23:54.788 +05:00 [INF] HTTP GET /lib/jquery-validation/dist/jquery.validate.min.js responded 304 in 33.1845 ms
+2026-06-07 20:23:54.789 +05:00 [INF] HTTP GET /lib/jquery/dist/jquery.min.js responded 304 in 35.2883 ms
+2026-06-07 20:23:54.788 +05:00 [INF] HTTP GET /lib/bootstrap/dist/css/bootstrap.min.css responded 304 in 36.1438 ms
+2026-06-07 20:23:54.789 +05:00 [INF] HTTP GET /lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js responded 304 in 33.0453 ms
+2026-06-07 20:23:54.789 +05:00 [INF] HTTP GET /css/auth.css responded 304 in 35.0815 ms
+2026-06-07 20:23:54.789 +05:00 [INF] HTTP GET /lib/bootstrap/dist/js/bootstrap.bundle.min.js responded 304 in 3.2738 ms
+2026-06-07 20:24:06.091 +05:00 [INF] HTTP POST /Account/Login responded 302 in 460.2601 ms
+2026-06-07 20:24:06.282 +05:00 [INF] HTTP GET / responded 200 in 179.3080 ms
+2026-06-07 20:24:06.317 +05:00 [INF] HTTP GET /css/site.css responded 304 in 0.7336 ms
+2026-06-07 20:24:06.319 +05:00 [INF] HTTP GET /js/app.js responded 304 in 0.7560 ms
+2026-06-07 20:24:06.340 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 200 in 24.3074 ms
+2026-06-07 20:24:06.319 +05:00 [INF] HTTP GET /js/dashboard.js responded 304 in 0.7220 ms
+2026-06-07 20:24:06.320 +05:00 [INF] HTTP GET /js/site.js responded 304 in 0.5954 ms
+2026-06-07 20:24:06.544 +05:00 [INF] HTTP GET /api/company/list responded 200 in 44.3321 ms
+2026-06-07 20:24:06.619 +05:00 [INF] HTTP GET /api/company/current responded 200 in 59.6138 ms
+2026-06-07 20:24:06.922 +05:00 [INF] HTTP GET /api/dashboard responded 200 in 420.9240 ms
+2026-06-07 20:24:15.472 +05:00 [INF] HTTP GET /ChartOfAccounts responded 200 in 33.7371 ms
+2026-06-07 20:24:15.508 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2109 ms
+2026-06-07 20:24:15.513 +05:00 [INF] HTTP GET /js/modules/chart-of-accounts.js responded 304 in 0.8499 ms
+2026-06-07 20:24:15.620 +05:00 [INF] HTTP GET /api/company/list responded 200 in 13.4877 ms
+2026-06-07 20:24:15.646 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.9806 ms
+2026-06-07 20:24:15.666 +05:00 [INF] HTTP GET /api/lookup/account-types responded 200 in 58.2687 ms
+2026-06-07 20:24:15.833 +05:00 [INF] HTTP GET /api/chart-of-accounts/tree responded 200 in 140.1763 ms
+2026-06-07 20:24:41.903 +05:00 [INF] HTTP DELETE /api/chart-of-accounts/44 responded 400 in 128.5835 ms
+2026-06-07 20:26:17.730 +05:00 [INF] HTTP DELETE /api/chart-of-accounts/59 responded 200 in 101.4929 ms
+2026-06-07 20:26:17.778 +05:00 [INF] HTTP GET /api/chart-of-accounts/tree responded 200 in 36.8445 ms
+2026-06-07 20:26:33.147 +05:00 [INF] HTTP GET /api/chart-of-accounts/122 responded 200 in 48.1197 ms
+2026-06-07 20:26:33.180 +05:00 [INF] HTTP GET /api/lookup/sub-account-types responded 200 in 25.1750 ms
+2026-06-07 20:26:33.191 +05:00 [INF] HTTP GET /api/lookup/sub-account-types responded 200 in 8.5013 ms
+2026-06-07 20:26:33.222 +05:00 [INF] HTTP GET /api/chart-of-accounts/parents responded 200 in 22.5606 ms
+2026-06-07 20:27:23.061 +05:00 [INF] HTTP GET /JournalEntries responded 200 in 35.7994 ms
+2026-06-07 20:27:23.099 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2674 ms
+2026-06-07 20:27:23.257 +05:00 [INF] HTTP GET /api/company/current responded 200 in 18.0717 ms
+2026-06-07 20:27:23.264 +05:00 [INF] HTTP GET /api/company/list responded 200 in 25.9339 ms
+2026-06-07 20:27:23.302 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.6983 ms
+2026-06-07 20:27:23.403 +05:00 [INF] HTTP GET /api/journal-entries/datatable responded 200 in 110.3451 ms
+2026-06-07 20:27:29.642 +05:00 [INF] HTTP GET /JournalEntries/Details/10 responded 200 in 68.9783 ms
+2026-06-07 20:27:29.677 +05:00 [INF] HTTP GET /js/modules/journal-entry-details.js responded 304 in 1.3132 ms
+2026-06-07 20:27:29.738 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.0390 ms
+2026-06-07 20:27:29.813 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.1440 ms
+2026-06-07 20:27:33.990 +05:00 [INF] HTTP GET /JournalEntries responded 200 in 6.4118 ms
+2026-06-07 20:27:34.072 +05:00 [INF] HTTP GET /api/company/current responded 200 in 16.0908 ms
+2026-06-07 20:27:34.079 +05:00 [INF] HTTP GET /api/company/list responded 200 in 23.6005 ms
+2026-06-07 20:27:34.157 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.4910 ms
+2026-06-07 20:27:34.174 +05:00 [INF] HTTP GET /api/journal-entries/datatable responded 200 in 25.7769 ms
+2026-06-07 20:27:38.231 +05:00 [INF] HTTP GET /Banks responded 200 in 18.8220 ms
+2026-06-07 20:27:38.277 +05:00 [INF] HTTP GET /js/modules/banks.js responded 304 in 0.6564 ms
+2026-06-07 20:27:38.318 +05:00 [INF] HTTP GET /api/company/list responded 200 in 7.1262 ms
+2026-06-07 20:27:38.329 +05:00 [INF] HTTP GET /api/company/current responded 200 in 13.0517 ms
+2026-06-07 20:27:38.394 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.8148 ms
+2026-06-07 20:27:38.426 +05:00 [INF] HTTP GET /api/banks/chart-of-accounts responded 200 in 33.0343 ms
+2026-06-07 20:27:38.508 +05:00 [INF] HTTP GET /api/banks/datatable responded 200 in 62.7468 ms
+2026-06-07 20:28:07.797 +05:00 [INF] HTTP GET /BankTransactions responded 200 in 24.0343 ms
+2026-06-07 20:28:07.841 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2258 ms
+2026-06-07 20:28:07.847 +05:00 [INF] HTTP GET /js/modules/bank-transactions.js responded 304 in 0.4779 ms
+2026-06-07 20:28:07.981 +05:00 [INF] HTTP GET /api/company/list responded 200 in 25.3435 ms
+2026-06-07 20:28:07.993 +05:00 [INF] HTTP GET /api/company/current responded 200 in 28.3275 ms
+2026-06-07 20:28:08.010 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.4437 ms
+2026-06-07 20:28:08.049 +05:00 [INF] HTTP GET /api/bank-transactions/banks responded 200 in 41.0335 ms
+2026-06-07 20:28:08.157 +05:00 [INF] HTTP GET /api/bank-transactions/datatable responded 200 in 87.9503 ms
+2026-06-07 20:28:24.748 +05:00 [INF] HTTP GET /Banks responded 200 in 7.6203 ms
+2026-06-07 20:28:24.886 +05:00 [INF] HTTP GET /api/company/list responded 200 in 6.6786 ms
+2026-06-07 20:28:24.900 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.6242 ms
+2026-06-07 20:28:24.909 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.4010 ms
+2026-06-07 20:28:24.928 +05:00 [INF] HTTP GET /api/banks/chart-of-accounts responded 200 in 10.8499 ms
+2026-06-07 20:28:24.973 +05:00 [INF] HTTP GET /api/banks/datatable responded 200 in 26.5690 ms
+2026-06-07 20:28:40.617 +05:00 [INF] HTTP GET /SalesReports responded 200 in 20.0573 ms
+2026-06-07 20:28:40.659 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.8114 ms
+2026-06-07 20:28:40.712 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.1983 ms
+2026-06-07 20:28:40.727 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.3857 ms
+2026-06-07 20:28:40.807 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.5858 ms
+2026-06-07 20:28:44.183 +05:00 [INF] HTTP GET /PurchaseReports responded 200 in 18.1897 ms
+2026-06-07 20:28:44.241 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.8006 ms
+2026-06-07 20:28:44.259 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.1764 ms
+2026-06-07 20:28:44.328 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.3010 ms
+2026-06-07 20:28:47.020 +05:00 [INF] HTTP GET /CompanySettings responded 200 in 23.6585 ms
+2026-06-07 20:28:47.063 +05:00 [INF] HTTP GET /js/modules/company-settings.js responded 304 in 0.4968 ms
+2026-06-07 20:28:47.129 +05:00 [INF] HTTP GET /api/company/list responded 200 in 29.3840 ms
+2026-06-07 20:28:47.149 +05:00 [INF] HTTP GET /api/company/current responded 200 in 49.0912 ms
+2026-06-07 20:28:47.185 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 84.8058 ms
+2026-06-07 20:28:47.209 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.1126 ms
+2026-06-07 20:28:47.257 +05:00 [INF] HTTP GET /api/company/manage responded 200 in 47.8572 ms
+2026-06-07 20:28:47.296 +05:00 [INF] HTTP GET /api/company-settings responded 200 in 92.8995 ms
+2026-06-07 20:28:58.524 +05:00 [INF] HTTP GET /Users responded 200 in 20.0039 ms
+2026-06-07 20:28:58.605 +05:00 [INF] HTTP GET /js/modules/users.js responded 200 in 37.3217 ms
+2026-06-07 20:28:58.667 +05:00 [INF] HTTP GET /api/company/list responded 200 in 9.3853 ms
+2026-06-07 20:28:58.688 +05:00 [INF] HTTP GET /api/users/lookups/roles responded 200 in 29.4273 ms
+2026-06-07 20:28:58.705 +05:00 [INF] HTTP GET /api/users/lookups/companies responded 200 in 45.6489 ms
+2026-06-07 20:28:58.712 +05:00 [INF] HTTP GET /api/company/current responded 200 in 27.2921 ms
+2026-06-07 20:28:58.791 +05:00 [INF] HTTP GET /api/users/datatable responded 200 in 52.2607 ms
+2026-06-07 20:29:16.038 +05:00 [INF] HTTP GET /api/users/e6e0346a-980a-4ce9-bf03-9f5034910f3a responded 200 in 26.7962 ms
+2026-06-07 20:29:26.976 +05:00 [INF] HTTP PUT /api/users/e6e0346a-980a-4ce9-bf03-9f5034910f3a responded 200 in 163.5584 ms
+2026-06-07 20:29:27.000 +05:00 [INF] HTTP GET /api/users/datatable responded 200 in 12.8290 ms
+2026-06-07 20:29:33.456 +05:00 [INF] HTTP GET /Roles responded 200 in 15.0010 ms
+2026-06-07 20:29:33.493 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2077 ms
+2026-06-07 20:29:33.503 +05:00 [INF] HTTP GET /js/modules/roles.js responded 200 in 6.1551 ms
+2026-06-07 20:29:33.582 +05:00 [INF] HTTP GET /api/company/list responded 200 in 11.7310 ms
+2026-06-07 20:29:33.602 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.7270 ms
+2026-06-07 20:29:33.602 +05:00 [INF] HTTP GET /api/roles responded 200 in 32.2043 ms
+2026-06-07 20:29:36.507 +05:00 [INF] HTTP GET /AuditLogs responded 200 in 14.5761 ms
+2026-06-07 20:29:36.564 +05:00 [INF] HTTP GET /js/modules/audit-logs.js responded 200 in 3.4038 ms
+2026-06-07 20:29:36.658 +05:00 [INF] HTTP GET /api/company/list responded 200 in 6.9375 ms
+2026-06-07 20:29:36.664 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.5253 ms
+2026-06-07 20:29:36.680 +05:00 [INF] HTTP GET /api/company/current responded 200 in 5.2705 ms
+2026-06-07 20:29:36.751 +05:00 [INF] HTTP GET /api/audit-logs/datatable responded 200 in 64.6843 ms
+2026-06-07 20:29:40.719 +05:00 [INF] HTTP GET /FiscalYears responded 200 in 17.8788 ms
+2026-06-07 20:29:40.764 +05:00 [INF] HTTP GET /js/modules/fiscal-years.js responded 200 in 2.8050 ms
+2026-06-07 20:29:40.810 +05:00 [INF] HTTP GET /api/company/current responded 200 in 20.5962 ms
+2026-06-07 20:29:40.812 +05:00 [INF] HTTP GET /api/company/list responded 200 in 22.0675 ms
+2026-06-07 20:29:40.921 +05:00 [INF] HTTP GET /api/company/current responded 200 in 34.4245 ms
+2026-06-07 20:29:41.138 +05:00 [INF] HTTP GET /api/fiscal-years/datatable responded 200 in 251.8352 ms
+2026-06-07 20:29:54.027 +05:00 [INF] HTTP GET /SystemJobs responded 200 in 15.6998 ms
+2026-06-07 20:29:54.081 +05:00 [INF] HTTP GET /js/modules/system-jobs.js responded 200 in 3.6373 ms
+2026-06-07 20:29:54.107 +05:00 [INF] HTTP GET /api/company/list responded 200 in 6.7090 ms
+2026-06-07 20:29:54.142 +05:00 [INF] HTTP GET /api/company/current responded 200 in 24.9394 ms
+2026-06-07 20:29:54.143 +05:00 [INF] HTTP GET /api/system-jobs/exports/types responded 200 in 28.4780 ms
+2026-06-07 20:29:54.155 +05:00 [INF] HTTP GET /api/company/current responded 200 in 12.4482 ms
+2026-06-07 20:29:54.318 +05:00 [INF] HTTP GET /api/system-jobs/backups/datatable responded 200 in 204.9897 ms
+2026-06-07 20:29:54.318 +05:00 [INF] HTTP GET /api/system-jobs/exports/datatable responded 200 in 99.1995 ms
+2026-06-07 20:29:59.043 +05:00 [INF] HTTP GET /SystemHealth responded 200 in 13.4631 ms
+2026-06-07 20:29:59.093 +05:00 [INF] HTTP GET /js/modules/system-health.js responded 200 in 3.9280 ms
+2026-06-07 20:29:59.134 +05:00 [INF] HTTP GET /api/company/list responded 200 in 9.5398 ms
+2026-06-07 20:29:59.210 +05:00 [INF] HTTP GET /api/system-health responded 200 in 83.1630 ms
+2026-06-07 20:29:59.224 +05:00 [INF] HTTP GET /api/company/current responded 200 in 12.0942 ms
+2026-06-07 20:30:03.555 +05:00 [INF] HTTP GET /CompanySettings responded 200 in 6.9466 ms
+2026-06-07 20:30:03.685 +05:00 [INF] HTTP GET /api/company/list responded 200 in 6.8031 ms
+2026-06-07 20:30:03.703 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 9.1255 ms
+2026-06-07 20:30:03.741 +05:00 [INF] HTTP GET /api/company/current responded 200 in 20.3079 ms
+2026-06-07 20:30:03.753 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.4547 ms
+2026-06-07 20:30:03.769 +05:00 [INF] HTTP GET /api/company/manage responded 200 in 21.8087 ms
+2026-06-07 20:30:03.789 +05:00 [INF] HTTP GET /api/company-settings responded 200 in 21.7182 ms
+2026-06-07 20:30:14.792 +05:00 [INF] HTTP GET / responded 200 in 11.6753 ms
+2026-06-07 20:30:14.838 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.6036 ms
+2026-06-07 20:30:14.937 +05:00 [INF] HTTP GET /api/company/list responded 200 in 46.6167 ms
+2026-06-07 20:30:15.018 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.2759 ms
+2026-06-07 20:30:15.132 +05:00 [INF] HTTP GET /api/dashboard responded 200 in 241.2064 ms
+2026-06-07 20:30:20.578 +05:00 [INF] HTTP GET /SalesInvoices responded 200 in 29.3767 ms
+2026-06-07 20:30:20.616 +05:00 [INF] HTTP GET /js/modules/sales-invoice-fbr.js responded 304 in 0.2255 ms
+2026-06-07 20:30:20.622 +05:00 [INF] HTTP GET /js/modules/sales-invoices.js responded 304 in 0.4924 ms
+2026-06-07 20:30:20.659 +05:00 [INF] HTTP GET /api/company/list responded 200 in 19.1453 ms
+2026-06-07 20:30:20.666 +05:00 [INF] HTTP GET /api/company/current responded 200 in 25.5573 ms
+2026-06-07 20:30:20.724 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.1876 ms
+2026-06-07 20:30:20.801 +05:00 [INF] HTTP GET /api/sales-invoices/datatable responded 200 in 81.7896 ms
+2026-06-07 20:30:24.227 +05:00 [INF] HTTP GET /CustomerReceipts responded 200 in 22.0369 ms
+2026-06-07 20:30:24.264 +05:00 [INF] HTTP GET /js/modules/customer-receipts.js responded 304 in 0.4741 ms
+2026-06-07 20:30:24.308 +05:00 [INF] HTTP GET /api/company/list responded 200 in 6.1594 ms
+2026-06-07 20:30:24.316 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.1204 ms
+2026-06-07 20:30:24.387 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.7927 ms
+2026-06-07 20:30:24.441 +05:00 [INF] HTTP GET /api/customer-receipts/banks responded 200 in 44.3410 ms
+2026-06-07 20:30:24.489 +05:00 [INF] HTTP GET /api/customer-receipts/customers responded 200 in 97.3066 ms
+2026-06-07 20:30:24.577 +05:00 [INF] HTTP GET /api/customer-receipts/datatable responded 200 in 59.6442 ms
+2026-06-07 20:30:28.133 +05:00 [INF] HTTP GET /SalesInvoices/Create responded 200 in 24.8427 ms
+2026-06-07 20:30:28.174 +05:00 [INF] HTTP GET /js/modules/sales-invoice-create.js responded 200 in 3.4898 ms
+2026-06-07 20:30:28.227 +05:00 [INF] HTTP GET /api/company/list responded 200 in 5.4747 ms
+2026-06-07 20:30:28.240 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.5221 ms
+2026-06-07 20:30:28.298 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.5167 ms
+2026-06-07 20:30:28.339 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 14.9374 ms
+2026-06-07 20:30:28.399 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 75.1223 ms
+2026-06-07 20:30:28.423 +05:00 [INF] HTTP GET /api/sales-invoices/next-invoice-number responded 200 in 108.2722 ms
+2026-06-07 20:30:28.424 +05:00 [INF] HTTP GET /api/sales-invoices/tax-rates responded 200 in 99.7640 ms
+2026-06-07 20:30:28.431 +05:00 [INF] HTTP GET /api/sales-invoices/customers responded 200 in 108.4286 ms
+2026-06-07 20:30:28.480 +05:00 [INF] HTTP GET /api/sales-invoices/items responded 200 in 154.8605 ms
+2026-06-07 20:30:28.976 +05:00 [INF] HTTP GET /api/sales-invoices/stack-availability responded 200 in 138.4812 ms
+2026-06-07 20:30:29.165 +05:00 [INF] HTTP GET /Customers responded 200 in 23.4790 ms
+2026-06-07 20:30:29.203 +05:00 [INF] HTTP GET /js/modules/customers.js responded 304 in 0.2831 ms
+2026-06-07 20:30:29.254 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.8357 ms
+2026-06-07 20:30:29.262 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 12.4893 ms
+2026-06-07 20:30:29.262 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 14.5779 ms
+2026-06-07 20:30:29.329 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.7955 ms
+2026-06-07 20:30:29.360 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.2160 ms
+2026-06-07 20:30:29.486 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 101.8802 ms
+2026-06-07 20:30:48.852 +05:00 [INF] HTTP GET /api/customers/5 responded 200 in 48.8801 ms
+2026-06-07 20:30:58.017 +05:00 [INF] HTTP PUT /api/customers/5 responded 200 in 172.6794 ms
+2026-06-07 20:30:58.038 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 11.2645 ms
+2026-06-07 20:31:03.375 +05:00 [INF] HTTP GET /api/customers/6 responded 200 in 4.5238 ms
+2026-06-07 20:31:11.190 +05:00 [INF] HTTP PUT /api/customers/6 responded 200 in 26.1339 ms
+2026-06-07 20:31:11.211 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 11.0996 ms
+2026-06-07 20:31:45.688 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 57.5896 ms
+2026-06-07 20:31:54.287 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 50.8172 ms
+2026-06-07 20:31:58.025 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 13.1774 ms
+2026-06-07 20:32:28.388 +05:00 [INF] HTTP GET /SalesInvoices responded 200 in 9.7303 ms
+2026-06-07 20:32:28.425 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 1.0136 ms
+2026-06-07 20:32:28.574 +05:00 [INF] HTTP GET /api/company/current responded 200 in 20.9304 ms
+2026-06-07 20:32:28.578 +05:00 [INF] HTTP GET /api/company/list responded 200 in 27.4890 ms
+2026-06-07 20:32:28.610 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.1887 ms
+2026-06-07 20:32:28.636 +05:00 [INF] HTTP GET /api/sales-invoices/datatable responded 200 in 37.4389 ms
+2026-06-07 20:32:32.778 +05:00 [INF] HTTP GET /JournalEntries responded 200 in 5.5420 ms
+2026-06-07 20:32:32.853 +05:00 [INF] HTTP GET /api/company/list responded 200 in 9.3946 ms
+2026-06-07 20:32:32.860 +05:00 [INF] HTTP GET /api/company/current responded 200 in 17.9263 ms
+2026-06-07 20:32:32.928 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.3449 ms
+2026-06-07 20:32:32.966 +05:00 [INF] HTTP GET /api/journal-entries/datatable responded 200 in 47.6520 ms
+2026-06-07 20:32:35.061 +05:00 [INF] HTTP GET /ChartOfAccounts responded 200 in 8.5772 ms
+2026-06-07 20:32:35.152 +05:00 [INF] HTTP GET /api/lookup/account-types responded 200 in 10.9255 ms
+2026-06-07 20:32:35.166 +05:00 [INF] HTTP GET /api/company/list responded 200 in 30.1143 ms
+2026-06-07 20:32:35.237 +05:00 [INF] HTTP GET /api/company/current responded 200 in 13.1731 ms
+2026-06-07 20:32:35.269 +05:00 [INF] HTTP GET /api/chart-of-accounts/tree responded 200 in 45.2440 ms
+2026-06-07 20:33:03.334 +05:00 [INF] HTTP GET /Items responded 200 in 25.3135 ms
+2026-06-07 20:33:03.383 +05:00 [INF] HTTP GET /js/modules/items.js responded 304 in 0.2786 ms
+2026-06-07 20:33:03.423 +05:00 [INF] HTTP GET /api/company/list responded 200 in 5.1911 ms
+2026-06-07 20:33:03.430 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.3466 ms
+2026-06-07 20:33:03.467 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.1519 ms
+2026-06-07 20:33:03.525 +05:00 [INF] HTTP GET /api/items/categories responded 200 in 27.9950 ms
+2026-06-07 20:33:03.536 +05:00 [INF] HTTP GET /api/lookup/units-of-measure responded 200 in 29.0010 ms
+2026-06-07 20:33:03.634 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 79.9724 ms
+2026-06-07 20:33:19.587 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 23.1299 ms
+2026-06-07 20:33:22.760 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 10.9834 ms
+2026-06-07 20:33:25.071 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 10.9622 ms
+2026-06-07 20:33:26.558 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 10.6065 ms
+2026-06-07 20:33:29.159 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 35.1512 ms
+2026-06-07 20:33:32.963 +05:00 [INF] HTTP GET /ItemCategories responded 200 in 21.4085 ms
+2026-06-07 20:33:33.007 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2342 ms
+2026-06-07 20:33:33.015 +05:00 [INF] HTTP GET /js/modules/item-categories.js responded 304 in 2.7603 ms
+2026-06-07 20:33:33.083 +05:00 [INF] HTTP GET /api/company/current responded 200 in 31.5209 ms
+2026-06-07 20:33:33.091 +05:00 [INF] HTTP GET /api/company/list responded 200 in 39.8271 ms
+2026-06-07 20:33:33.167 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.3913 ms
+2026-06-07 20:33:33.210 +05:00 [INF] HTTP GET /api/item-categories/datatable responded 200 in 62.1379 ms
+2026-06-07 20:33:39.030 +05:00 [INF] HTTP GET /UnitsOfMeasure responded 200 in 17.6955 ms
+2026-06-07 20:33:39.079 +05:00 [INF] HTTP GET /js/modules/units-of-measure.js responded 304 in 0.5315 ms
+2026-06-07 20:33:39.160 +05:00 [INF] HTTP GET /api/company/list responded 200 in 5.0353 ms
+2026-06-07 20:33:39.197 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.0532 ms
+2026-06-07 20:33:39.252 +05:00 [INF] HTTP GET /api/units-of-measure/datatable responded 200 in 72.4861 ms
+2026-06-07 20:33:40.700 +05:00 [INF] HTTP GET /InventoryTransactions responded 200 in 22.1144 ms
+2026-06-07 20:33:40.741 +05:00 [INF] HTTP GET /js/modules/inventory-transactions.js responded 304 in 0.4416 ms
+2026-06-07 20:33:40.781 +05:00 [INF] HTTP GET /api/company/list responded 200 in 7.8693 ms
+2026-06-07 20:33:40.791 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.6828 ms
+2026-06-07 20:33:40.878 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.4040 ms
+2026-06-07 20:33:40.926 +05:00 [INF] HTTP GET /api/inventory-transactions/warehouses responded 200 in 49.5664 ms
+2026-06-07 20:33:40.958 +05:00 [INF] HTTP GET /api/inventory-transactions/items responded 200 in 83.5104 ms
+2026-06-07 20:33:41.127 +05:00 [INF] HTTP GET /api/inventory-transactions/datatable responded 200 in 88.8117 ms
+2026-06-07 20:33:42.822 +05:00 [INF] HTTP GET /InventoryReports responded 200 in 16.8376 ms
+2026-06-07 20:33:42.906 +05:00 [INF] HTTP GET /api/company/list responded 200 in 9.4100 ms
+2026-06-07 20:33:42.919 +05:00 [INF] HTTP GET /api/company/current responded 200 in 46.3901 ms
+2026-06-07 20:33:42.983 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.2280 ms
+2026-06-07 20:33:46.005 +05:00 [INF] HTTP GET /Items responded 200 in 7.7151 ms
+2026-06-07 20:33:46.095 +05:00 [INF] HTTP GET /api/company/list responded 200 in 5.2941 ms
+2026-06-07 20:33:46.102 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.5685 ms
+2026-06-07 20:33:46.176 +05:00 [INF] HTTP GET /api/company/current responded 200 in 5.7705 ms
+2026-06-07 20:33:46.191 +05:00 [INF] HTTP GET /api/items/categories responded 200 in 8.8265 ms
+2026-06-07 20:33:46.198 +05:00 [INF] HTTP GET /api/lookup/units-of-measure responded 200 in 13.7537 ms
+2026-06-07 20:33:46.254 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 31.2621 ms
+2026-06-07 20:33:53.996 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 12.9435 ms
+2026-06-07 20:34:01.263 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 19.9442 ms
+2026-06-07 20:34:02.563 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 15.1688 ms
+2026-06-07 20:34:03.130 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 15.9961 ms
+2026-06-07 20:34:03.617 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 13.0393 ms
+2026-06-07 20:34:04.123 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 15.5188 ms
+2026-06-07 20:34:04.553 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 13.7312 ms
+2026-06-07 20:34:04.953 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 13.3776 ms
+2026-06-07 20:34:08.967 +05:00 [INF] HTTP GET /api/items/798 responded 200 in 51.2747 ms
+2026-06-07 20:34:48.523 +05:00 [INF] HTTP PUT /api/items/798 responded 200 in 173.3772 ms
+2026-06-07 20:34:48.559 +05:00 [INF] HTTP GET /api/items/datatable responded 200 in 24.5742 ms
+2026-06-07 20:34:52.360 +05:00 [INF] HTTP GET /api/items/804 responded 200 in 4.8340 ms
+2026-06-07 20:35:02.735 +05:00 [INF] HTTP GET /Vendors responded 200 in 21.5123 ms
+2026-06-07 20:35:02.773 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2061 ms
+2026-06-07 20:35:02.775 +05:00 [INF] HTTP GET /js/modules/vendors.js responded 304 in 1.0642 ms
+2026-06-07 20:35:02.862 +05:00 [INF] HTTP GET /api/company/list responded 200 in 10.0541 ms
+2026-06-07 20:35:02.866 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 12.5387 ms
+2026-06-07 20:35:02.907 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.5562 ms
+2026-06-07 20:35:03.043 +05:00 [INF] HTTP GET /api/vendors/datatable responded 200 in 90.2901 ms
+2026-06-07 20:35:15.269 +05:00 [INF] HTTP GET /api/vendors/datatable responded 200 in 46.4246 ms
+2026-06-07 20:35:16.853 +05:00 [INF] HTTP GET /api/vendors/datatable responded 200 in 9.5930 ms
+2026-06-07 20:35:25.481 +05:00 [INF] HTTP GET /VendorBills responded 200 in 23.5576 ms
+2026-06-07 20:35:25.527 +05:00 [INF] HTTP GET /js/modules/vendor-bills.js responded 304 in 0.4504 ms
+2026-06-07 20:35:25.648 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.8921 ms
+2026-06-07 20:35:25.690 +05:00 [INF] HTTP GET /api/company/current responded 200 in 31.6013 ms
+2026-06-07 20:35:25.697 +05:00 [INF] HTTP GET /api/company/current responded 200 in 18.4964 ms
+2026-06-07 20:35:25.791 +05:00 [INF] HTTP GET /api/vendor-bills/datatable responded 200 in 73.0187 ms
+2026-06-07 20:35:29.718 +05:00 [INF] HTTP GET /VendorPayments responded 200 in 29.2445 ms
+2026-06-07 20:35:29.758 +05:00 [INF] HTTP GET /js/modules/vendor-payments.js responded 304 in 0.2406 ms
+2026-06-07 20:35:29.815 +05:00 [INF] HTTP GET /api/company/list responded 200 in 7.5920 ms
+2026-06-07 20:35:29.823 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.0355 ms
+2026-06-07 20:35:29.919 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.8152 ms
+2026-06-07 20:35:29.955 +05:00 [INF] HTTP GET /api/vendor-payments/banks responded 200 in 45.8879 ms
+2026-06-07 20:35:29.984 +05:00 [INF] HTTP GET /api/vendor-payments/vendors responded 200 in 75.1275 ms
+2026-06-07 20:35:30.068 +05:00 [INF] HTTP GET /api/vendor-payments/datatable responded 200 in 61.4516 ms
+2026-06-07 20:35:34.684 +05:00 [INF] HTTP GET /Vendors responded 200 in 8.0487 ms
+2026-06-07 20:35:34.763 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.8953 ms
+2026-06-07 20:35:34.764 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 8.7999 ms
+2026-06-07 20:35:34.841 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.7155 ms
+2026-06-07 20:35:34.853 +05:00 [INF] HTTP GET /api/vendors/datatable responded 200 in 16.4044 ms
+2026-06-07 20:35:38.839 +05:00 [INF] HTTP GET /Customers responded 200 in 8.3109 ms
+2026-06-07 20:35:38.946 +05:00 [INF] HTTP GET /api/company/list responded 200 in 21.2175 ms
+2026-06-07 20:35:38.953 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 23.6956 ms
+2026-06-07 20:35:38.975 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 44.8504 ms
+2026-06-07 20:35:39.025 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.8651 ms
+2026-06-07 20:35:39.041 +05:00 [INF] HTTP GET /api/company/current responded 200 in 13.6005 ms
+2026-06-07 20:35:39.145 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 76.0726 ms
+2026-06-07 20:35:42.090 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 105.6964 ms
+2026-06-07 20:35:42.453 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 70.1204 ms
+2026-06-07 20:35:42.944 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 65.5151 ms
+2026-06-07 20:35:47.377 +05:00 [INF] HTTP GET /api/customers/82 responded 200 in 22.0005 ms
+2026-06-07 20:36:00.234 +05:00 [INF] HTTP PUT /api/customers/82 responded 200 in 38.1618 ms
+2026-06-07 20:36:00.306 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 63.4707 ms
+2026-06-07 22:00:32.272 +05:00 [WRN] Entity 'ChartOfAccount' has a global query filter defined and is the required end of a relationship with the entity 'JournalEntryLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:00:32.323 +05:00 [WRN] Entity 'Item' has a global query filter defined and is the required end of a relationship with the entity 'SalesInvoiceLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:00:32.325 +05:00 [WRN] Entity 'Company' has a global query filter defined and is the required end of a relationship with the entity 'UserCompany'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:00:32.330 +05:00 [WRN] Entity 'VendorBill' has a global query filter defined and is the required end of a relationship with the entity 'VendorBillLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:00:32.447 +05:00 [WRN] The 'JournalStatus' property 'Status' on entity type 'JournalEntry' is configured with a database-generated default, but has no configured sentinel value. The database-generated default will always be used for inserts when the property has the value '0', since this is the CLR default for the 'JournalStatus' type. Consider using a nullable type, using a nullable backing field, or setting the sentinel value for the property to ensure the database default is used when, and only when, appropriate. See https://aka.ms/efcore-docs-default-values for more information.
+2026-06-07 22:00:33.543 +05:00 [INF] No pending EF migrations.
+2026-06-07 22:00:34.238 +05:00 [INF] Company data already exists; ensuring chart of accounts and demo items.
+2026-06-07 22:00:34.643 +05:00 [INF] Pakistan Accounting ERP started (Development)
+2026-06-07 22:00:34.925 +05:00 [ERR] Database backup failed.
+Microsoft.Data.SqlClient.SqlException (0x80131904): Cannot open backup device 'C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\App_Data\Backups\PakistanAccountingERP_20260607_220034.bak'. Operating system error 5(Access is denied.).
+BACKUP DATABASE is terminating abnormally.
+   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__210_1(IAsyncResult result)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 115
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+ClientConnectionId:3d4294aa-a282-41f8-88be-7227283b5be6
+Error Number:3201,State:1,Class:16
+2026-06-07 22:00:35.046 +05:00 [ERR] Scheduled backup run failed.
+System.InvalidOperationException: 'PakistanAccountingERP.Infrastructure.Repositories.UnitOfWork' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.Dispose()
+   at PakistanAccountingERP.Infrastructure.Services.ScheduledBackupHostedService.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\ScheduledBackupHostedService.cs:line 44
+2026-06-07 22:00:36.032 +05:00 [INF] HTTP GET / responded 302 in 107.1336 ms
+2026-06-07 22:00:36.306 +05:00 [INF] HTTP GET /Account/Login responded 200 in 240.0918 ms
+2026-06-07 22:00:50.828 +05:00 [INF] HTTP POST /Account/Login responded 302 in 478.2915 ms
+2026-06-07 22:00:51.054 +05:00 [INF] HTTP GET / responded 200 in 214.3916 ms
+2026-06-07 22:00:51.101 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 200 in 27.5138 ms
+2026-06-07 22:00:51.282 +05:00 [INF] HTTP GET /api/company/list responded 200 in 41.7428 ms
+2026-06-07 22:00:51.345 +05:00 [INF] HTTP GET /api/company/current responded 200 in 50.5795 ms
+2026-06-07 22:00:51.661 +05:00 [INF] HTTP GET /api/dashboard responded 200 in 419.0658 ms
+2026-06-07 22:01:21.019 +05:00 [INF] HTTP GET /ChartOfAccounts responded 200 in 31.3994 ms
+2026-06-07 22:01:21.059 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.5945 ms
+2026-06-07 22:01:21.154 +05:00 [INF] HTTP GET /api/company/list responded 200 in 23.7496 ms
+2026-06-07 22:01:21.181 +05:00 [INF] HTTP GET /api/lookup/account-types responded 200 in 34.5648 ms
+2026-06-07 22:01:21.196 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.2095 ms
+2026-06-07 22:01:21.334 +05:00 [INF] HTTP GET /api/chart-of-accounts/tree responded 200 in 127.8862 ms
+2026-06-07 22:04:00.631 +05:00 [INF] HTTP GET /SalesInvoices/Create responded 200 in 31.8135 ms
+2026-06-07 22:04:00.660 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2641 ms
+2026-06-07 22:04:00.662 +05:00 [INF] HTTP GET /js/modules/sales-invoice-create.js responded 304 in 0.3979 ms
+2026-06-07 22:04:00.779 +05:00 [INF] HTTP GET /api/company/list responded 200 in 21.6221 ms
+2026-06-07 22:04:00.793 +05:00 [INF] HTTP GET /api/company/current responded 200 in 32.5576 ms
+2026-06-07 22:04:00.801 +05:00 [INF] HTTP GET /api/company/current responded 200 in 5.6414 ms
+2026-06-07 22:04:00.866 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 58.7058 ms
+2026-06-07 22:04:00.866 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 58.9519 ms
+2026-06-07 22:04:00.923 +05:00 [INF] HTTP GET /api/sales-invoices/next-invoice-number responded 200 in 119.7372 ms
+2026-06-07 22:04:00.924 +05:00 [INF] HTTP GET /api/sales-invoices/tax-rates responded 200 in 117.4359 ms
+2026-06-07 22:04:00.931 +05:00 [INF] HTTP GET /api/sales-invoices/customers responded 200 in 125.5204 ms
+2026-06-07 22:04:00.982 +05:00 [INF] HTTP GET /api/sales-invoices/items responded 200 in 176.2376 ms
+2026-06-07 22:04:01.510 +05:00 [INF] HTTP GET /api/sales-invoices/stack-availability responded 200 in 153.3958 ms
+2026-06-07 22:04:21.366 +05:00 [INF] HTTP GET /VendorBills/Create responded 200 in 21.3297 ms
+2026-06-07 22:04:21.409 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.2567 ms
+2026-06-07 22:04:21.463 +05:00 [INF] HTTP GET /js/modules/vendor-bill-create.js responded 200 in 51.2797 ms
+2026-06-07 22:04:21.526 +05:00 [INF] HTTP GET /api/company/list responded 200 in 19.2494 ms
+2026-06-07 22:04:21.542 +05:00 [INF] HTTP GET /api/company/current responded 200 in 34.1756 ms
+2026-06-07 22:04:21.564 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.9835 ms
+2026-06-07 22:04:21.597 +05:00 [INF] HTTP GET /api/vendor-bills/next-bill-number responded 200 in 40.1860 ms
+2026-06-07 22:04:21.599 +05:00 [INF] HTTP GET /api/vendor-bills/vendors responded 200 in 42.0227 ms
+2026-06-07 22:04:21.632 +05:00 [INF] HTTP GET /api/vendor-bills/items responded 200 in 73.4609 ms
+2026-06-07 22:05:21.058 +05:00 [INF] HTTP GET /VendorPayments responded 200 in 32.1380 ms
+2026-06-07 22:05:21.107 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.4439 ms
+2026-06-07 22:05:21.250 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.8821 ms
+2026-06-07 22:05:21.250 +05:00 [INF] HTTP GET /api/company/list responded 200 in 20.7619 ms
+2026-06-07 22:05:21.285 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.6445 ms
+2026-06-07 22:05:21.341 +05:00 [INF] HTTP GET /api/vendor-payments/banks responded 200 in 73.9074 ms
+2026-06-07 22:05:21.365 +05:00 [INF] HTTP GET /api/vendor-payments/vendors responded 200 in 101.0697 ms
+2026-06-07 22:05:21.495 +05:00 [INF] HTTP GET /api/vendor-payments/datatable responded 200 in 86.2203 ms
+2026-06-07 22:05:23.488 +05:00 [INF] HTTP GET /api/vendor-payments/next-payment-number responded 200 in 23.7255 ms
+2026-06-07 22:05:47.832 +05:00 [INF] HTTP GET /ChartOfAccounts responded 200 in 17.2711 ms
+2026-06-07 22:05:47.927 +05:00 [INF] HTTP GET /api/company/list responded 200 in 35.1839 ms
+2026-06-07 22:05:47.930 +05:00 [INF] HTTP GET /api/lookup/account-types responded 200 in 35.5810 ms
+2026-06-07 22:05:47.983 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.7530 ms
+2026-06-07 22:05:48.026 +05:00 [INF] HTTP GET /api/chart-of-accounts/tree responded 200 in 48.1551 ms
+2026-06-07 22:05:51.667 +05:00 [INF] HTTP GET /Customers responded 200 in 22.4281 ms
+2026-06-07 22:05:51.711 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.4417 ms
+2026-06-07 22:05:51.837 +05:00 [INF] HTTP GET /api/company/list responded 200 in 10.2645 ms
+2026-06-07 22:05:51.849 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 13.4051 ms
+2026-06-07 22:05:51.850 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 15.1426 ms
+2026-06-07 22:05:51.878 +05:00 [INF] HTTP GET /api/company/current responded 200 in 12.0519 ms
+2026-06-07 22:05:51.893 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.6645 ms
+2026-06-07 22:05:52.030 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 116.4871 ms
+2026-06-07 22:06:33.446 +05:00 [INF] HTTP POST /Account/Logout responded 302 in 13.4511 ms
+2026-06-07 22:06:33.470 +05:00 [INF] HTTP GET /Account/Login responded 200 in 11.5564 ms
+2026-06-07 22:13:40.649 +05:00 [WRN] Entity 'ChartOfAccount' has a global query filter defined and is the required end of a relationship with the entity 'JournalEntryLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:13:40.706 +05:00 [WRN] Entity 'Item' has a global query filter defined and is the required end of a relationship with the entity 'SalesInvoiceLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:13:40.709 +05:00 [WRN] Entity 'Company' has a global query filter defined and is the required end of a relationship with the entity 'UserCompany'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:13:40.711 +05:00 [WRN] Entity 'VendorBill' has a global query filter defined and is the required end of a relationship with the entity 'VendorBillLine'. This may lead to unexpected results when the required entity is filtered out. Either configure the navigation as optional, or define matching query filters for both entities in the navigation. See https://go.microsoft.com/fwlink/?linkid=2131316 for more information.
+2026-06-07 22:13:40.818 +05:00 [WRN] The 'JournalStatus' property 'Status' on entity type 'JournalEntry' is configured with a database-generated default, but has no configured sentinel value. The database-generated default will always be used for inserts when the property has the value '0', since this is the CLR default for the 'JournalStatus' type. Consider using a nullable type, using a nullable backing field, or setting the sentinel value for the property to ensure the database default is used when, and only when, appropriate. See https://aka.ms/efcore-docs-default-values for more information.
+2026-06-07 22:13:41.609 +05:00 [INF] No pending EF migrations.
+2026-06-07 22:13:42.649 +05:00 [INF] Company data already exists; ensuring chart of accounts and demo items.
+2026-06-07 22:13:42.789 +05:00 [INF] Pakistan Accounting ERP started (Development)
+2026-06-07 22:13:43.208 +05:00 [ERR] Database backup failed.
+Microsoft.Data.SqlClient.SqlException (0x80131904): Cannot open backup device 'C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\App_Data\Backups\PakistanAccountingERP_20260607_221342.bak'. Operating system error 5(Access is denied.).
+BACKUP DATABASE is terminating abnormally.
+   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__210_1(IAsyncResult result)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 115
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+   at PakistanAccountingERP.Infrastructure.Services.DatabaseBackupService.RunBackupAsync(JobRunType runType, CancellationToken cancellationToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\DatabaseBackupService.cs:line 126
+ClientConnectionId:570eb754-7746-46dc-93e0-f9d4c4396f02
+Error Number:3201,State:1,Class:16
+2026-06-07 22:13:43.340 +05:00 [ERR] Scheduled backup run failed.
+System.InvalidOperationException: 'PakistanAccountingERP.Infrastructure.Repositories.UnitOfWork' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.Dispose()
+   at PakistanAccountingERP.Infrastructure.Services.ScheduledBackupHostedService.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\Services\ScheduledBackupHostedService.cs:line 44
+2026-06-07 22:13:45.614 +05:00 [INF] HTTP GET / responded 302 in 175.1178 ms
+2026-06-07 22:13:46.022 +05:00 [INF] HTTP GET /Account/Login responded 200 in 346.9563 ms
+2026-06-07 22:13:58.481 +05:00 [INF] HTTP POST /Account/Login responded 302 in 444.7833 ms
+2026-06-07 22:13:58.679 +05:00 [INF] HTTP GET / responded 200 in 184.1378 ms
+2026-06-07 22:13:58.745 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 200 in 27.7526 ms
+2026-06-07 22:13:58.956 +05:00 [INF] HTTP GET /api/company/list responded 200 in 43.7130 ms
+2026-06-07 22:13:59.035 +05:00 [INF] HTTP GET /api/company/current responded 200 in 60.0239 ms
+2026-06-07 22:13:59.344 +05:00 [INF] HTTP GET /api/dashboard responded 200 in 432.8719 ms
+2026-06-07 22:14:11.150 +05:00 [INF] HTTP GET /Customers responded 200 in 35.8021 ms
+2026-06-07 22:14:11.190 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 1.2600 ms
+2026-06-07 22:14:11.331 +05:00 [INF] HTTP GET /api/company/list responded 200 in 15.5149 ms
+2026-06-07 22:14:11.363 +05:00 [INF] HTTP GET /api/company/current responded 200 in 9.3923 ms
+2026-06-07 22:14:11.391 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 60.7795 ms
+2026-06-07 22:14:11.400 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 69.2733 ms
+2026-06-07 22:14:11.432 +05:00 [INF] HTTP GET /api/company/current responded 200 in 8.2693 ms
+2026-06-07 22:14:11.580 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 115.5610 ms
+2026-06-07 22:14:20.107 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 44.5745 ms
+2026-06-07 22:14:21.416 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 44.8092 ms
+2026-06-07 22:14:32.906 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 40.1272 ms
+2026-06-07 22:15:20.848 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 56.1733 ms
+2026-06-07 22:15:24.648 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 55.9367 ms
+2026-06-07 22:15:37.858 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 75.3283 ms
+2026-06-07 22:15:38.426 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 14.8090 ms
+2026-06-07 22:15:38.829 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 14.9975 ms
+2026-06-07 22:15:41.353 +05:00 [INF] HTTP GET /Customers/Statement/82 responded 200 in 58.7139 ms
+2026-06-07 22:15:41.395 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.7727 ms
+2026-06-07 22:15:41.395 +05:00 [INF] HTTP GET /js/modules/customer-statement.js responded 304 in 0.9006 ms
+2026-06-07 22:15:41.469 +05:00 [INF] HTTP GET /api/company/list responded 200 in 12.0457 ms
+2026-06-07 22:15:41.497 +05:00 [INF] HTTP GET /api/company/current responded 200 in 10.3550 ms
+2026-06-07 22:15:41.698 +05:00 [INF] HTTP GET /api/customers/82/statement responded 200 in 234.1222 ms
+2026-06-07 22:16:03.458 +05:00 [INF] HTTP GET /Customers/Ledger/82 responded 200 in 50.6346 ms
+2026-06-07 22:16:03.494 +05:00 [INF] HTTP GET /PakistanAccountingERP.Web.styles.css responded 304 in 0.5969 ms
+2026-06-07 22:16:03.594 +05:00 [INF] HTTP GET /api/company/list responded 200 in 5.3697 ms
+2026-06-07 22:16:03.625 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.7778 ms
+2026-06-07 22:16:06.920 +05:00 [INF] HTTP GET /Customers responded 200 in 8.5752 ms
+2026-06-07 22:16:07.006 +05:00 [INF] HTTP GET /api/company/list responded 200 in 8.5721 ms
+2026-06-07 22:16:07.022 +05:00 [INF] HTTP GET /api/lookup/scenario-types responded 200 in 22.4796 ms
+2026-06-07 22:16:07.022 +05:00 [INF] HTTP GET /api/lookup/provinces responded 200 in 22.9996 ms
+2026-06-07 22:16:07.104 +05:00 [INF] HTTP GET /api/company/current responded 200 in 6.9677 ms
+2026-06-07 22:16:07.115 +05:00 [INF] HTTP GET /api/company/current responded 200 in 7.9649 ms
+2026-06-07 22:16:07.199 +05:00 [INF] HTTP GET /api/customers/datatable responded 200 in 60.0096 ms
+2026-06-07 22:16:11.349 +05:00 [INF] HTTP POST /Account/Logout responded 302 in 12.3431 ms
+2026-06-07 22:16:11.363 +05:00 [INF] HTTP GET /Account/Login responded 200 in 4.2389 ms
