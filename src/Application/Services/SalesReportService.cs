@@ -43,11 +43,36 @@ public class SalesReportService : ISalesReportService
         var invoices = await query
             .OrderBy(i => i.InvoiceDate)
             .ThenBy(i => i.InvoiceNumber)
+            .Select(i => new
+            {
+                i.Id,
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                i.CustomerId,
+                i.InvoiceType,
+                i.Status,
+                i.SubTotal,
+                i.DiscountAmount,
+                i.TaxAmount,
+                i.NetTotal,
+                i.FbrInvoiceNumber
+            })
+            .ToListAsync(cancellationToken);
+
+        var customerIds = invoices.Select(i => i.CustomerId).Distinct().ToList();
+        var customerNames = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => customerIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.BuyerName })
+            .ToListAsync(cancellationToken);
+        var customerLookup = customerNames.ToDictionary(c => c.Id, c => c.BuyerName);
+
+        var invoiceLines = invoices
             .Select(i => new SalesRegisterLineDto(
                 i.Id,
                 i.InvoiceNumber,
                 i.InvoiceDate,
-                i.Customer.BuyerName,
+                customerLookup.GetValueOrDefault(i.CustomerId, "—"),
                 i.InvoiceType.ToString(),
                 i.Status.ToString(),
                 i.SubTotal,
@@ -55,19 +80,19 @@ public class SalesReportService : ISalesReportService
                 i.TaxAmount,
                 i.NetTotal,
                 i.FbrInvoiceNumber))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return new SalesRegisterReportDto(
             request.FromDate.Date,
             request.ToDate.Date,
             request.CustomerId,
             customerLabel,
-            invoices.Count,
-            invoices.Sum(l => l.SubTotal),
-            invoices.Sum(l => l.DiscountAmount),
-            invoices.Sum(l => l.TaxAmount),
-            invoices.Sum(l => l.NetTotal),
-            invoices);
+            invoiceLines.Count,
+            invoiceLines.Sum(l => l.SubTotal),
+            invoiceLines.Sum(l => l.DiscountAmount),
+            invoiceLines.Sum(l => l.TaxAmount),
+            invoiceLines.Sum(l => l.NetTotal),
+            invoiceLines);
     }
 
     public async Task<SalesByCustomerReportDto> GetSalesByCustomerAsync(
@@ -83,28 +108,52 @@ public class SalesReportService : ISalesReportService
         }
 
         var grouped = await query
-            .GroupBy(i => new { i.CustomerId, i.Customer.BuyerId, i.Customer.BuyerName })
-            .Select(g => new SalesByCustomerLineDto(
-                g.Key.CustomerId,
-                g.Key.BuyerId,
-                g.Key.BuyerName,
-                g.Count(),
-                g.Sum(i => i.SubTotal),
-                g.Sum(i => i.DiscountAmount),
-                g.Sum(i => i.TaxAmount),
-                g.Sum(i => i.NetTotal)))
-            .OrderBy(l => l.CustomerName)
+            .GroupBy(i => i.CustomerId)
+            .Select(g => new
+            {
+                CustomerId = g.Key,
+                InvoiceCount = g.Count(),
+                SubTotal = g.Sum(i => i.SubTotal),
+                DiscountAmount = g.Sum(i => i.DiscountAmount),
+                TaxAmount = g.Sum(i => i.TaxAmount),
+                NetTotal = g.Sum(i => i.NetTotal)
+            })
             .ToListAsync(cancellationToken);
+
+        var customerIds = grouped.Select(g => g.CustomerId).Distinct().ToList();
+        var customers = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => customerIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.BuyerId, c.BuyerName })
+            .ToListAsync(cancellationToken);
+        var customerLookup = customers.ToDictionary(c => c.Id);
+
+        var groupedLines = grouped
+            .Select(g =>
+            {
+                customerLookup.TryGetValue(g.CustomerId, out var customer);
+                return new SalesByCustomerLineDto(
+                    g.CustomerId,
+                    customer?.BuyerId ?? "—",
+                    customer?.BuyerName ?? "—",
+                    g.InvoiceCount,
+                    g.SubTotal,
+                    g.DiscountAmount,
+                    g.TaxAmount,
+                    g.NetTotal);
+            })
+            .OrderBy(l => l.CustomerName)
+            .ToList();
 
         return new SalesByCustomerReportDto(
             request.FromDate.Date,
             request.ToDate.Date,
-            grouped.Count,
-            grouped.Sum(l => l.SubTotal),
-            grouped.Sum(l => l.DiscountAmount),
-            grouped.Sum(l => l.TaxAmount),
-            grouped.Sum(l => l.NetTotal),
-            grouped);
+            groupedLines.Count,
+            groupedLines.Sum(l => l.SubTotal),
+            groupedLines.Sum(l => l.DiscountAmount),
+            groupedLines.Sum(l => l.TaxAmount),
+            groupedLines.Sum(l => l.NetTotal),
+            groupedLines);
     }
 
     public async Task<SalesTaxSummaryReportDto> GetSalesTaxSummaryAsync(

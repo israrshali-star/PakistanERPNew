@@ -109,32 +109,76 @@
         updateCustomerBalanceHint();
     }
 
+    function initSelect2($element) {
+        if ($element.data('select2')) {
+            $element.select2('destroy');
+        }
+
+        $element.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            dropdownParent: $('#receiptModal')
+        });
+    }
+
+    function populateCustomerSelect(customersList) {
+        var $customer = $('#receipt-customer-id');
+        var selectedCustomer = $customer.val();
+
+        if ($customer.data('select2')) {
+            $customer.select2('destroy');
+        }
+
+        $customer.find('option:not(:first)').remove();
+        (customersList || []).forEach(function (c) {
+            $customer.append(
+                $('<option></option>')
+                    .val(c.id)
+                    .text(c.buyerId + ' — ' + c.buyerName)
+            );
+        });
+
+        if (selectedCustomer) {
+            $customer.val(selectedCustomer);
+        }
+
+        initSelect2($customer);
+    }
+
+    function populateBankSelect(banksList) {
+        var $bank = $('#receipt-bank-id');
+        var selectedBank = $bank.val();
+
+        if ($bank.data('select2')) {
+            $bank.select2('destroy');
+        }
+
+        $bank.find('option:not(:first)').remove();
+        (banksList || []).forEach(function (b) {
+            $bank.append(
+                $('<option></option>')
+                    .val(b.id)
+                    .text(b.bankName + ' (' + b.accountNumber + ')')
+            );
+        });
+
+        if (selectedBank && $bank.find('option[value="' + selectedBank + '"]').length) {
+            $bank.val(selectedBank);
+        } else {
+            $bank.val('');
+        }
+
+        initSelect2($bank);
+    }
+
     function loadLookups() {
         return $.when(
             $.getJSON('/api/customer-receipts/customers'),
             $.getJSON('/api/customer-receipts/banks')
         ).then(function (customersRes, banksRes) {
             customers = customersRes[0] || [];
-
-            var $customer = $('#receipt-customer-id');
-            $customer.find('option:not(:first)').remove();
-            customers.forEach(function (c) {
-                $customer.append(
-                    $('<option></option>')
-                        .val(c.id)
-                        .text(c.buyerId + ' — ' + c.buyerName)
-                );
-            });
-
-            var $bank = $('#receipt-bank-id');
-            $bank.find('option:not(:first)').remove();
-            (banksRes[0] || []).forEach(function (b) {
-                $bank.append(
-                    $('<option></option>')
-                        .val(b.id)
-                        .text(b.bankName + ' (' + b.accountNumber + ')')
-                );
-            });
+            populateCustomerSelect(customers);
+            populateBankSelect(banksRes[0] || []);
         });
     }
 
@@ -199,27 +243,35 @@
     }
 
     function openCreateModal() {
-        resetReceiptForm();
         $('#receiptModalLabel').text('New Customer Receipt');
         clearFormError();
 
-        $.getJSON('/api/customer-receipts/next-receipt-number')
-            .done(function (res) {
-                $('#receipt-number').val(res.receiptNumber);
+        loadLookups()
+            .done(function () {
+                resetReceiptForm();
+
+                $.getJSON('/api/customer-receipts/next-receipt-number')
+                    .done(function (res) {
+                        $('#receipt-number').val(res.receiptNumber);
+                    })
+                    .fail(function (xhr) {
+                        showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
+                    });
+
+                receiptModal.show();
             })
             .fail(function (xhr) {
-                showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
+                showFormError(getApiErrorMessage(xhr, 'Could not load customers and bank accounts for the selected company.'));
             });
-
-        receiptModal.show();
     }
 
     function openEditModal(id) {
         clearFormError();
         $('#receiptModalLabel').text('Edit Customer Receipt');
 
-        $.getJSON('/api/customer-receipts/' + id)
-            .done(function (receipt) {
+        $.when(loadLookups(), $.getJSON('/api/customer-receipts/' + id))
+            .done(function (_, receiptRes) {
+                var receipt = receiptRes[0];
                 $('#receipt-id').val(receipt.id);
                 $('#receipt-number').val(receipt.receiptNumber);
                 $('#receipt-date').val(toInputDate(receipt.receiptDate));
@@ -313,12 +365,6 @@
         }
 
         receiptModal = new bootstrap.Modal(document.getElementById('receiptModal'));
-
-        $('#receipt-customer-id, #receipt-bank-id').select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            dropdownParent: $('#receiptModal')
-        });
 
         ensureCompanySelected()
             .done(function () {

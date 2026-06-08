@@ -6,5 +6,6 @@ public sealed class QuickBooksIifImportOptions
     public string? VendorBalancesCsvPath { get; set; }
     public string? OpenInvoicesCsvPath { get; set; }
     public string? OpenBillsCsvPath { get; set; }
+    public string? InventoryValuationCsvPath { get; set; }
     public bool SkipMasterData { get; set; }
 }

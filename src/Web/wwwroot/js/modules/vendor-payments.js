@@ -109,32 +109,76 @@
         updateVendorBalanceHint();
     }
 
+    function initSelect2($element) {
+        if ($element.data('select2')) {
+            $element.select2('destroy');
+        }
+
+        $element.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            dropdownParent: $('#paymentModal')
+        });
+    }
+
+    function populateVendorSelect(vendorsList) {
+        var $vendor = $('#payment-vendor-id');
+        var selectedVendor = $vendor.val();
+
+        if ($vendor.data('select2')) {
+            $vendor.select2('destroy');
+        }
+
+        $vendor.find('option:not(:first)').remove();
+        (vendorsList || []).forEach(function (v) {
+            $vendor.append(
+                $('<option></option>')
+                    .val(v.id)
+                    .text(v.vendorCode + ' — ' + v.vendorName)
+            );
+        });
+
+        if (selectedVendor) {
+            $vendor.val(selectedVendor);
+        }
+
+        initSelect2($vendor);
+    }
+
+    function populateBankSelect(banksList) {
+        var $bank = $('#payment-bank-id');
+        var selectedBank = $bank.val();
+
+        if ($bank.data('select2')) {
+            $bank.select2('destroy');
+        }
+
+        $bank.find('option:not(:first)').remove();
+        (banksList || []).forEach(function (b) {
+            $bank.append(
+                $('<option></option>')
+                    .val(b.id)
+                    .text(b.bankName + ' (' + b.accountNumber + ')')
+            );
+        });
+
+        if (selectedBank && $bank.find('option[value="' + selectedBank + '"]').length) {
+            $bank.val(selectedBank);
+        } else {
+            $bank.val('');
+        }
+
+        initSelect2($bank);
+    }
+
     function loadLookups() {
         return $.when(
             $.getJSON('/api/vendor-payments/vendors'),
             $.getJSON('/api/vendor-payments/banks')
         ).then(function (vendorsRes, banksRes) {
             vendors = vendorsRes[0] || [];
-
-            var $vendor = $('#payment-vendor-id');
-            $vendor.find('option:not(:first)').remove();
-            vendors.forEach(function (v) {
-                $vendor.append(
-                    $('<option></option>')
-                        .val(v.id)
-                        .text(v.vendorCode + ' — ' + v.vendorName)
-                );
-            });
-
-            var $bank = $('#payment-bank-id');
-            $bank.find('option:not(:first)').remove();
-            (banksRes[0] || []).forEach(function (b) {
-                $bank.append(
-                    $('<option></option>')
-                        .val(b.id)
-                        .text(b.bankName + ' (' + b.accountNumber + ')')
-                );
-            });
+            populateVendorSelect(vendors);
+            populateBankSelect(banksRes[0] || []);
         });
     }
 
@@ -199,27 +243,35 @@
     }
 
     function openCreateModal() {
-        resetPaymentForm();
         $('#paymentModalLabel').text('New Vendor Payment');
         clearFormError();
 
-        $.getJSON('/api/vendor-payments/next-payment-number')
-            .done(function (res) {
-                $('#payment-number').val(res.paymentNumber);
+        loadLookups()
+            .done(function () {
+                resetPaymentForm();
+
+                $.getJSON('/api/vendor-payments/next-payment-number')
+                    .done(function (res) {
+                        $('#payment-number').val(res.paymentNumber);
+                    })
+                    .fail(function (xhr) {
+                        showFormError(getApiErrorMessage(xhr, 'Could not generate payment number.'));
+                    });
+
+                paymentModal.show();
             })
             .fail(function (xhr) {
-                showFormError(getApiErrorMessage(xhr, 'Could not generate payment number.'));
+                showFormError(getApiErrorMessage(xhr, 'Could not load vendors and bank accounts for the selected company.'));
             });
-
-        paymentModal.show();
     }
 
     function openEditModal(id) {
         clearFormError();
         $('#paymentModalLabel').text('Edit Vendor Payment');
 
-        $.getJSON('/api/vendor-payments/' + id)
-            .done(function (payment) {
+        $.when(loadLookups(), $.getJSON('/api/vendor-payments/' + id))
+            .done(function (_, paymentRes) {
+                var payment = paymentRes[0];
                 $('#payment-id').val(payment.id);
                 $('#payment-number').val(payment.paymentNumber);
                 $('#payment-date').val(toInputDate(payment.paymentDate));
@@ -313,12 +365,6 @@
         }
 
         paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
-
-        $('#payment-vendor-id, #payment-bank-id').select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            dropdownParent: $('#paymentModal')
-        });
 
         ensureCompanySelected()
             .done(function () {

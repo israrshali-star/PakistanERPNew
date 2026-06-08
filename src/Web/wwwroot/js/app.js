@@ -8,24 +8,29 @@
         },
 
         initSidebar: function () {
-            const $sidebar = $('#sidebar');
-            const $overlay = $('#sidebarOverlay');
+            const $nav = $('#topNav');
+            const $overlay = $('#navOverlay');
 
-            $('#sidebarToggle').on('click', function () {
-                $sidebar.addClass('show');
-                $overlay.addClass('show');
+            $('#navToggle').on('click', function () {
+                $nav.toggleClass('show');
+                $overlay.toggleClass('show');
             });
 
-            $('#sidebarClose, #sidebarOverlay').on('click', function () {
-                $sidebar.removeClass('show');
+            $overlay.on('click', function () {
+                $nav.removeClass('show');
                 $overlay.removeClass('show');
             });
 
-            if (window.innerWidth >= 992) {
-                $('#sidebarToggle').on('dblclick', function () {
-                    $('body').toggleClass('sidebar-collapsed');
-                });
-            }
+            $nav.find('a.nav-link:not(.top-nav-group-toggle), .top-nav-sublink').on('click', function () {
+                if (window.innerWidth < 1200) {
+                    $nav.removeClass('show');
+                    $overlay.removeClass('show');
+                }
+            });
+
+            $('.top-nav-group-label').on('click', function (e) {
+                e.preventDefault();
+            });
         },
 
         loadCompanies: function () {
@@ -73,8 +78,8 @@
                         return;
                     }
 
-                    var defaultCompany = companies.find(function (c) { return c.isDefault; }) || companies[0];
-                    App.switchCompany(defaultCompany.id, defaultCompany.companyName);
+                    $('#current-company-name').text('Select company');
+                    window.location.href = '/Account/SelectCompany';
                 });
         },
 

@@ -135,6 +135,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 c.BuyerName,
                 c.ScenarioId,
                 c.ProvinceId,
+                c.Province != null ? c.Province.Name : null,
                 c.Address,
                 c.NTN,
                 c.CNIC,
@@ -157,10 +158,25 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var companyId = _currentCompany.GetRequiredCompanyId();
         var defaultTaxRate = await GetDefaultTaxRateAsync(companyId, cancellationToken);
 
-        return await _unitOfWork.Repository<Item>()
+        var items = await _unitOfWork.Repository<Item>()
             .Query()
             .Where(i => i.CompanyId == companyId && i.IsActive)
             .OrderBy(i => i.ItemName)
+            .Select(i => new
+            {
+                i.Id,
+                i.ItemCode,
+                i.ItemName,
+                i.Description,
+                i.HSCode,
+                i.StackNo,
+                i.LotNo,
+                UnitSymbol = i.UnitOfMeasure.Symbol ?? "PCS",
+                i.SaleRate
+            })
+            .ToListAsync(cancellationToken);
+
+        return items
             .Select(i => new SalesInvoiceItemLookupDto(
                 i.Id,
                 i.ItemCode,
@@ -169,10 +185,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.HSCode,
                 i.StackNo,
                 i.LotNo,
-                i.UnitOfMeasure.Symbol ?? "PCS",
+                InventoryUnitDisplay.Format(i.ItemCode, i.UnitSymbol),
                 i.SaleRate,
                 defaultTaxRate))
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     public async Task<SalesInvoiceSaveResult> CreateAsync(
@@ -286,7 +302,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 ItemId = line.ItemId,
                 HSCode = item.HSCode,
                 ProductDescription = productDescription,
-                Unit = item.UnitSymbol,
+                Unit = InventoryUnitDisplay.Format(item.ItemCode, item.UnitSymbol),
                 StackNo = string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
                 LotNo = string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
                 Quantity = line.Quantity,
@@ -802,6 +818,81 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             DateTime.Now,
             lines,
             FbrInvoiceLayout.PdfFooterNotice);
+    }
+
+    public async Task<DeliveryChallanPrintDto?> GetDeliveryChallanDataAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out _))
+        {
+            return null;
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.Id == id && i.CompanyId == companyId)
+            .Select(i => new
+            {
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                SellerName = i.Company.CompanyName,
+                SellerAddress = i.Company.Address,
+                SellerPhone = i.Company.Phone,
+                BuyerName = i.Customer.BuyerName,
+                BuyerNtn = i.BuyerNTN ?? i.Customer.NTN,
+                BuyerCnic = i.BuyerCNIC ?? i.Customer.CNIC,
+                BuyerAddress = i.BuyerAddress ?? i.Customer.Address,
+                BuyerProvince = i.Province != null
+                    ? i.Province.Name
+                    : (i.Customer.Province != null ? i.Customer.Province.Name : null),
+                Lines = i.Lines.Select(l => new
+                {
+                    l.ProductDescription,
+                    ItemDescription = l.Item.Description,
+                    l.LotNo,
+                    l.StackNo,
+                    l.Cartons,
+                    l.Quantity,
+                    l.Unit
+                }).ToList()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        var lines = invoice.Lines.Select((l, index) =>
+        {
+            var description = !string.IsNullOrWhiteSpace(l.ProductDescription)
+                ? l.ProductDescription
+                : (l.ItemDescription ?? "—");
+
+            return new DeliveryChallanPrintLineDto(
+                index + 1,
+                description,
+                l.LotNo,
+                l.StackNo,
+                Math.Round(l.Cartons, 2),
+                Math.Round(l.Quantity, 2),
+                l.Unit);
+        }).ToList();
+
+        return new DeliveryChallanPrintDto(
+            invoice.InvoiceNumber,
+            invoice.InvoiceDate,
+            invoice.SellerName,
+            invoice.SellerAddress,
+            invoice.SellerPhone,
+            invoice.BuyerName,
+            invoice.BuyerAddress,
+            invoice.BuyerProvince,
+            invoice.BuyerNtn,
+            invoice.BuyerCnic,
+            DateTime.Now,
+            lines);
     }
 
     private async Task<(bool Success, string? Message, FbrSubmissionRequest? Request, string? FbrPostUrl, string? ApiToken)>

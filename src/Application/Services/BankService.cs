@@ -11,6 +11,9 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class BankService : IBankService
 {
+    private const int AssetsTypeId = 1;
+    private const int CashAndBankSubTypeId = 1;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
@@ -110,8 +113,10 @@ public class BankService : IBankService
         }
 
         var isUsedOnPayments =
-            await _unitOfWork.Repository<CustomerReceipt>().Query().AnyAsync(r => r.BankId == id, cancellationToken)
-            || await _unitOfWork.Repository<VendorPayment>().Query().AnyAsync(p => p.BankId == id, cancellationToken);
+            await _unitOfWork.Repository<CustomerReceipt>().Query()
+                .AnyAsync(r => r.BankId == id && r.CompanyId == companyId, cancellationToken)
+            || await _unitOfWork.Repository<VendorPayment>().Query()
+                .AnyAsync(p => p.BankId == id && p.CompanyId == companyId, cancellationToken);
 
         return new BankDto(
             row.Id,
@@ -126,6 +131,37 @@ public class BankService : IBankService
             row.IsActive,
             row.TransactionCount,
             isUsedOnPayments);
+    }
+
+    public async Task<IReadOnlyList<BankLookupDto>> GetActiveBankLookupsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        await SyncBanksFromCashAndBankAccountsAsync(companyId, cancellationToken);
+
+        return await _unitOfWork.Repository<Bank>()
+            .Query()
+            .Where(b =>
+                b.CompanyId == companyId
+                && b.IsActive
+                && !b.IsDeleted
+                && b.ChartOfAccountId.HasValue
+                && b.ChartOfAccount != null
+                && b.ChartOfAccount.TypeId == AssetsTypeId
+                && b.ChartOfAccount.IsActive
+                && !b.ChartOfAccount.IsDeleted
+                && (b.ChartOfAccount.SubTypeId == CashAndBankSubTypeId
+                    || (b.ChartOfAccount.ParentAccount != null
+                        && b.ChartOfAccount.ParentAccount.SubTypeId == CashAndBankSubTypeId
+                        && b.ChartOfAccount.ParentAccount.TypeId == AssetsTypeId)))
+            .OrderBy(b => b.ChartOfAccount!.AccountNumber)
+            .ThenBy(b => b.BankName)
+            .Select(b => new BankLookupDto(
+                b.Id,
+                b.ChartOfAccount != null ? b.ChartOfAccount.AccountName : b.BankName,
+                b.ChartOfAccount != null ? b.ChartOfAccount.AccountNumber : b.AccountNumber,
+                b.CurrentBalance))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<BankChartOfAccountLookupDto>> GetChartOfAccountLookupsAsync(
@@ -381,6 +417,105 @@ public class BankService : IBankService
         }
 
         return new BankSaveResult(true, null, null);
+    }
+
+    private async Task SyncBanksFromCashAndBankAccountsAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var cashAndBankAccounts = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a =>
+                a.CompanyId == companyId
+                && a.IsActive
+                && !a.IsDeleted
+                && a.TypeId == AssetsTypeId
+                && !a.ChildAccounts.Any()
+                && (a.SubTypeId == CashAndBankSubTypeId
+                    || (a.ParentAccount != null
+                        && a.ParentAccount.SubTypeId == CashAndBankSubTypeId
+                        && a.ParentAccount.TypeId == AssetsTypeId)))
+            .OrderBy(a => a.AccountNumber)
+            .Select(a => new { a.Id, a.AccountNumber, a.AccountName })
+            .ToListAsync(cancellationToken);
+
+        if (cashAndBankAccounts.Count == 0)
+        {
+            return;
+        }
+
+        var linkedCoaIds = await _unitOfWork.Repository<Bank>()
+            .Query()
+            .Where(b => b.CompanyId == companyId && b.ChartOfAccountId.HasValue)
+            .Select(b => b.ChartOfAccountId!.Value)
+            .ToListAsync(cancellationToken);
+
+        var linkedSet = linkedCoaIds.ToHashSet();
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "system";
+        var added = false;
+
+        foreach (var account in cashAndBankAccounts)
+        {
+            if (linkedSet.Contains(account.Id))
+            {
+                continue;
+            }
+
+            var bankAccountNumber = await ResolveUniqueBankAccountNumberAsync(
+                companyId,
+                account.AccountNumber,
+                cancellationToken);
+
+            await _unitOfWork.Repository<Bank>().AddAsync(new Bank
+            {
+                CompanyId = companyId,
+                BankName = account.AccountName,
+                AccountTitle = account.AccountName,
+                AccountNumber = bankAccountNumber,
+                ChartOfAccountId = account.Id,
+                OpeningBalance = 0m,
+                CurrentBalance = 0m,
+                IsActive = true,
+                CreatedAt = now,
+                CreatedBy = userName
+            }, cancellationToken);
+
+            added = true;
+        }
+
+        if (added)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task<string> ResolveUniqueBankAccountNumberAsync(
+        int companyId,
+        string preferredNumber,
+        CancellationToken cancellationToken)
+    {
+        var candidate = preferredNumber.Trim();
+        if (!await _unitOfWork.Repository<Bank>()
+                .Query()
+                .AnyAsync(b => b.CompanyId == companyId && b.AccountNumber == candidate, cancellationToken))
+        {
+            return candidate;
+        }
+
+        var suffix = 1;
+        while (true)
+        {
+            candidate = $"{preferredNumber.Trim()}-{suffix}";
+            if (!await _unitOfWork.Repository<Bank>()
+                    .Query()
+                    .AnyAsync(b => b.CompanyId == companyId && b.AccountNumber == candidate, cancellationToken))
+            {
+                return candidate;
+            }
+
+            suffix++;
+        }
     }
 
     private bool TryGetCompanyId(out int companyId, out BankSaveResult? error)

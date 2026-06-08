@@ -38,3 +38,5 @@ public class BankSaveRequest
 public record BankSaveResult(bool Success, string? Message, BankDto? Bank);
 
 public record BankChartOfAccountLookupDto(int Id, string AccountNumber, string AccountName);
+
+public record BankLookupDto(int Id, string BankName, string AccountNumber, decimal CurrentBalance);

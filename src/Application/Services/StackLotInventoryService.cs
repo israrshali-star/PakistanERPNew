@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -58,6 +59,159 @@ public class StackLotInventoryService : IStackLotInventoryService
         }
 
         return ToAvailabilityDto(balance);
+    }
+
+    public async Task<IReadOnlyList<string>> GetLotNumbersAsync(CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var fromItems = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && i.IsActive && i.LotNo != "")
+            .Select(i => i.LotNo)
+            .ToListAsync(cancellationToken);
+
+        var fromPurchases = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.Status == BillStatus.Approved
+                        && l.LotNo != null
+                        && l.LotNo != "")
+            .Select(l => l.LotNo!)
+            .ToListAsync(cancellationToken);
+
+        return fromItems
+            .Concat(fromPurchases)
+            .Select(l => l.Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<LotDetailLookupDto?> GetLotDetailAsync(string lotNo, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(lotNo))
+        {
+            return null;
+        }
+
+        var normalizedLot = lotNo.Trim();
+        var lotUpper = normalizedLot.ToUpperInvariant();
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var purchaseLine = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.Status == BillStatus.Approved
+                        && l.ItemId != null
+                        && ((l.LotNo != null && l.LotNo.ToUpper() == lotUpper)
+                            || (l.LotNo == null && l.Item!.LotNo.ToUpper() == lotUpper)
+                            || l.Item!.LotNo.ToUpper() == lotUpper))
+            .OrderByDescending(l => l.VendorBill.BillDate)
+            .ThenByDescending(l => l.Id)
+            .Select(l => new
+            {
+                l.ItemId,
+                l.Description,
+                l.StackNo,
+                ItemCode = l.Item!.ItemCode,
+                ItemName = l.Item.ItemName,
+                ItemDescription = l.Item.Description,
+                ItemHsCode = l.Item.HSCode,
+                ItemStackNo = l.Item.StackNo,
+                ItemLotNo = l.Item.LotNo,
+                UnitSymbol = l.Item.UnitOfMeasure.Symbol,
+                l.Item.SaleRate,
+                l.Item.PurchaseRate
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (purchaseLine is not null)
+        {
+            var itemId = purchaseLine.ItemId!.Value;
+            var stackNos = await GetStackNumbersForLotAsync(companyId, itemId, normalizedLot, cancellationToken);
+            var defaultStack = ResolveStackLot(purchaseLine.StackNo, purchaseLine.ItemStackNo)
+                               ?? stackNos.FirstOrDefault();
+
+            return new LotDetailLookupDto(
+                normalizedLot,
+                itemId,
+                purchaseLine.ItemCode,
+                purchaseLine.ItemName,
+                purchaseLine.Description ?? purchaseLine.ItemDescription ?? purchaseLine.ItemName,
+                purchaseLine.ItemHsCode,
+                InventoryUnitDisplay.Format(purchaseLine.ItemCode, purchaseLine.UnitSymbol),
+                purchaseLine.SaleRate,
+                purchaseLine.PurchaseRate,
+                defaultStack,
+                stackNos);
+        }
+
+        var item = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && i.IsActive && i.LotNo.ToUpper() == lotUpper)
+            .Select(i => new
+            {
+                i.Id,
+                i.ItemCode,
+                i.ItemName,
+                i.Description,
+                i.HSCode,
+                i.StackNo,
+                UnitSymbol = i.UnitOfMeasure.Symbol,
+                i.SaleRate,
+                i.PurchaseRate
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (item is null)
+        {
+            return null;
+        }
+
+        var itemStackNos = await GetStackNumbersForLotAsync(companyId, item.Id, normalizedLot, cancellationToken);
+        var itemDefaultStack = ResolveStackLot(null, item.StackNo) ?? itemStackNos.FirstOrDefault();
+
+        return new LotDetailLookupDto(
+            normalizedLot,
+            item.Id,
+            item.ItemCode,
+            item.ItemName,
+            item.Description ?? item.ItemName,
+            item.HSCode,
+            InventoryUnitDisplay.Format(item.ItemCode, item.UnitSymbol),
+            item.SaleRate,
+            item.PurchaseRate,
+            itemDefaultStack,
+            itemStackNos);
+    }
+
+    private async Task<IReadOnlyList<string>> GetStackNumbersForLotAsync(
+        int companyId,
+        int itemId,
+        string lotNo,
+        CancellationToken cancellationToken)
+    {
+        var lotUpper = lotNo.ToUpperInvariant();
+
+        var stacks = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.Status == BillStatus.Approved
+                        && l.ItemId == itemId
+                        && ((l.LotNo != null && l.LotNo.ToUpper() == lotUpper)
+                            || (l.LotNo == null && l.Item!.LotNo.ToUpper() == lotUpper)
+                            || l.Item!.LotNo.ToUpper() == lotUpper))
+            .Select(l => l.StackNo ?? l.Item!.StackNo)
+            .ToListAsync(cancellationToken);
+
+        return stacks
+            .Select(s => s?.Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList()!;
     }
 
     public async Task<(bool Success, string? Message)> ValidateSaleLinesAsync(

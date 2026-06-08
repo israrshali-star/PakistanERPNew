@@ -55,12 +55,20 @@ public class InventoryReportsApiController : ControllerBase
     public async Task<IActionResult> StockSummary(
         [FromQuery] int? categoryId,
         [FromQuery] bool activeOnly = true,
+        [FromQuery] bool hideZeroQoh = false,
+        [FromQuery] DateTime? asOfDate = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var report = await _inventoryReportService.GetStockSummaryAsync(
-                new StockSummaryReportRequest { CategoryId = categoryId, ActiveOnly = activeOnly },
+                new StockSummaryReportRequest
+                {
+                    CategoryId = categoryId,
+                    ActiveOnly = activeOnly,
+                    HideZeroQoh = hideZeroQoh,
+                    AsOfDate = asOfDate
+                },
                 cancellationToken);
             return Ok(report);
         }

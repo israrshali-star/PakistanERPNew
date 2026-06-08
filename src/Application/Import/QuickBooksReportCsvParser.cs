@@ -26,6 +26,17 @@ public sealed class QuickBooksOpenBillRow
     public decimal Amount { get; init; }
 }
 
+public sealed class QuickBooksInventoryValuationRow
+{
+    public required string ItemName { get; init; }
+    public string? RawItemLabel { get; init; }
+    public string? Description { get; init; }
+    public string? UnitOfMeasure { get; init; }
+    public decimal QuantityOnHand { get; init; }
+    public decimal? AverageCost { get; init; }
+    public decimal? AssetValue { get; init; }
+}
+
 public static class QuickBooksReportCsvParser
 {
     public static IReadOnlyList<QuickBooksNameBalanceRow> ParseNameBalanceReport(string filePath)
@@ -265,6 +276,147 @@ public static class QuickBooksReportCsvParser
         }
 
         return result;
+    }
+
+    public static IReadOnlyList<QuickBooksInventoryValuationRow> ParseInventoryValuationReport(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        var (headerIndex, itemIndex, descriptionIndex, qtyIndex, uomIndex, avgCostIndex, assetValueIndex) =
+            ResolveInventoryValuationColumns(rows);
+
+        var result = new List<QuickBooksInventoryValuationRow>();
+        for (var i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0 || row.All(string.IsNullOrWhiteSpace))
+            {
+                continue;
+            }
+
+            var rawItemLabel = GetCell(row, itemIndex);
+            var itemName = NormalizeInventoryItemKey(rawItemLabel);
+            if (string.IsNullOrWhiteSpace(itemName)
+                || itemName.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
+                || itemName.StartsWith("Grand", StringComparison.OrdinalIgnoreCase)
+                || itemName.Equals("Inventory", StringComparison.OrdinalIgnoreCase)
+                || itemName.Equals("Inventory Asset", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var quantity = ParseDecimal(GetCell(row, qtyIndex));
+            var averageCost = avgCostIndex >= 0 ? ParseNullableDecimal(GetCell(row, avgCostIndex)) : null;
+            var assetValue = assetValueIndex >= 0 ? ParseNullableDecimal(GetCell(row, assetValueIndex)) : null;
+
+            if (quantity == 0m && (assetValue ?? 0m) == 0m)
+            {
+                continue;
+            }
+
+            result.Add(new QuickBooksInventoryValuationRow
+            {
+                ItemName = itemName,
+                RawItemLabel = NullIfEmpty(rawItemLabel),
+                Description = NullIfEmpty(GetCell(row, descriptionIndex)),
+                UnitOfMeasure = uomIndex >= 0 ? NullIfEmpty(GetCell(row, uomIndex)) : null,
+                QuantityOnHand = quantity,
+                AverageCost = averageCost,
+                AssetValue = assetValue
+            });
+        }
+
+        return result;
+    }
+
+    public static string NormalizeInventoryItemKey(string raw)
+    {
+        var name = raw.Trim().Trim('"');
+        var parenIndex = name.IndexOf('(');
+        if (parenIndex > 0)
+        {
+            name = name[..parenIndex].Trim();
+        }
+
+        return name;
+    }
+
+    private static (int HeaderIndex, int ItemIndex, int DescriptionIndex, int QtyIndex, int UomIndex, int AvgCostIndex, int AssetValueIndex)
+        ResolveInventoryValuationColumns(IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        var headerIndex = FindHeaderRowIndex(rows, ["item"], ["qty", "on hand", "quantity"]);
+        if (headerIndex >= 0)
+        {
+            var headers = rows[headerIndex];
+            var itemIndex = FindColumnIndex(headers, ["item", "inventory item", "sku"]);
+            var qtyIndex = FindColumnIndex(headers, ["on hand", "qty on hand", "quantity", "qty"]);
+            if (itemIndex >= 0 && qtyIndex >= 0)
+            {
+                return (
+                    headerIndex,
+                    itemIndex,
+                    FindColumnIndex(headers, ["description", "sales desc"]),
+                    qtyIndex,
+                    FindColumnIndex(headers, ["u/m", "um", "unit", "unit of measure"]),
+                    FindColumnIndex(headers, ["average cost", "avg cost", "cost"]),
+                    FindColumnIndex(headers, ["asset value", "total value", "value"]));
+            }
+        }
+
+        headerIndex = FindInventoryValuationHeaderRowIndex(rows);
+        if (headerIndex < 0)
+        {
+            throw new InvalidOperationException(
+                "Could not find inventory valuation columns. Expected QuickBooks Inventory Valuation Summary with On Hand and Avg Cost columns.");
+        }
+
+        var qbHeaders = rows[headerIndex];
+        var onHandIndex = FindColumnIndex(qbHeaders, ["on hand", "qty on hand", "quantity", "qty"]);
+        if (onHandIndex < 0)
+        {
+            throw new InvalidOperationException("Inventory valuation CSV is missing an On Hand quantity column.");
+        }
+
+        return (
+            headerIndex,
+            0,
+            -1,
+            onHandIndex,
+            FindColumnIndex(qbHeaders, ["u/m", "um", "unit", "unit of measure"]),
+            FindColumnIndex(qbHeaders, ["average cost", "avg cost", "cost"]),
+            FindColumnIndex(qbHeaders, ["asset value", "total value", "value"]));
+    }
+
+    private static int FindInventoryValuationHeaderRowIndex(IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var normalized = rows[i].Select(NormalizeHeader).ToList();
+            var hasOnHand = normalized.Any(cell => cell.Contains("on hand", StringComparison.Ordinal)
+                                                   || cell.Contains("qty on hand", StringComparison.Ordinal));
+            var hasCost = normalized.Any(cell => cell.Contains("avg cost", StringComparison.Ordinal)
+                                                 || cell.Contains("average cost", StringComparison.Ordinal)
+                                                 || cell.Contains("asset value", StringComparison.Ordinal));
+            if (hasOnHand && hasCost)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? NullIfEmpty(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static decimal? ParseNullableDecimal(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var parsed = ParseDecimal(value);
+        return parsed == 0m ? null : parsed;
     }
 
     private static List<List<string>> ReadReportRows(string filePath)

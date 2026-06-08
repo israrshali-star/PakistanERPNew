@@ -1,0 +1,80 @@
+@{
+    ViewData["Title"] = "Custom Reports";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
+    <div>
+        <h4 class="text-primary mb-1">Custom Reports</h4>
+        <p class="text-muted small mb-0">Build reports by choosing a data source and the columns you need. Export to Excel when ready.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
+            <i class="fa-solid fa-print me-1"></i>Print
+        </button>
+        <button type="button" class="btn btn-success btn-sm" id="btn-export-excel" disabled>
+            <i class="fa-solid fa-file-excel me-1"></i>Export Excel
+        </button>
+    </div>
+</div>
+
+<div id="report-company-warning" class="alert alert-warning d-none mb-3 no-print"></div>
+
+<div class="card p-3 mb-3 no-print">
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <label class="form-label" for="source-key">Data Source</label>
+            <select class="form-select" id="source-key">
+                <option value="">Select a source...</option>
+            </select>
+            <div class="form-text" id="source-description"></div>
+        </div>
+        <div class="col-lg-3" id="date-filter-wrap" style="display:none;">
+            <label class="form-label" for="filter-from">From Date</label>
+            <input type="date" class="form-control" id="filter-from" />
+        </div>
+        <div class="col-lg-3" id="date-filter-wrap-to" style="display:none;">
+            <label class="form-label" for="filter-to">To Date</label>
+            <input type="date" class="form-control" id="filter-to" />
+        </div>
+        <div class="col-lg-2 d-flex align-items-end">
+            <button type="button" class="btn btn-primary w-100" id="btn-run-report" disabled>
+                <i class="fa-solid fa-play me-1"></i>Run Report
+            </button>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <label class="form-label mb-0">Columns</label>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" id="btn-select-all-columns" disabled>Select All</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-clear-columns" disabled>Clear</button>
+            </div>
+        </div>
+        <div id="column-list" class="border rounded p-3 bg-light text-muted small">
+            Select a data source to choose columns.
+        </div>
+    </div>
+</div>
+
+<div class="card p-3 report-print-area">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h5 class="text-primary mb-0" id="report-title">Custom Report</h5>
+            <p class="text-muted small mb-0" id="report-meta">Choose a source and columns, then run the report.</p>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover mb-0" id="report-table">
+            <thead class="table-light" id="report-head"></thead>
+            <tbody id="report-body">
+                <tr><td class="text-muted text-center">No data loaded.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/custom-reports.js" asp-append-version="true"></script>
+}

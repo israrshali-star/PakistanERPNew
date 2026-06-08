@@ -40,6 +40,11 @@
         }
     }
 
+    function downloadDeliveryChallan() {
+        var invoiceId = $('#invoice-detail').data('id');
+        window.open('/api/sales-invoices/' + invoiceId + '/delivery-challan-pdf', '_blank');
+    }
+
     $(function () {
         var $detail = $('#invoice-detail');
 
@@ -80,6 +85,8 @@
                 postAction('/cancel', 'Invoice cancelled.');
             });
         }
+
+        $('#btn-download-challan').on('click', downloadDeliveryChallan);
 
         if ($detail.data('has-fbr-pdf') === true) {
             $('#btn-download-pdf, .btn-download-pdf-inline').on('click', downloadPdf);

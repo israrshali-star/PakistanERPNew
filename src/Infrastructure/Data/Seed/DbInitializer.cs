@@ -499,27 +499,34 @@ public static class DbInitializer
             await userManager.AddToRoleAsync(admin, "SuperAdmin");
         }
 
-        var defaultCompanyId = await context.Companies
-            .Where(c => c.IsDefault)
-            .Select(c => (int?)c.Id)
-            .FirstOrDefaultAsync(cancellationToken)
-            ?? await context.Companies.Select(c => (int?)c.Id).FirstOrDefaultAsync(cancellationToken);
+        var companyIds = await context.Companies
+            .Where(c => !c.IsDeleted)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
 
-        if (!defaultCompanyId.HasValue)
+        if (companyIds.Count == 0)
         {
             return;
         }
 
-        var hasCompany = await context.UserCompanies
-            .AnyAsync(uc => uc.UserId == admin.Id && uc.CompanyId == defaultCompanyId.Value, cancellationToken);
+        var linkedCompanyIds = await context.UserCompanies
+            .Where(uc => uc.UserId == admin.Id)
+            .Select(uc => uc.CompanyId)
+            .ToListAsync(cancellationToken);
 
-        if (!hasCompany)
+        var added = false;
+        foreach (var companyId in companyIds.Where(id => !linkedCompanyIds.Contains(id)))
         {
             context.UserCompanies.Add(new UserCompany
             {
                 UserId = admin.Id,
-                CompanyId = defaultCompanyId.Value
+                CompanyId = companyId
             });
+            added = true;
+        }
+
+        if (added)
+        {
             await context.SaveChangesAsync(cancellationToken);
         }
     }

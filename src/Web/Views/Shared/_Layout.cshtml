@@ -21,48 +21,34 @@
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body class="app-body">
-    <aside id="sidebar" class="sidebar">
-        <div class="sidebar-brand">
-            <a asp-controller="Home" asp-action="Index" class="sidebar-brand-link">
-                <i class="fa-solid fa-calculator text-white"></i>
-                <span class="sidebar-brand-text">PA ERP</span>
-            </a>
-            <button type="button" class="btn btn-link sidebar-close d-lg-none" id="sidebarClose" aria-label="Close sidebar">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        @await Component.InvokeAsync("Sidebar")
-    </aside>
-
-    <div class="sidebar-overlay d-lg-none" id="sidebarOverlay"></div>
-
-    <div class="main-wrapper">
-        <header class="top-navbar">
-            <div class="d-flex align-items-center gap-3">
-                <button type="button" class="btn btn-link sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+    <header class="app-header top-navbar">
+        <div class="app-header-top">
+            <div class="d-flex align-items-center gap-2">
+                <a asp-controller="Home" asp-action="Index" class="app-brand">
+                    <i class="fa-solid fa-calculator"></i>
+                    <span>PA ERP</span>
+                </a>
+                <button type="button" class="btn btn-link nav-toggle d-xl-none" id="navToggle" aria-label="Toggle navigation">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <div class="d-none d-md-block">
-                    <span class="top-navbar-title">@ViewData["Title"]</span>
-                </div>
             </div>
 
-            <div class="d-flex align-items-center gap-2 gap-md-3">
+            <div class="app-header-actions d-flex align-items-center gap-2 gap-md-3">
                 <div class="dropdown company-switcher">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="companySwitcherBtn">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="companySwitcherBtn">
                         <i class="fa-solid fa-building me-1"></i>
                         <span id="current-company-name">Loading...</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" id="company-list"></ul>
                 </div>
 
-                <button type="button" class="btn btn-link top-navbar-icon" title="Notifications">
+                <button type="button" class="btn btn-link top-navbar-icon text-white-50" title="Notifications">
                     <i class="fa-regular fa-bell"></i>
                 </button>
 
                 <div class="dropdown user-menu">
-                    <button class="btn btn-link dropdown-toggle user-menu-btn" type="button" data-bs-toggle="dropdown">
-                        <span class="user-avatar">
+                    <button class="btn btn-link dropdown-toggle user-menu-btn text-white" type="button" data-bs-toggle="dropdown">
+                        <span class="user-avatar user-avatar-light">
                             <i class="fa-solid fa-user"></i>
                         </span>
                         <span class="d-none d-md-inline ms-1">@(User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User")</span>
@@ -81,10 +67,21 @@
                     </ul>
                 </div>
             </div>
-        </header>
+        </div>
 
+        <nav id="topNav" class="top-nav sidebar">
+            @await Component.InvokeAsync("Sidebar")
+        </nav>
+
+        <div class="nav-overlay d-xl-none" id="navOverlay"></div>
+    </header>
+
+    <div class="main-wrapper">
         <div class="content-header">
-            @await Html.PartialAsync("_Breadcrumb")
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                @await Html.PartialAsync("_Breadcrumb")
+                <h1 class="page-title d-none d-md-block mb-0">@ViewData["Title"]</h1>
+            </div>
         </div>
 
         <main class="content-area container-fluid" role="main">

@@ -20,3 +20,16 @@ public record StackLotSaleValidationLine(
     string? LotNo,
     decimal Quantity,
     decimal Cartons);
+
+public record LotDetailLookupDto(
+    string LotNo,
+    int ItemId,
+    string ItemCode,
+    string ItemName,
+    string? Description,
+    string? HsCode,
+    string UnitSymbol,
+    decimal SaleRate,
+    decimal PurchaseRate,
+    string? DefaultStackNo,
+    IReadOnlyList<string> StackNos);

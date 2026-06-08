@@ -18,6 +18,7 @@ public partial class VendorPaymentService : IVendorPaymentService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly IVendorGlPostingService _vendorGlPosting;
+    private readonly IBankService _bankService;
     private readonly ILogger<VendorPaymentService> _logger;
 
     public VendorPaymentService(
@@ -26,6 +27,7 @@ public partial class VendorPaymentService : IVendorPaymentService
         ICurrentUserService currentUser,
         IAuditService auditService,
         IVendorGlPostingService vendorGlPosting,
+        IBankService bankService,
         ILogger<VendorPaymentService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -33,6 +35,7 @@ public partial class VendorPaymentService : IVendorPaymentService
         _currentUser = currentUser;
         _auditService = auditService;
         _vendorGlPosting = vendorGlPosting;
+        _bankService = bankService;
         _logger = logger;
     }
 
@@ -157,14 +160,10 @@ public partial class VendorPaymentService : IVendorPaymentService
     public async Task<IReadOnlyList<VendorPaymentBankLookupDto>> GetBankLookupsAsync(
         CancellationToken cancellationToken = default)
     {
-        var companyId = _currentCompany.GetRequiredCompanyId();
-
-        return await _unitOfWork.Repository<Bank>()
-            .Query()
-            .Where(b => b.CompanyId == companyId && b.IsActive)
-            .OrderBy(b => b.BankName)
+        var banks = await _bankService.GetActiveBankLookupsAsync(cancellationToken);
+        return banks
             .Select(b => new VendorPaymentBankLookupDto(b.Id, b.BankName, b.AccountNumber))
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     public async Task<VendorPaymentSaveResult> CreateAsync(
@@ -415,7 +414,7 @@ public partial class VendorPaymentService : IVendorPaymentService
         {
             var bankExists = await _unitOfWork.Repository<Bank>()
                 .Query()
-                .AnyAsync(b => b.Id == request.BankId && b.CompanyId == companyId && b.IsActive, cancellationToken);
+                .AnyAsync(b => b.Id == request.BankId && b.CompanyId == companyId && b.IsActive && !b.IsDeleted, cancellationToken);
 
             if (!bankExists)
             {

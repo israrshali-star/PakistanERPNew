@@ -5,7 +5,13 @@ using PakistanAccountingERP.Infrastructure;
 using PakistanAccountingERP.Infrastructure.Data.Seed;
 using PakistanAccountingERP.Infrastructure.Services;
 using PakistanAccountingERP.Web.Extensions;
+using PakistanAccountingERP.Web.Middleware;
 using Serilog;
+
+if (TryRunCompanyPurge(args, out var purgeExitCode))
+{
+    Environment.Exit(purgeExitCode);
+}
 
 if (TryRunQuickBooksImport(args, out var importExitCode))
 {
@@ -66,6 +72,7 @@ try
     app.UseSession();
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseMiddleware<RequireCompanyMiddleware>();
 
     app.MapControllers();
     app.MapAppHealthChecks();
@@ -86,6 +93,41 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
+}
+
+static bool TryRunCompanyPurge(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--purge-company-data", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var purger = scope.ServiceProvider.GetRequiredService<ICompanyDataPurgeService>();
+        var result = purger.PurgeAsync(companyId).GetAwaiter().GetResult();
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Rows deleted: {result.RowsDeleted}");
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
 }
 
 static bool TryRunQuickBooksImport(string[] args, out int exitCode)
@@ -132,6 +174,7 @@ static bool TryRunQuickBooksImport(string[] args, out int exitCode)
         Console.WriteLine($"Vendors: {result.VendorsImported} imported, {result.VendorsSkipped} skipped");
         Console.WriteLine($"Invoices: {result.InvoicesImported} imported, {result.InvoicesSkipped} skipped");
         Console.WriteLine($"Bills: {result.BillsImported} imported, {result.BillsSkipped} skipped");
+        Console.WriteLine($"Item stock updated: {result.ItemsStockUpdated}, skipped: {result.ItemsStockSkipped}");
         Console.WriteLine($"Customer balances updated: {result.CustomerBalancesUpdated}");
         Console.WriteLine($"Vendor balances updated: {result.VendorBalancesUpdated}");
 
@@ -176,6 +219,9 @@ static QuickBooksIifImportOptions ParseQuickBooksImportOptions(string[] args, in
                 break;
             case "--open-bills-csv" when i + 1 < args.Length:
                 options.OpenBillsCsvPath = Path.GetFullPath(args[++i]);
+                break;
+            case "--inventory-valuation-csv" when i + 1 < args.Length:
+                options.InventoryValuationCsvPath = Path.GetFullPath(args[++i]);
                 break;
             case "--skip-master-data":
                 options.SkipMasterData = true;

@@ -8,19 +8,32 @@ namespace PakistanAccountingERP.Web.Controllers;
 public class AccountController : Controller
 {
     private readonly IAuthService _authService;
+    private readonly ICompanyService _companyService;
 
-    public AccountController(IAuthService authService)
+    public AccountController(IAuthService authService, ICompanyService companyService)
     {
         _authService = authService;
+        _companyService = companyService;
     }
 
     [HttpGet]
     [AllowAnonymous]
-    public IActionResult Login(string? returnUrl = null)
+    public async Task<IActionResult> Login(string? returnUrl = null, CancellationToken cancellationToken = default)
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Home");
+            var current = await _companyService.GetCurrentCompanyAsync(cancellationToken);
+            if (current is not null)
+            {
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    return Redirect(returnUrl);
+                }
+
+                return RedirectToAction("Index", "Home");
+            }
+
+            return RedirectToAction(nameof(SelectCompany), new { returnUrl });
         }
 
         return View(new LoginViewModel { ReturnUrl = returnUrl });
@@ -48,6 +61,51 @@ public class AccountController : Controller
             return View(model);
         }
 
+        return RedirectToAction(nameof(SelectCompany), new { returnUrl = model.ReturnUrl });
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> SelectCompany(string? returnUrl, CancellationToken cancellationToken)
+    {
+        var companies = await _companyService.GetUserCompaniesAsync(cancellationToken);
+        var current = await _companyService.GetCurrentCompanyAsync(cancellationToken);
+        var defaultCompany = companies.FirstOrDefault(c => c.IsDefault) ?? companies.FirstOrDefault();
+
+        var model = new SelectCompanyViewModel
+        {
+            ReturnUrl = returnUrl,
+            CompanyId = current?.Id ?? defaultCompany?.Id ?? 0,
+            Companies = companies
+                .Select(c => new CompanyOptionViewModel
+                {
+                    Id = c.Id,
+                    CompanyName = c.CompanyName,
+                    IsDefault = c.IsDefault
+                })
+                .ToList()
+        };
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [Authorize]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SelectCompany(SelectCompanyViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return await ReloadSelectCompanyViewAsync(model, cancellationToken);
+        }
+
+        var success = await _companyService.SetCurrentCompanyAsync(model.CompanyId, cancellationToken);
+        if (!success)
+        {
+            ModelState.AddModelError(nameof(model.CompanyId), "You do not have access to the selected company.");
+            return await ReloadSelectCompanyViewAsync(model, cancellationToken);
+        }
+
         if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
         {
             return Redirect(model.ReturnUrl);
@@ -69,5 +127,22 @@ public class AccountController : Controller
     public IActionResult AccessDenied()
     {
         return View();
+    }
+
+    private async Task<IActionResult> ReloadSelectCompanyViewAsync(
+        SelectCompanyViewModel model,
+        CancellationToken cancellationToken)
+    {
+        var companies = await _companyService.GetUserCompaniesAsync(cancellationToken);
+        model.Companies = companies
+            .Select(c => new CompanyOptionViewModel
+            {
+                Id = c.Id,
+                CompanyName = c.CompanyName,
+                IsDefault = c.IsDefault
+            })
+            .ToList();
+
+        return View(model);
     }
 }

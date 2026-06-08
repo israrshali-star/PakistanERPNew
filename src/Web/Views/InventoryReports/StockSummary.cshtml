@@ -21,19 +21,42 @@
 
 <div class="card p-3 mb-3 no-print">
     <div class="row g-3 align-items-end">
-        <div class="col-md-4">
+        <div class="col-md-2">
+            <label class="form-label" for="filter-date-preset">Dates</label>
+            <select class="form-select" id="filter-date-preset">
+                <option value="custom">Custom</option>
+                <option value="today">Today</option>
+                <option value="this-month">This Month</option>
+                <option value="last-month">Last Month</option>
+                <option value="this-quarter">This Quarter</option>
+                <option value="last-quarter">Last Quarter</option>
+                <option value="this-year">This Fiscal Year</option>
+                <option value="last-year">Last Fiscal Year</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label" for="filter-as-of">As of</label>
+            <input type="date" class="form-control" id="filter-as-of" />
+        </div>
+        <div class="col-md-3">
             <label class="form-label" for="filter-category">Category</label>
             <select class="form-select" id="filter-category">
                 <option value="">All categories</option>
             </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="form-check mt-4">
                 <input class="form-check-input" type="checkbox" id="filter-active-only" checked />
                 <label class="form-check-label" for="filter-active-only">Active items only</label>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
+            <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="filter-hide-zero-qoh" />
+                <label class="form-check-label" for="filter-hide-zero-qoh">Hide Zero QOH</label>
+            </div>
+        </div>
+        <div class="col-md-2">
             <button type="button" class="btn btn-primary" id="btn-load-report">
                 <i class="fa-solid fa-magnifying-glass me-1"></i>Load Report
             </button>
@@ -44,7 +67,7 @@
 <div class="card p-4 report-print-area" id="report-content">
     <div class="text-center mb-4">
         <h5 class="text-primary mb-1">Stock Summary Report</h5>
-        <p class="text-muted small mb-0" id="report-generated">Click Load Report to generate</p>
+        <p class="text-muted small mb-0" id="report-period">Click Load Report to generate</p>
     </div>
 
     <div class="table-responsive">
@@ -55,7 +78,7 @@
                     <th>Item Name</th>
                     <th>Category</th>
                     <th>UOM</th>
-                    <th class="text-end">Stock</th>
+                    <th class="text-end">On Hand</th>
                     <th class="text-end">Min</th>
                     <th class="text-end">Reorder</th>
                     <th class="text-end">Rate</th>

@@ -117,7 +117,9 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 reportResult.CustomerBalancesUpdated,
                 reportResult.VendorBalancesUpdated,
                 transactionResult.InvoicesSkipped + reportResult.InvoicesSkipped,
-                transactionResult.BillsSkipped + reportResult.BillsSkipped);
+                transactionResult.BillsSkipped + reportResult.BillsSkipped,
+                reportResult.ItemsStockUpdated,
+                reportResult.ItemsStockSkipped);
         }
         catch (Exception ex)
         {
@@ -151,6 +153,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
             var message =
                 $"Updated QuickBooks report data for company {companyId}: " +
+                $"{reportResult.ItemsStockUpdated} item stock balances, " +
                 $"{reportResult.CustomerBalancesUpdated} customer balances, " +
                 $"{reportResult.VendorBalancesUpdated} vendor balances, " +
                 $"{reportResult.InvoicesImported} invoices, {reportResult.BillsImported} bills.";
@@ -163,7 +166,9 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 InvoicesImported: reportResult.InvoicesImported,
                 BillsImported: reportResult.BillsImported,
                 InvoicesSkipped: reportResult.InvoicesSkipped,
-                BillsSkipped: reportResult.BillsSkipped);
+                BillsSkipped: reportResult.BillsSkipped,
+                ItemsStockUpdated: reportResult.ItemsStockUpdated,
+                ItemsStockSkipped: reportResult.ItemsStockSkipped);
         }
         catch (Exception ex)
         {
@@ -564,6 +569,32 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
         return salesAccount.Contains("(Carton)", StringComparison.OrdinalIgnoreCase) ? 4 : 1;
     }
 
+    private static int ResolveUnitOfMeasureFromValuationRow(string? unitOfMeasure, string itemCode)
+    {
+        var normalized = unitOfMeasure?.Trim().ToLowerInvariant();
+        if (normalized is "ctn" or "carton")
+        {
+            return 4;
+        }
+
+        if (normalized is "kg" or "kilogram" or "kgs")
+        {
+            return 1;
+        }
+
+        if (itemCode.StartsWith('C'))
+        {
+            return 4;
+        }
+
+        if (itemCode.StartsWith('W'))
+        {
+            return 1;
+        }
+
+        return 1;
+    }
+
     private static (string StackNo, string LotNo) ExtractStackLot(string description, string fallbackCode)
     {
         if (string.IsNullOrWhiteSpace(description))
@@ -621,13 +652,42 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static Item? FindItemForValuationRow(IReadOnlyList<Item> items, string itemKey)
+    {
+        var codeMatches = items
+            .Where(i => string.Equals(i.ItemCode, itemKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (codeMatches.Count == 1)
+        {
+            return codeMatches[0];
+        }
+
+        if (codeMatches.Count > 1)
+        {
+            return codeMatches[0];
+        }
+
+        var nameMatches = items
+            .Where(i => string.Equals(i.ItemName, itemKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return nameMatches.Count switch
+        {
+            1 => nameMatches[0],
+            > 1 => nameMatches[0],
+            _ => null
+        };
+    }
+
     private sealed record ReportImportResult(
         int CustomerBalancesUpdated,
         int VendorBalancesUpdated,
         int InvoicesImported,
         int BillsImported,
         int InvoicesSkipped,
-        int BillsSkipped);
+        int BillsSkipped,
+        int ItemsStockUpdated = 0,
+        int ItemsStockSkipped = 0);
 
     private sealed record TransactionImportResult(
         int InvoicesImported,
@@ -808,6 +868,17 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
         var billsImported = 0;
         var invoicesSkipped = 0;
         var billsSkipped = 0;
+        var itemsStockUpdated = 0;
+        var itemsStockSkipped = 0;
+
+        if (!string.IsNullOrWhiteSpace(options.InventoryValuationCsvPath))
+        {
+            (itemsStockUpdated, itemsStockSkipped) = await ImportInventoryValuationCsvAsync(
+                options.InventoryValuationCsvPath,
+                companyId,
+                now,
+                cancellationToken);
+        }
 
         if (!string.IsNullOrWhiteSpace(options.CustomerBalancesCsvPath))
         {
@@ -851,7 +922,93 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             invoicesImported,
             billsImported,
             invoicesSkipped,
-            billsSkipped);
+            billsSkipped,
+            itemsStockUpdated,
+            itemsStockSkipped);
+    }
+
+    private async Task<(int Updated, int Skipped)> ImportInventoryValuationCsvAsync(
+        string filePath,
+        int companyId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"Inventory valuation file not found: {filePath}");
+        }
+
+        var rows = QuickBooksReportCsvParser.ParseInventoryValuationReport(filePath);
+        var items = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        var updated = 0;
+        var skipped = 0;
+
+        foreach (var row in rows)
+        {
+            var itemKey = QuickBooksReportCsvParser.NormalizeInventoryItemKey(row.ItemName);
+            var item = FindItemForValuationRow(items, itemKey);
+            if (item is null)
+            {
+                var rawLabel = row.RawItemLabel ?? row.ItemName;
+                var (stackNo, lotNo) = ExtractStackLot(rawLabel, itemKey);
+                var unitOfMeasureId = ResolveUnitOfMeasureFromValuationRow(row.UnitOfMeasure, itemKey);
+
+                item = new Item
+                {
+                    CompanyId = companyId,
+                    ItemType = ItemType.Goods,
+                    ItemCode = itemKey,
+                    ItemName = itemKey,
+                    StackNo = stackNo,
+                    LotNo = lotNo,
+                    Description = row.Description,
+                    UnitOfMeasureId = unitOfMeasureId,
+                    PurchaseRate = row.AverageCost is > 0m ? Math.Round(row.AverageCost.Value, 2) : 0m,
+                    CurrentStock = Math.Round(row.QuantityOnHand, 2),
+                    IsActive = true,
+                    CreatedAt = now,
+                    CreatedBy = ImportUser
+                };
+
+                await _unitOfWork.Repository<Item>().AddAsync(item, cancellationToken);
+                items.Add(item);
+                updated++;
+                continue;
+            }
+
+            item.CurrentStock = Math.Round(row.QuantityOnHand, 2);
+            if (row.AverageCost is > 0m)
+            {
+                item.PurchaseRate = Math.Round(row.AverageCost.Value, 2);
+            }
+
+            var resolvedUnitId = ResolveUnitOfMeasureFromValuationRow(row.UnitOfMeasure, itemKey);
+            if (item.UnitOfMeasureId != resolvedUnitId)
+            {
+                item.UnitOfMeasureId = resolvedUnitId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(row.Description) && string.IsNullOrWhiteSpace(item.Description))
+            {
+                item.Description = row.Description;
+            }
+
+            item.UpdatedAt = now;
+            item.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<Item>().Update(item);
+            updated++;
+        }
+
+        if (updated > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return (updated, skipped);
     }
 
     private async Task<int> ImportCustomerBalancesCsvAsync(

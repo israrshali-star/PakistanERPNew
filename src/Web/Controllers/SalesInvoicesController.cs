@@ -64,17 +64,20 @@ public class SalesInvoicesApiController : ControllerBase
     private readonly ISalesInvoiceAttachmentService _attachmentService;
     private readonly IStackLotInventoryService _stackLotInventory;
     private readonly ISalesInvoicePdfService _salesInvoicePdfService;
+    private readonly IDeliveryChallanPdfService _deliveryChallanPdfService;
 
     public SalesInvoicesApiController(
         ISalesInvoiceService salesInvoiceService,
         ISalesInvoiceAttachmentService attachmentService,
         IStackLotInventoryService stackLotInventory,
-        ISalesInvoicePdfService salesInvoicePdfService)
+        ISalesInvoicePdfService salesInvoicePdfService,
+        IDeliveryChallanPdfService deliveryChallanPdfService)
     {
         _salesInvoiceService = salesInvoiceService;
         _attachmentService = attachmentService;
         _stackLotInventory = stackLotInventory;
         _salesInvoicePdfService = salesInvoicePdfService;
+        _deliveryChallanPdfService = deliveryChallanPdfService;
     }
 
     [HttpGet("datatable")]
@@ -252,6 +255,28 @@ public class SalesInvoicesApiController : ControllerBase
             }
 
             return Ok(preview);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/delivery-challan-pdf")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> DeliveryChallanPdf(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var printData = await _salesInvoiceService.GetDeliveryChallanDataAsync(id, cancellationToken);
+            if (printData is null)
+            {
+                return NotFound();
+            }
+
+            var pdfBytes = _deliveryChallanPdfService.GeneratePdf(printData);
+            var fileName = $"DC-{printData.InvoiceNumber}.pdf".Replace('/', '-');
+            return File(pdfBytes, "application/pdf", fileName);
         }
         catch (InvalidOperationException ex)
         {

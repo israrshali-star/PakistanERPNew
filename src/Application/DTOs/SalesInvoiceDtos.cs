@@ -74,6 +74,7 @@ public record SalesInvoiceCustomerLookupDto(
     string BuyerName,
     int ScenarioId,
     int? ProvinceId,
+    string? ProvinceName,
     string? Address,
     string? NTN,
     string? CNIC,

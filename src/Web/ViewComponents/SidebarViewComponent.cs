@@ -78,7 +78,8 @@ public class SidebarViewComponent : ViewComponent
                 new() { Title = "Sales Reports", Controller = "SalesReports", Action = "Index", Permission = "Reports.View" },
                 new() { Title = "Purchase Reports", Controller = "PurchaseReports", Action = "Index", Permission = "Reports.View" },
                 new() { Title = "Financial Reports", Controller = "FinancialReports", Action = "Index", Permission = "Reports.View" },
-                new() { Title = "Inventory Reports", Controller = "InventoryReports", Action = "Index", Permission = "Reports.View" }
+                new() { Title = "Inventory Reports", Controller = "InventoryReports", Action = "Index", Permission = "Reports.View" },
+                new() { Title = "Custom Reports", Controller = "CustomReports", Action = "Index", Permission = "Reports.View" }
             ]
         },
         new()

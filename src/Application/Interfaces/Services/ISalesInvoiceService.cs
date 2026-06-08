@@ -33,4 +33,8 @@ public interface ISalesInvoiceService
     Task<FbrPayloadPreviewDto?> GetFbrPayloadPreviewAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoicePrintDto?> GetPrintDataAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<DeliveryChallanPrintDto?> GetDeliveryChallanDataAsync(
+        int id,
+        CancellationToken cancellationToken = default);
 }

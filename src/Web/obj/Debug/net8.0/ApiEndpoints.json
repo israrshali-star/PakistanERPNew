@@ -517,6 +517,48 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomReportsApiController",
+    "Method": "Export",
+    "RelativePath": "api/custom-reports/export",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.CustomReportRunRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomReportsApiController",
+    "Method": "Run",
+    "RelativePath": "api/custom-reports/run",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.CustomReportRunRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomReportsApiController",
+    "Method": "Sources",
+    "RelativePath": "api/custom-reports/sources",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
     "Method": "Create",
     "RelativePath": "api/customer-receipts",
@@ -986,6 +1028,16 @@
       {
         "Name": "activeOnly",
         "Type": "System.Boolean",
+        "IsRequired": false
+      },
+      {
+        "Name": "hideZeroQoh",
+        "Type": "System.Boolean",
+        "IsRequired": false
+      },
+      {
+        "Name": "asOfDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
         "IsRequired": false
       }
     ],
@@ -1621,6 +1673,22 @@
     "Method": "Cancel",
     "RelativePath": "api/sales-invoices/{id}/cancel",
     "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "DeliveryChallanPdf",
+    "RelativePath": "api/sales-invoices/{id}/delivery-challan-pdf",
+    "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
     "Parameters": [

@@ -39,6 +39,11 @@ public class CompanyService : ICompanyService
             return Array.Empty<CompanyDto>();
         }
 
+        if (IsSuperAdmin())
+        {
+            return await GetAllActiveCompaniesAsync(cancellationToken);
+        }
+
         return await _unitOfWork.Repository<UserCompany>()
             .Query()
             .Where(uc => uc.UserId == _currentUser.UserId && !uc.Company.IsDeleted)
@@ -58,6 +63,24 @@ public class CompanyService : ICompanyService
         if (string.IsNullOrEmpty(_currentUser.UserId))
         {
             return Array.Empty<CompanyListItemDto>();
+        }
+
+        if (IsSuperAdmin())
+        {
+            return await _unitOfWork.Repository<Company>()
+                .Query()
+                .Where(c => !c.IsDeleted)
+                .OrderByDescending(c => c.IsDefault)
+                .ThenBy(c => c.CompanyName)
+                .Select(c => new CompanyListItemDto(
+                    c.Id,
+                    c.CompanyName,
+                    c.NTN,
+                    c.Province != null ? c.Province.Name : null,
+                    c.Phone,
+                    c.Email,
+                    c.IsDefault))
+                .ToListAsync(cancellationToken);
         }
 
         return await _unitOfWork.Repository<UserCompany>()
@@ -468,6 +491,13 @@ public class CompanyService : ICompanyService
             return false;
         }
 
+        if (IsSuperAdmin())
+        {
+            return await _unitOfWork.Repository<Company>()
+                .Query()
+                .AnyAsync(c => c.Id == companyId && !c.IsDeleted, cancellationToken);
+        }
+
         return await _unitOfWork.Repository<UserCompany>()
             .Query()
             .AnyAsync(uc => uc.UserId == _currentUser.UserId
@@ -475,6 +505,18 @@ public class CompanyService : ICompanyService
                             && !uc.Company.IsDeleted,
                 cancellationToken);
     }
+
+    private async Task<IReadOnlyList<CompanyDto>> GetAllActiveCompaniesAsync(CancellationToken cancellationToken) =>
+        await _unitOfWork.Repository<Company>()
+            .Query()
+            .Where(c => !c.IsDeleted)
+            .OrderByDescending(c => c.IsDefault)
+            .ThenBy(c => c.CompanyName)
+            .Select(c => new CompanyDto(c.Id, c.CompanyName, c.NTN, c.IsDefault))
+            .ToListAsync(cancellationToken);
+
+    private bool IsSuperAdmin() =>
+        _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 
     private async Task<bool> AnyDefaultCompanyExistsAsync(CancellationToken cancellationToken) =>
         await _unitOfWork.Repository<Company>()

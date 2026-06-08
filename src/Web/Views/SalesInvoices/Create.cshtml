@@ -14,81 +14,71 @@
     </a>
 </div>
 
-<form id="sales-invoice-form">
-    <div class="card p-3 mb-3">
-        <h6 class="text-primary mb-3">Invoice Header</h6>
-        <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label" for="invoice-number">Invoice Number</label>
-                <input type="text" class="form-control" id="invoice-number" readonly />
+<form id="sales-invoice-form" class="invoice-create-compact">
+    <input type="hidden" id="province-id" />
+    <input type="hidden" id="buyer-ntn" />
+    <input type="hidden" id="buyer-cnic" />
+
+    <div class="card p-2 mb-2">
+        <h6 class="text-primary mb-2 small fw-semibold">Invoice Header</h6>
+        <div class="row g-2">
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="invoice-number">Invoice #</label>
+                <input type="text" class="form-control form-control-sm" id="invoice-number" readonly />
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="invoice-date">Invoice Date</label>
-                <input type="text" class="form-control datepicker" id="invoice-date" required />
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="invoice-date">Date</label>
+                <input type="text" class="form-control form-control-sm datepicker" id="invoice-date" required />
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="invoice-type">Invoice Type</label>
-                <select class="form-select" id="invoice-type">
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="invoice-type">Type</label>
+                <select class="form-select form-select-sm" id="invoice-type">
                     <option value="1">Sales Invoice</option>
                     <option value="2">Debit Note</option>
                     <option value="3">Credit Note</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="customer-id">Customer</label>
-                <select class="form-select select2" id="customer-id" required>
-                    <option value="">— Select customer —</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" for="scenario-id">FBR Scenario</label>
-                <select class="form-select select2" id="scenario-id" required></select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" for="province-id">Province</label>
-                <select class="form-select select2" id="province-id">
+            <div class="col-md-3 col-6">
+                <label class="form-label form-label-sm" for="customer-id">Customer</label>
+                <select class="form-select form-select-sm select2" id="customer-id" required>
                     <option value="">— Select —</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="buyer-ntn">Buyer NTN</label>
-                <input type="text" class="form-control" id="buyer-ntn" maxlength="50" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" for="buyer-cnic">Buyer CNIC</label>
-                <input type="text" class="form-control" id="buyer-cnic" maxlength="20" />
+            <div class="col-md-3 col-12">
+                <label class="form-label form-label-sm" for="scenario-id">FBR Scenario</label>
+                <select class="form-select form-select-sm select2" id="scenario-id" required></select>
             </div>
             <div class="col-12">
-                <label class="form-label" for="buyer-address">Buyer Address</label>
-                <textarea class="form-control" id="buyer-address" rows="2" maxlength="500"></textarea>
+                <label class="form-label form-label-sm" for="buyer-address">Buyer Address</label>
+                <input type="text" class="form-control form-control-sm" id="buyer-address" maxlength="500" />
             </div>
         </div>
     </div>
 
-    <div class="card p-3 mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="text-primary mb-0">Line Items</h6>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-line">
+    <div class="card p-2 mb-2" id="invoice-lower-section">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="text-primary mb-0 small fw-semibold">Line Items</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" id="btn-add-line">
                 <i class="fa-solid fa-plus me-1"></i>Add Line
             </button>
         </div>
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0" id="invoice-lines-table">
-                <thead>
+            <table class="table table-sm table-compact align-middle mb-0" id="invoice-lines-table">
+                <thead class="table-light">
                     <tr>
-                        <th style="min-width:200px">Item</th>
-                        <th style="min-width:180px">Description</th>
-                        <th style="min-width:100px">HS Code</th>
-                        <th style="min-width:90px">Stack No</th>
-                        <th style="min-width:90px">Lot No</th>
-                        <th class="text-end" style="width:80px">Cartons</th>
-                        <th class="text-end" style="width:80px">Qty</th>
-                        <th style="width:60px">Unit</th>
-                        <th class="text-end" style="width:100px">Price</th>
-                        <th class="text-end" style="width:70px">Tax %</th>
-                        <th class="text-end" style="width:90px">Discount</th>
-                        <th class="text-end" style="width:110px">Line Total</th>
-                        <th style="width:40px"></th>
+                        <th>Lot</th>
+                        <th>Item</th>
+                        <th>Description</th>
+                        <th>Stack</th>
+                        <th class="text-end">Ctn</th>
+                        <th>HS</th>
+                        <th class="text-end">Qty</th>
+                        <th>U/M</th>
+                        <th class="text-end">Price</th>
+                        <th class="text-end">Tax%</th>
+                        <th class="text-end">Disc</th>
+                        <th class="text-end">Total</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="invoice-lines-body"></tbody>
@@ -97,10 +87,21 @@
         <p class="text-muted small mt-2 mb-0 d-none" id="no-items-hint">No active items found. Restart the app to seed a demo item automatically.</p>
     </div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-md-8"></div>
+    <div class="row g-2 mb-2">
+        <div class="col-md-8">
+            <div class="card p-2 h-100">
+                <h6 class="text-primary mb-2 small fw-semibold">Supporting Documents</h6>
+                <p class="text-muted small mb-1">JPG, PNG, PDF — max 10 MB each, up to 10 files.</p>
+                <input type="file" class="form-control form-control-sm" id="invoice-attachments" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
+                <ul class="list-group list-group-flush mt-2" id="attachment-preview-list"></ul>
+                <p class="text-muted small mt-3 mb-0">
+                    <i class="fa-solid fa-truck me-1"></i>
+                    Delivery challan PDF is available after saving (invoice details → Delivery Challan PDF).
+                </p>
+            </div>
+        </div>
         <div class="col-md-4">
-            <div class="card p-3">
+            <div class="card p-2 small">
                 <div class="d-flex justify-content-between mb-2">
                     <span>Subtotal</span>
                     <span class="text-currency" id="total-subtotal">0.00</span>
@@ -122,13 +123,6 @@
         </div>
     </div>
 
-    <div class="card p-3 mb-3">
-        <h6 class="text-primary mb-3">Supporting Documents</h6>
-        <p class="text-muted small mb-2">Attach JPG, PNG, or PDF files (max 10 MB each, up to 10 files). Files upload when the invoice is saved.</p>
-        <input type="file" class="form-control" id="invoice-attachments" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
-        <ul class="list-group list-group-flush mt-2" id="attachment-preview-list"></ul>
-    </div>
-
     <div class="alert alert-danger d-none" id="invoice-form-error"></div>
 
     <div class="d-flex gap-2">
@@ -139,6 +133,59 @@
     </div>
 </form>
 
+@section Styles {
+    <style>
+        .invoice-create-compact .form-label-sm {
+            font-size: 0.72rem;
+            margin-bottom: 0.15rem;
+            color: var(--bs-secondary-color);
+        }
+
+        .invoice-create-compact .table-compact {
+            font-size: 0.72rem;
+        }
+
+        .invoice-create-compact .table-compact th,
+        .invoice-create-compact .table-compact td {
+            padding: 0.2rem 0.25rem;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .invoice-create-compact .table-compact th:nth-child(3),
+        .invoice-create-compact .table-compact td:nth-child(3) {
+            white-space: normal;
+            min-width: 7rem;
+        }
+
+        .invoice-create-compact .form-control-xs,
+        .invoice-create-compact .form-select-xs {
+            padding: 0.1rem 0.3rem;
+            font-size: 0.72rem;
+            line-height: 1.25;
+            min-height: 1.45rem;
+        }
+
+        .invoice-create-compact .line-stock-hint {
+            font-size: 0.65rem !important;
+            line-height: 1.2;
+            margin-top: 0.1rem !important;
+        }
+
+        .invoice-create-compact .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            padding: 0.2rem 0.4rem;
+            font-size: 0.8rem;
+        }
+
+        .invoice-create-compact .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding: 0;
+            line-height: 1.4;
+        }
+    </style>
+}
+
 @section Scripts {
+    <script src="~/js/modules/lot-stack-line-helper.js" asp-append-version="true"></script>
     <script src="~/js/modules/sales-invoice-create.js" asp-append-version="true"></script>
 }

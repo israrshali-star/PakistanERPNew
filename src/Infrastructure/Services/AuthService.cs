@@ -10,7 +10,6 @@ public class AuthService : IAuthService
 {
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly ICompanyService _companyService;
     private readonly IAuditService _auditService;
     private readonly ICurrentUserService _currentUser;
     private readonly ICurrentCompanyService _currentCompany;
@@ -18,14 +17,12 @@ public class AuthService : IAuthService
     public AuthService(
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
-        ICompanyService companyService,
         IAuditService auditService,
         ICurrentUserService currentUser,
         ICurrentCompanyService currentCompany)
     {
         _signInManager = signInManager;
         _userManager = userManager;
-        _companyService = companyService;
         _auditService = auditService;
         _currentUser = currentUser;
         _currentCompany = currentCompany;
@@ -59,7 +56,7 @@ public class AuthService : IAuthService
             return AuthResult.Failure("Invalid email or password.");
         }
 
-        await SelectDefaultCompanyAsync(cancellationToken);
+        await _currentCompany.ClearCompanyAsync(cancellationToken);
 
         await _auditService.LogLoginAsync(
             user.Id,
@@ -74,17 +71,5 @@ public class AuthService : IAuthService
     {
         await _currentCompany.ClearCompanyAsync(cancellationToken);
         await _signInManager.SignOutAsync();
-    }
-
-    private async Task SelectDefaultCompanyAsync(CancellationToken cancellationToken)
-    {
-        var companies = await _companyService.GetUserCompaniesAsync(cancellationToken);
-        if (companies.Count == 0)
-        {
-            return;
-        }
-
-        var selected = companies.FirstOrDefault(c => c.IsDefault) ?? companies[0];
-        await _companyService.SetCurrentCompanyAsync(selected.Id, cancellationToken);
     }
 }

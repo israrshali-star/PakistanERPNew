@@ -3,12 +3,19 @@
 
     var vendors = [];
     var items = [];
-    var itemsById = {};
     var lineCounter = 0;
     var pendingAttachments = [];
     var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
     var MAX_ATTACHMENT_COUNT = 10;
     var ALLOWED_ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.pdf'];
+
+    function lineOptions() {
+        return {
+            mode: 'purchase',
+            validateQty: false,
+            onRecalc: recalcTotals
+        };
+    }
 
     function showError(message) {
         $('#bill-form-error').removeClass('d-none').text(message);
@@ -36,10 +43,6 @@
             .text(message || 'Select a company from the top navbar before entering a bill.');
     }
 
-    function getItem(itemId) {
-        return itemsById[String(itemId)] || null;
-    }
-
     function recalcTotals() {
         var subtotal = 0;
         var taxRate = parseFloat($('#tax-rate').val()) || 0;
@@ -62,47 +65,18 @@
         $('#total-net').text(formatCurrency(net));
     }
 
-    function buildItemOptions(selectedId) {
-        var html = '<option value="">— None —</option>';
-        items.forEach(function (item) {
-            var selected = String(item.id) === String(selectedId) ? ' selected' : '';
-            html += '<option value="' + item.id + '"' + selected + '>' +
-                item.itemCode + ' — ' + item.itemName + '</option>';
-        });
-        return html;
-    }
-
-    function initLineItemSelect($select) {
-        if ($.fn.select2) {
-            $select.select2({ theme: 'bootstrap-5', width: '100%', dropdownParent: $('#vendor-bill-form') });
-        }
-    }
-
-    function applyItemToRow($row, item) {
-        if (!item) {
-            $row.find('.line-desc').val('');
-            $row.find('.line-stack').val('');
-            $row.find('.line-lot').val('');
-            $row.find('.line-rate').val('0');
-            return;
-        }
-
-        $row.find('.line-desc').val(item.description || item.itemName || '');
-        $row.find('.line-stack').val(item.stackNo || '');
-        $row.find('.line-lot').val(item.lotNo || '');
-        $row.find('.line-rate').val((item.purchaseRate || 0).toFixed(2));
-        recalcTotals();
-    }
-
     function addLine(prefill) {
         lineCounter += 1;
         var rowId = 'line-' + lineCounter;
+        var lotOptions = window.LotStackLine.buildLotOptions(prefill && prefill.lotNo);
         var $row = $(
             '<tr data-line-id="' + rowId + '">' +
-            '<td><select class="form-select form-select-sm line-item">' + buildItemOptions(prefill && prefill.itemId) + '</select></td>' +
+            '<td><select class="form-select form-select-sm line-lot">' + lotOptions + '</select></td>' +
+            '<td><input type="hidden" class="line-item-id" />' +
+            '<input type="text" class="form-control form-control-sm line-item-name" readonly placeholder="From lot" /></td>' +
             '<td><input type="text" class="form-control form-control-sm line-desc" maxlength="500" placeholder="Required if no item" /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-lot" maxlength="50" /></td>' +
+            '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" />' +
+            '<div class="line-stock-hint small mt-1"></div></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-rate" min="0" step="0.01" value="0" required /></td>' +
@@ -113,12 +87,11 @@
 
         $('#bill-lines-body').append($row);
 
-        var $select = $row.find('.line-item');
-        initLineItemSelect($select);
+        var $lotSelect = $row.find('.line-lot');
+        window.LotStackLine.initLotSelect($lotSelect, $('#vendor-bill-form'));
 
-        if (prefill && prefill.itemId) {
-            $select.val(String(prefill.itemId)).trigger('change');
-            applyItemToRow($row, getItem(prefill.itemId));
+        if (prefill && prefill.lotNo) {
+            $lotSelect.val(prefill.lotNo).trigger('change');
             if (prefill.rate) {
                 $row.find('.line-rate').val(prefill.rate);
             }
@@ -141,15 +114,12 @@
         return $.when(
             $.getJSON('/api/vendor-bills/next-bill-number'),
             $.getJSON('/api/vendor-bills/vendors'),
-            $.getJSON('/api/vendor-bills/items')
+            $.getJSON('/api/vendor-bills/items'),
+            window.LotStackLine.loadLotNumbers()
         ).then(function (numberRes, vendorsRes, itemsRes) {
             $('#bill-number').val(numberRes[0].billNumber);
             vendors = vendorsRes[0] || [];
             items = itemsRes[0] || [];
-            itemsById = {};
-            items.forEach(function (item) {
-                itemsById[String(item.id)] = item;
-            });
 
             var $vendor = $('#vendor-id');
             $vendor.find('option:not(:first)').remove();
@@ -166,17 +136,14 @@
             }
 
             if ($('#bill-lines-body tr').length === 0) {
-                if (items.length > 0) {
-                    var first = items[0];
-                    addLine({
-                        itemId: first.id,
-                        qty: 1,
-                        cartons: 0,
-                        rate: first.purchaseRate
-                    });
-                } else {
-                    addLine();
-                }
+                var firstLot = window.LotStackLine.lotNumbers[0];
+                var firstItem = items[0];
+                addLine({
+                    lotNo: firstLot || (firstItem && firstItem.lotNo),
+                    qty: 1,
+                    cartons: 0,
+                    rate: firstItem && firstItem.purchaseRate
+                });
             }
         });
     }
@@ -287,9 +254,14 @@
 
         $('#bill-lines-body tr').each(function () {
             var $row = $(this);
-            var itemVal = $row.find('.line-item').val();
-            var itemId = itemVal ? parseInt(itemVal, 10) : null;
+            var itemId = parseInt($row.find('.line-item-id').val(), 10) || null;
+            var lotNo = $row.find('.line-lot').val();
             var description = $row.find('.line-desc').val().trim();
+
+            if (!lotNo || !String(lotNo).trim()) {
+                lineValid = false;
+                return false;
+            }
 
             if (!itemId && !description) {
                 lineValid = false;
@@ -300,7 +272,7 @@
                 itemId: itemId,
                 description: description || null,
                 stackNo: $row.find('.line-stack').val().trim() || null,
-                lotNo: $row.find('.line-lot').val().trim() || null,
+                lotNo: String(lotNo).trim(),
                 cartons: parseFloat($row.find('.line-cartons').val()) || 0,
                 quantity: parseFloat($row.find('.line-qty').val()) || 0,
                 rate: parseFloat($row.find('.line-rate').val()) || 0
@@ -308,7 +280,7 @@
         });
 
         if (!lineValid) {
-            showError('Each line must have an item or a description.');
+            showError('Each line needs a lot number and either a linked item or a description.');
             return;
         }
 
@@ -380,17 +352,22 @@
 
         $('#vendor-id').on('change', onVendorChange);
         $('#tax-rate').on('input', recalcTotals);
-        $('#bill-lines-body').on('change', '.line-item', function () {
-            var itemId = parseInt($(this).val(), 10);
-            applyItemToRow($(this).closest('tr'), getItem(itemId));
+        $('#bill-lines-body').on('change', '.line-lot', function () {
+            window.LotStackLine.onLotChange($(this).closest('tr'), lineOptions());
         });
         $('#bill-lines-body').on('input', '.line-qty, .line-rate', recalcTotals);
+        $('#bill-lines-body').on('input', '.line-stack, .line-qty, .line-cartons', function () {
+            window.LotStackLine.updateStackHint($(this).closest('tr'), lineOptions());
+        });
         $('#bill-lines-body').on('click', '.btn-remove-line', function () {
-            var $select = $(this).closest('tr').find('.line-item');
-            if ($select.data('select2')) {
-                $select.select2('destroy');
+            var $row = $(this).closest('tr');
+            var rowId = $row.data('line-id');
+            if (rowId && window.LotStackLine.stockHintTimers[rowId]) {
+                clearTimeout(window.LotStackLine.stockHintTimers[rowId]);
+                delete window.LotStackLine.stockHintTimers[rowId];
             }
-            $(this).closest('tr').remove();
+            window.LotStackLine.destroyLotSelect($row.find('.line-lot'));
+            $row.remove();
             recalcTotals();
         });
 

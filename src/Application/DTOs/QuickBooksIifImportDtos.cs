@@ -18,4 +18,6 @@ public sealed record QuickBooksIifImportResult(
     int CustomerBalancesUpdated = 0,
     int VendorBalancesUpdated = 0,
     int InvoicesSkipped = 0,
-    int BillsSkipped = 0);
+    int BillsSkipped = 0,
+    int ItemsStockUpdated = 0,
+    int ItemsStockSkipped = 0);

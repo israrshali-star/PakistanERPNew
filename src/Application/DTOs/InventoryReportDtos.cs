@@ -14,6 +14,7 @@ public record StockSummaryLineDto(
 
 public record StockSummaryReportDto(
     DateTime GeneratedAt,
+    DateTime AsOfDate,
     int ItemCount,
     decimal TotalStockValue,
     IReadOnlyList<StockSummaryLineDto> Lines);
@@ -72,6 +73,8 @@ public class StockSummaryReportRequest
 {
     public int? CategoryId { get; set; }
     public bool ActiveOnly { get; set; } = true;
+    public bool HideZeroQoh { get; set; }
+    public DateTime? AsOfDate { get; set; }
 }
 
 public class StockMovementReportRequest

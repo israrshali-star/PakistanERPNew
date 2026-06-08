@@ -13,6 +13,9 @@ public interface IBankService
     Task<IReadOnlyList<BankChartOfAccountLookupDto>> GetChartOfAccountLookupsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<BankLookupDto>> GetActiveBankLookupsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<BankSaveResult> CreateAsync(BankSaveRequest request, CancellationToken cancellationToken = default);
 
     Task<BankSaveResult> UpdateAsync(BankSaveRequest request, CancellationToken cancellationToken = default);

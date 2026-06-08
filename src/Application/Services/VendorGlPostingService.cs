@@ -103,7 +103,7 @@ public partial class VendorGlPostingService : IVendorGlPostingService
         PaymentMethod previousPaymentMethod,
         CancellationToken cancellationToken = default)
     {
-        var companyId = _currentCompany.GetRequiredCompanyId();
+        var companyId = payment.CompanyId;
 
         await RemoveJournalByReferenceAsync(companyId, ReferenceTypes.VendorPayment, payment.Id, cancellationToken);
         await ApplyBankBalanceChangeAsync(companyId, previousBankId, previousPaymentMethod, previousAmount, cancellationToken);
