@@ -6,6 +6,8 @@
 
     var accountModal = null;
 
+    var accountLedgerModal = null;
+
     var accountTypes = [];
 
 
@@ -14,6 +16,8 @@
     var canEdit = false;
 
     var canDelete = false;
+
+    var isSuperAdmin = false;
 
     var editContext = {
 
@@ -259,6 +263,150 @@
 
 
 
+    function setTypeFieldsForEditMode(isEdit) {
+
+        var $type = $('#account-type');
+
+        var $sub = $('#account-subtype');
+
+
+
+        if (isEdit && !isSuperAdmin) {
+
+            $type.prop('disabled', true);
+
+            $sub.prop('disabled', true);
+
+        } else if (!isEdit) {
+
+            $type.prop('disabled', false);
+
+        }
+
+    }
+
+
+
+    function formatLedgerDate(value) {
+
+        if (!value || value === '0001-01-01T00:00:00') {
+
+            return '—';
+
+        }
+
+
+
+        var dt = new Date(value);
+
+        if (Number.isNaN(dt.getTime())) {
+
+            return value;
+
+        }
+
+
+
+        return String(dt.getDate()).padStart(2, '0') + '/' +
+
+            String(dt.getMonth() + 1).padStart(2, '0') + '/' +
+
+            dt.getFullYear();
+
+    }
+
+
+
+    function renderAccountLedger(ledger) {
+
+        var account = ledger.account;
+
+        $('#accountLedgerModalLabel').text('Account Ledger');
+
+        $('#account-ledger-subtitle').html(
+
+            '<code>' + escapeHtml(account.accountNumber) + '</code> — ' + escapeHtml(account.accountName)
+
+        );
+
+        $('#account-ledger-opening').text(formatCurrency(account.openingBalance));
+
+        $('#account-ledger-closing').text(formatCurrency(ledger.closingBalance));
+
+
+
+        var $body = $('#account-ledger-body');
+
+        $body.empty();
+
+
+
+        if (!ledger.entries || ledger.entries.length === 0) {
+
+            $body.append('<tr><td colspan="6" class="text-muted text-center">No ledger entries yet.</td></tr>');
+
+            return;
+
+        }
+
+
+
+        ledger.entries.forEach(function (entry) {
+
+            $body.append(
+
+                '<tr>' +
+
+                '<td>' + formatLedgerDate(entry.date) + '</td>' +
+
+                '<td><code>' + escapeHtml(entry.reference) + '</code></td>' +
+
+                '<td>' + escapeHtml(entry.description) + '</td>' +
+
+                '<td class="text-end text-currency">' + (entry.debit > 0 ? formatCurrency(entry.debit) : '—') + '</td>' +
+
+                '<td class="text-end text-currency">' + (entry.credit > 0 ? formatCurrency(entry.credit) : '—') + '</td>' +
+
+                '<td class="text-end text-currency fw-semibold">' + formatCurrency(entry.balance) + '</td>' +
+
+                '</tr>'
+
+            );
+
+        });
+
+    }
+
+
+
+    function openLedgerModal(id) {
+
+        $('#account-ledger-body').html('<tr><td colspan="6" class="text-muted text-center">Loading...</td></tr>');
+
+        accountLedgerModal.show();
+
+
+
+        $.getJSON('/api/chart-of-accounts/' + id + '/ledger')
+
+            .done(renderAccountLedger)
+
+            .fail(function (xhr) {
+
+                var message = getErrorMessage(xhr, 'Failed to load account ledger.');
+
+                $('#account-ledger-body').html(
+
+                    '<tr><td colspan="6" class="text-danger text-center">' + escapeHtml(message) + '</td></tr>'
+
+                );
+
+            });
+
+    }
+
+
+
     function updateOpeningBalanceField() {
 
         var isGroupHeader = editContext.hasChildren || editContext.isGroupAccount;
@@ -332,6 +480,12 @@
                     'data-name="' + escapeHtml(acc.accountName) + '" title="Add child account">' +
 
                     '<i class="fa-solid fa-plus"></i></button>';
+
+            }
+
+            if (!isGroup) {
+
+                actions += '<button type="button" class="btn btn-link btn-sm p-0 me-2 btn-view-ledger" data-id="' + acc.id + '" title="Ledger"><i class="fa-solid fa-book"></i></button>';
 
             }
 
@@ -599,6 +753,8 @@
 
         $('#opening-balance').val('0');
 
+        setTypeFieldsForEditMode(false);
+
         populateTypeSelect(parentPreset ? parentPreset.typeId : null);
 
 
@@ -682,6 +838,8 @@
                     }
 
 
+
+                    setTypeFieldsForEditMode(true);
 
                     updateOpeningBalanceField();
 
@@ -1109,6 +1267,8 @@
 
         canDelete = $perms.attr('data-can-delete') === 'true';
 
+        isSuperAdmin = $perms.attr('data-is-super-admin') === 'true';
+
     }
 
 
@@ -1116,6 +1276,8 @@
     $(function () {
 
         accountModal = new bootstrap.Modal(document.getElementById('accountModal'));
+
+        accountLedgerModal = new bootstrap.Modal(document.getElementById('accountLedgerModal'));
 
         detectPermissions();
 
@@ -1187,6 +1349,8 @@
 
             $('#account-parent').prop('disabled', false);
 
+            $('#account-type').prop('disabled', false);
+
             resetEditContext();
 
             updateOpeningBalanceField();
@@ -1198,6 +1362,14 @@
         $('#account-form').on('submit', saveAccount);
 
         $('#account-number').on('blur', checkAccountNumberExists);
+
+
+
+        $('#coa-tree-container').on('click', '.btn-view-ledger', function () {
+
+            openLedgerModal($(this).data('id'));
+
+        });
 
 
 

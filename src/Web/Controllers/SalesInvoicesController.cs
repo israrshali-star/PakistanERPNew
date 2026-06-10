@@ -31,6 +31,63 @@ public class SalesInvoicesController : Controller
         return View();
     }
 
+    [RequirePermission("Sales.Create")]
+    public async Task<IActionResult> Copy(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var invoice = await _salesInvoiceService.GetDetailAsync(id, cancellationToken);
+            if (invoice is null)
+            {
+                return NotFound();
+            }
+
+            if (invoice.Status == Domain.Enums.InvoiceStatus.Draft)
+            {
+                return RedirectToAction(nameof(Edit), new { id });
+            }
+
+            ViewData["BreadcrumbParent"] = "Sales";
+            ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+            ViewData["IsCopy"] = true;
+            ViewData["CopyFromNumber"] = invoice.InvoiceNumber;
+            return View("Create", invoice);
+        }
+        catch (InvalidOperationException)
+        {
+            return BadRequest("Select a company first.");
+        }
+    }
+
+    [RequirePermission("Sales.Edit")]
+    public async Task<IActionResult> Edit(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var invoice = await _salesInvoiceService.GetDetailAsync(id, cancellationToken);
+            if (invoice is null)
+            {
+                return NotFound();
+            }
+
+            if (invoice.Status != Domain.Enums.InvoiceStatus.Draft)
+            {
+                TempData["Error"] = "Only draft invoices can be edited.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
+            ViewData["BreadcrumbParent"] = "Sales";
+            ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+            ViewData["EditInvoiceId"] = id;
+            return View("Create", invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
     public async Task<IActionResult> Details(int id, CancellationToken cancellationToken)
     {
         try
@@ -242,6 +299,22 @@ public class SalesInvoicesApiController : ControllerBase
         }
     }
 
+    [HttpDelete("{id:int}")]
+    [RequirePermission("Sales.Delete")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _salesInvoiceService.DeleteAsync(id, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new SalesInvoiceActionResult(false, ex.Message, null));
+        }
+    }
+
     [HttpGet("{id:int}/fbr-payload")]
     [RequirePermission("Sales.Edit")]
     public async Task<IActionResult> FbrPayload(int id, CancellationToken cancellationToken)
@@ -337,6 +410,32 @@ public class SalesInvoicesApiController : ControllerBase
         try
         {
             var result = await _salesInvoiceService.CreateAsync(request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new SalesInvoiceSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpPut("{id:int}")]
+    [RequirePermission("Sales.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Update(
+        int id,
+        [FromBody] SalesInvoiceSaveRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new SalesInvoiceSaveResult(false, "Invalid request body.", null));
+        }
+
+        request.Id = id;
+
+        try
+        {
+            var result = await _salesInvoiceService.UpdateAsync(request, cancellationToken);
             return result.Success ? Ok(result) : BadRequest(result);
         }
         catch (InvalidOperationException ex)

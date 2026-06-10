@@ -37,6 +37,20 @@ public sealed class QuickBooksInventoryValuationRow
     public decimal? AssetValue { get; init; }
 }
 
+public sealed class OpeningStockStackLotRow
+{
+    public required string ItemCode { get; init; }
+    public string? ItemName { get; init; }
+    public string? StackNo { get; init; }
+    public string? LotNo { get; init; }
+    public string? Description { get; init; }
+    public string? HsCode { get; init; }
+    public string? Barcode { get; init; }
+    public int? UnitOfMeasureId { get; init; }
+    public decimal Cartons { get; init; }
+    public decimal Weight { get; init; }
+}
+
 public static class QuickBooksReportCsvParser
 {
     public static IReadOnlyList<QuickBooksNameBalanceRow> ParseNameBalanceReport(string filePath)
@@ -322,6 +336,97 @@ public static class QuickBooksReportCsvParser
                 QuantityOnHand = quantity,
                 AverageCost = averageCost,
                 AssetValue = assetValue
+            });
+        }
+
+        return result;
+    }
+
+    public static bool IsOpeningStockStackLotFormat(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        if (rows.Count == 0)
+        {
+            return false;
+        }
+
+        var headers = rows[0].Select(NormalizeHeader).ToList();
+        var hasItemCode = headers.Any(h => h.Contains("itemcode", StringComparison.Ordinal) || h == "item code");
+        var hasStack = headers.Any(h => h.Contains("stack", StringComparison.Ordinal));
+        var hasWeight = headers.Any(h => h.Contains("weight", StringComparison.Ordinal));
+        return hasItemCode && hasStack && hasWeight;
+    }
+
+    public static IReadOnlyList<OpeningStockStackLotRow> ParseOpeningStockStackLotReport(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        if (rows.Count < 2)
+        {
+            throw new InvalidOperationException("Opening stock CSV is empty or missing data rows.");
+        }
+
+        var headers = rows[0].Select(NormalizeHeader).ToList();
+        var itemCodeIndex = FindColumnIndex(headers, ["itemcode", "item code"]);
+        var itemNameIndex = FindColumnIndex(headers, ["item name", "itemname", "name"]);
+        var stackIndex = FindColumnIndex(headers, ["stack no", "stack no.", "stackno", "stack"]);
+        var lotIndex = FindColumnIndex(headers, ["lot no", "lot no.", "lotno", "lot"]);
+        var descriptionIndex = FindColumnIndex(headers, ["description", "discription", "desc"]);
+        var hsCodeIndex = FindColumnIndex(headers, ["hscode", "hs code"]);
+        var barcodeIndex = FindColumnIndex(headers, ["barcode"]);
+        var uomIndex = FindColumnIndex(headers, ["unitof messure id", "unit of measure id", "unitofmeasureid", "uom id"]);
+        var cartonsIndex = FindColumnIndex(headers, ["cartons", "carton", "ctn"]);
+        var weightIndex = FindColumnIndex(headers, ["weight", "qty", "quantity"]);
+
+        if (itemCodeIndex < 0 || weightIndex < 0)
+        {
+            throw new InvalidOperationException(
+                "Opening stock CSV must include ItemCode and Weight columns.");
+        }
+
+        var result = new List<OpeningStockStackLotRow>();
+        for (var i = 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0 || row.All(string.IsNullOrWhiteSpace))
+            {
+                continue;
+            }
+
+            var itemCode = GetCell(row, itemCodeIndex).Trim();
+            if (string.IsNullOrWhiteSpace(itemCode))
+            {
+                continue;
+            }
+
+            var weight = ParseDecimal(GetCell(row, weightIndex));
+            var cartons = cartonsIndex >= 0 ? ParseDecimal(GetCell(row, cartonsIndex)) : 0m;
+            if (weight == 0m && cartons == 0m)
+            {
+                continue;
+            }
+
+            int? unitId = null;
+            if (uomIndex >= 0)
+            {
+                var uomText = GetCell(row, uomIndex).Trim();
+                if (int.TryParse(uomText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedUom))
+                {
+                    unitId = parsedUom;
+                }
+            }
+
+            result.Add(new OpeningStockStackLotRow
+            {
+                ItemCode = itemCode,
+                ItemName = itemNameIndex >= 0 ? NullIfEmpty(GetCell(row, itemNameIndex)) : null,
+                StackNo = stackIndex >= 0 ? NullIfEmpty(GetCell(row, stackIndex)) : null,
+                LotNo = lotIndex >= 0 ? NullIfEmpty(GetCell(row, lotIndex)) : null,
+                Description = descriptionIndex >= 0 ? NullIfEmpty(GetCell(row, descriptionIndex)) : null,
+                HsCode = hsCodeIndex >= 0 ? NullIfEmpty(GetCell(row, hsCodeIndex)) : null,
+                Barcode = barcodeIndex >= 0 ? NullIfEmpty(GetCell(row, barcodeIndex)) : null,
+                UnitOfMeasureId = unitId,
+                Cartons = cartons,
+                Weight = weight
             });
         }
 

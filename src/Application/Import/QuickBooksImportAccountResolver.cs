@@ -13,7 +13,7 @@ internal static class QuickBooksImportAccountResolver
         FindAccountAsync(
             unitOfWork,
             companyId,
-            ["11000", "1200"],
+            ["11110", "11000", "1200"],
             subTypeId: 2,
             nameContains: "Accounts Receivable",
             cancellationToken);
@@ -61,7 +61,7 @@ internal static class QuickBooksImportAccountResolver
         FindAccountAsync(
             unitOfWork,
             companyId,
-            ["50000", "5100", "12110"],
+            ["12110", "50000", "5100", "1300"],
             subTypeId: 22,
             nameContains: "Cost of Goods Sold",
             cancellationToken);
@@ -73,7 +73,7 @@ internal static class QuickBooksImportAccountResolver
         FindAccountAsync(
             unitOfWork,
             companyId,
-            ["12810", "1400"],
+            ["12910", "12810", "1400"],
             subTypeId: 6,
             nameContains: "Input Tax",
             cancellationToken);
@@ -85,7 +85,7 @@ internal static class QuickBooksImportAccountResolver
         FindAccountAsync(
             unitOfWork,
             companyId,
-            ["30000", "3200"],
+            ["30000", "32010", "3200"],
             subTypeId: 14,
             nameContains: "Opening Balance",
             cancellationToken);
@@ -97,7 +97,7 @@ internal static class QuickBooksImportAccountResolver
         FindAccountAsync(
             unitOfWork,
             companyId,
-            ["10800", "1100", "10000"],
+            ["10015", "10800", "1100", "10000"],
             subTypeId: 1,
             nameContains: "Cash",
             cancellationToken);

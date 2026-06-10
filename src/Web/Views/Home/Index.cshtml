@@ -1,91 +1,91 @@
-﻿@{
-    ViewData["Title"] = "Dashboard";
-    var company = ViewBag.Company as PakistanAccountingERP.Application.DTOs.CompanyDto;
-}
-
-<div class="row g-3 mb-4" id="dashboard-kpis">
-    <div class="col-6 col-lg-4 col-xl">
-        <div class="card card-kpi p-3">
-            <div class="kpi-label">Today's Sales</div>
-            <div class="kpi-value text-currency" data-kpi="todaySales">—</div>
-        </div>
-    </div>
-    <div class="col-6 col-lg-4 col-xl">
-        <div class="card card-kpi p-3">
-            <div class="kpi-label">This Month's Sales</div>
-            <div class="kpi-value text-currency" data-kpi="monthSales">—</div>
-        </div>
-    </div>
-    <div class="col-6 col-lg-4 col-xl">
-        <div class="card card-kpi p-3">
-            <div class="kpi-label">Outstanding Receivables</div>
-            <div class="kpi-value text-currency" data-kpi="outstandingReceivables">—</div>
-        </div>
-    </div>
-    <div class="col-6 col-lg-6 col-xl">
-        <div class="card card-kpi p-3">
-            <div class="kpi-label">Outstanding Payables</div>
-            <div class="kpi-value text-currency" data-kpi="outstandingPayables">—</div>
-        </div>
-    </div>
-    <div class="col-6 col-lg-6 col-xl">
-        <div class="card card-kpi p-3">
-            <div class="kpi-label">Inventory Value</div>
-            <div class="kpi-value text-currency" data-kpi="inventoryValue">—</div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3">
-    <div class="col-lg-8">
-        <div class="card p-3">
-            <h5 class="card-title text-primary mb-3">Monthly Sales (Last 12 Months)</h5>
-            <canvas id="salesChart" height="120"></canvas>
-        </div>
-        <div class="card p-3 mt-3">
-            <h5 class="card-title text-primary mb-3">Recent Invoices</h5>
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0" id="recent-invoices-table">
-                    <thead>
-                        <tr>
-                            <th>Invoice #</th>
-                            <th>Customer</th>
-                            <th>Date</th>
-                            <th class="text-end">Net Total</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="5" class="text-muted text-center">Loading...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-4">
-        <div class="card p-3">
-            <h5 class="card-title text-primary mb-3">Welcome</h5>
-            <p class="mb-1"><strong>@ViewBag.UserName</strong></p>
-            @if (company is not null)
-            {
-                <p class="text-muted mb-0">@company.CompanyName</p>
-            }
-        </div>
-        <div class="card p-3 mt-3">
-            <h6 class="text-primary">Top Customers (Outstanding)</h6>
-            <ul class="list-group list-group-flush" id="top-customers-list">
-                <li class="list-group-item text-muted small">Loading...</li>
-            </ul>
-        </div>
-        <div class="card p-3 mt-3">
-            <h6 class="text-primary">Low Stock Items</h6>
-            <ul class="list-group list-group-flush" id="low-stock-list">
-                <li class="list-group-item text-muted small">Loading...</li>
-            </ul>
-        </div>
-    </div>
-</div>
-
-@section Scripts {
-    <script src="~/js/dashboard.js" asp-append-version="true"></script>
-}
+﻿@{
+    ViewData["Title"] = "Dashboard";
+    var company = ViewBag.Company as PakistanAccountingERP.Application.DTOs.CompanyDto;
+}
+
+<div class="row g-3 mb-4" id="dashboard-kpis">
+    <div class="col-6 col-lg-4 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Today's Sales</div>
+            <div class="kpi-value text-currency" data-kpi="todaySales">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">This Month's Sales</div>
+            <div class="kpi-value text-currency" data-kpi="monthSales">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Outstanding Receivables</div>
+            <div class="kpi-value text-currency" data-kpi="outstandingReceivables">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-6 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Outstanding Payables</div>
+            <div class="kpi-value text-currency" data-kpi="outstandingPayables">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-6 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Inventory Value</div>
+            <div class="kpi-value text-currency" data-kpi="inventoryValue">—</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card p-3">
+            <h5 class="card-title text-primary mb-3">Monthly Cartons Sold (Last 12 Months)</h5>
+            <canvas id="salesChart" height="120"></canvas>
+        </div>
+        <div class="card p-3 mt-3">
+            <h5 class="card-title text-primary mb-3">Recent Invoices</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="recent-invoices-table">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Customer</th>
+                            <th>Date</th>
+                            <th class="text-end">Net Total</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" class="text-muted text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card p-3">
+            <h5 class="card-title text-primary mb-3">Welcome</h5>
+            <p class="mb-1"><strong>@ViewBag.UserName</strong></p>
+            @if (company is not null)
+            {
+                <p class="text-muted mb-0">@company.CompanyName</p>
+            }
+        </div>
+        <div class="card p-3 mt-3">
+            <h6 class="text-primary">Top Customers (Outstanding)</h6>
+            <ul class="list-group list-group-flush" id="top-customers-list">
+                <li class="list-group-item text-muted small">Loading...</li>
+            </ul>
+        </div>
+        <div class="card p-3 mt-3">
+            <h6 class="text-primary">Low Stock Items</h6>
+            <ul class="list-group list-group-flush" id="low-stock-list">
+                <li class="list-group-item text-muted small">Loading...</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard.js" asp-append-version="true"></script>
+}

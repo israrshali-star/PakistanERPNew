@@ -18,7 +18,10 @@ public interface IStackLotInventoryService
         int? excludeInvoiceId = null,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<string>> GetLotNumbersAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LotItemOptionDto>> GetLotNumbersAsync(CancellationToken cancellationToken = default);
 
-    Task<LotDetailLookupDto?> GetLotDetailAsync(string lotNo, CancellationToken cancellationToken = default);
+    Task<LotDetailLookupDto?> GetLotDetailAsync(
+        string lotNo,
+        string? itemCode = null,
+        CancellationToken cancellationToken = default);
 }

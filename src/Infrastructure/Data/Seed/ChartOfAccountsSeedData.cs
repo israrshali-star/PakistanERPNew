@@ -1,3 +1,4 @@
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Domain.Entities;
 
 namespace PakistanAccountingERP.Infrastructure.Data.Seed;
@@ -8,23 +9,25 @@ public static class ChartOfAccountsSeedData
     {
         return
         [
-            Create(companyId, "1100", "Cash In Hand", 1, 1, createdAt),
-            Create(companyId, "1200", "Accounts Receivable", 1, 2, createdAt),
-            Create(companyId, "1300", "Inventory", 1, 3, createdAt),
-            Create(companyId, "1400", "Input Tax Recoverable", 1, 6, createdAt),
-            Create(companyId, "1500", "Fixed Assets", 1, 5, createdAt),
-            Create(companyId, "2100", "Accounts Payable", 2, 8, createdAt),
-            Create(companyId, "2200", "Sales Tax Payable", 2, 10, createdAt),
-            Create(companyId, "2300", "Accrued Liabilities", 2, 9, createdAt),
-            Create(companyId, "3100", "Owner's Capital", 3, 14, createdAt),
-            Create(companyId, "3200", "Retained Earnings", 3, 15, createdAt),
-            Create(companyId, "4100", "Sales Revenue", 4, 18, createdAt),
-            Create(companyId, "4200", "Sales Returns", 4, 19, createdAt),
-            Create(companyId, "5100", "Purchases", 5, 22, createdAt),
-            Create(companyId, "5200", "Freight In", 5, 25, createdAt),
-            Create(companyId, "6100", "Administrative Expenses", 6, 28, createdAt),
-            Create(companyId, "6200", "Selling & Marketing", 6, 29, createdAt),
-            Create(companyId, "6300", "Payroll & Benefits", 6, 30, createdAt)
+            Create(companyId, GlAccountNumbers.CashInHand, "Cash In Hand", 1, 1, createdAt),
+            Create(companyId, GlAccountNumbers.UndepositedFunds, "Undeposited Funds", 1, 1, createdAt),
+            Create(companyId, GlAccountNumbers.AccountsReceivable, "Accounts Receivable", 1, 2, createdAt),
+            Create(companyId, GlAccountNumbers.InventoryAsset, "Inventory Asset", 1, 3, createdAt),
+            Create(companyId, GlAccountNumbers.PrepaidSalesTax, "Pre Paid Sales Tax", 1, 6, createdAt),
+            Create(companyId, GlAccountNumbers.FixedAssets, "Fixed Assets", 1, 5, createdAt),
+            Create(companyId, GlAccountNumbers.AccountsPayable, "Account Payable", 2, 8, createdAt),
+            Create(companyId, GlAccountNumbers.SalesTaxPayable, "Sales Tax Payable", 2, 10, createdAt),
+            Create(companyId, GlAccountNumbers.AccruedLiabilities, "Accrued Liabilities", 2, 9, createdAt),
+            Create(companyId, GlAccountNumbers.CartagePayable, "Cartage Payable", 2, 9, createdAt),
+            Create(companyId, GlAccountNumbers.OwnersCapital, "Owner's Capital", 3, 14, createdAt),
+            Create(companyId, GlAccountNumbers.RetainedEarnings, "Retained Earnings", 3, 15, createdAt),
+            Create(companyId, GlAccountNumbers.SalesRevenue, "Sales Revenue", 4, 18, createdAt),
+            Create(companyId, GlAccountNumbers.SalesReturns, "Sales Returns", 4, 19, createdAt),
+            Create(companyId, GlAccountNumbers.Purchases, "Purchases", 5, 22, createdAt),
+            Create(companyId, GlAccountNumbers.FreightIn, "Freight In", 5, 25, createdAt),
+            Create(companyId, GlAccountNumbers.AdministrativeExpenses, "Administrative Expenses", 6, 28, createdAt),
+            Create(companyId, GlAccountNumbers.SellingAndMarketing, "Selling & Marketing", 6, 29, createdAt),
+            Create(companyId, GlAccountNumbers.PayrollAndBenefits, "Payroll & Benefits", 6, 30, createdAt)
         ];
     }
 

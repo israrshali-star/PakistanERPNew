@@ -91,6 +91,9 @@
                         var actions =
                             '<a href="/VendorBills/Details/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="View"><i class="fa-solid fa-eye"></i></a>';
 
+                        if (canEdit && row.canEdit) {
+                            actions += '<a href="/VendorBills/Edit/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="Edit draft"><i class="fa-solid fa-pen"></i></a>';
+                        }
                         if (canEdit && row.canApprove) {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-approve-bill" data-id="' + id + '" title="Approve & Post to GL"><i class="fa-solid fa-check"></i></button>';
                         }

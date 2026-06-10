@@ -95,8 +95,28 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
-    "Method": "Banks",
-    "RelativePath": "api/bank-transactions/banks",
+    "Method": "CoaBanks",
+    "RelativePath": "api/bank-transactions/coa-banks",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "CoaCounter",
+    "RelativePath": "api/bank-transactions/coa-counter",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "CoaTransfer",
+    "RelativePath": "api/bank-transactions/coa-transfer",
     "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
@@ -107,6 +127,58 @@
     "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
     "Method": "DataTable",
     "RelativePath": "api/bank-transactions/datatable",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "NextChequeNumber",
+    "RelativePath": "api/bank-transactions/next-cheque-number",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "chartOfAccountId",
+        "Type": "System.Int32",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "SetNextChequeNumber",
+    "RelativePath": "api/bank-transactions/next-cheque-number",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.BankNextChequeNumberSaveRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "UndepositedCheques",
+    "RelativePath": "api/bank-transactions/undeposited-cheques",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "UndepositedSummary",
+    "RelativePath": "api/bank-transactions/undeposited-summary",
     "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
@@ -260,6 +332,22 @@
     "Method": "Delete",
     "RelativePath": "api/chart-of-accounts/{id}",
     "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.ChartOfAccountsApiController",
+    "Method": "Ledger",
+    "RelativePath": "api/chart-of-accounts/{id}/ledger",
+    "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -1337,6 +1425,27 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.JournalEntriesApiController",
+    "Method": "Update",
+    "RelativePath": "api/journal-entries/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.JournalEntrySaveRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.JournalEntriesApiController",
     "Method": "Delete",
     "RelativePath": "api/journal-entries/{id}",
     "HttpMethod": "DELETE",
@@ -1627,6 +1736,43 @@
         "Name": "id",
         "Type": "System.Int32",
         "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "Delete",
+    "RelativePath": "api/sales-invoices/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "Update",
+    "RelativePath": "api/sales-invoices/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.SalesInvoiceSaveRequest",
+        "IsRequired": false
       }
     ],
     "ReturnTypes": []
@@ -2332,6 +2478,27 @@
         "Name": "id",
         "Type": "System.Int32",
         "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
+    "Method": "Update",
+    "RelativePath": "api/vendor-bills/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.VendorBillSaveRequest",
+        "IsRequired": false
       }
     ],
     "ReturnTypes": []

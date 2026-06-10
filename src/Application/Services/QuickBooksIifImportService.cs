@@ -14,15 +14,22 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 {
     private const int BatchSize = 500;
     private const string ImportUser = "quickbooks-iif-import";
+    private const string OpeningStockRefNo = "OPENING-31MAY2026";
+    private const string OpeningStockBillNumber = "OPEN-STOCK-31052026";
+    private static readonly DateTime OpeningStockDate = new(2026, 5, 31);
+    private const string OpeningStockVendorCode = "OPENING-STOCK";
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IItemCartonSyncService _itemCartonSyncService;
     private readonly ILogger<QuickBooksIifImportService> _logger;
 
     public QuickBooksIifImportService(
         IUnitOfWork unitOfWork,
+        IItemCartonSyncService itemCartonSyncService,
         ILogger<QuickBooksIifImportService> logger)
     {
         _unitOfWork = unitOfWork;
+        _itemCartonSyncService = itemCartonSyncService;
         _logger = logger;
     }
 
@@ -938,6 +945,11 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             throw new FileNotFoundException($"Inventory valuation file not found: {filePath}");
         }
 
+        if (QuickBooksReportCsvParser.IsOpeningStockStackLotFormat(filePath))
+        {
+            return await ImportOpeningStockStackLotCsvAsync(filePath, companyId, now, cancellationToken);
+        }
+
         var rows = QuickBooksReportCsvParser.ParseInventoryValuationReport(filePath);
         var items = await _unitOfWork.Repository<Item>()
             .Query(asNoTracking: false)
@@ -1009,6 +1021,348 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
         }
 
         return (updated, skipped);
+    }
+
+    private async Task<(int Updated, int Skipped)> ImportOpeningStockStackLotCsvAsync(
+        string filePath,
+        int companyId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var rows = QuickBooksReportCsvParser.ParseOpeningStockStackLotReport(filePath);
+        if (rows.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        await RollbackPreviousOpeningStockAsync(companyId, now, cancellationToken);
+
+        var vendor = await GetOrCreateOpeningStockVendorAsync(companyId, now, cancellationToken);
+        var items = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        var pendingLines = new List<(OpeningStockStackLotRow Row, Item Item, decimal Rate, decimal Amount)>();
+        var stockByItemCode = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var cartonsByItemCodeAndLot = new Dictionary<(string ItemCode, string LotNo), decimal>();
+
+        foreach (var row in rows)
+        {
+            var itemCode = row.ItemCode.Trim();
+            var item = FindItemForValuationRow(items, itemCode);
+            if (item is null)
+            {
+                var unitId = row.UnitOfMeasureId is > 0
+                    ? row.UnitOfMeasureId.Value
+                    : ResolveUnitOfMeasureFromValuationRow(null, itemCode);
+
+                item = new Item
+                {
+                    CompanyId = companyId,
+                    ItemType = ItemType.Goods,
+                    ItemCode = itemCode,
+                    ItemName = string.IsNullOrWhiteSpace(row.ItemName) ? itemCode : row.ItemName.Trim(),
+                    StackNo = row.StackNo?.Trim() ?? string.Empty,
+                    LotNo = row.LotNo?.Trim() ?? string.Empty,
+                    Description = row.Description,
+                    HSCode = row.HsCode,
+                    Barcode = NormalizeBarcode(row.Barcode),
+                    UnitOfMeasureId = unitId,
+                    IsActive = true,
+                    CreatedAt = now,
+                    CreatedBy = ImportUser
+                };
+
+                await _unitOfWork.Repository<Item>().AddAsync(item, cancellationToken);
+                items.Add(item);
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(row.ItemName))
+                {
+                    item.ItemName = row.ItemName.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.Description))
+                {
+                    item.Description = row.Description.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.HsCode))
+                {
+                    item.HSCode = row.HsCode.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.LotNo))
+                {
+                    item.LotNo = row.LotNo.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.StackNo) && string.IsNullOrWhiteSpace(item.StackNo))
+                {
+                    item.StackNo = row.StackNo.Trim();
+                }
+
+                if (row.UnitOfMeasureId is > 0)
+                {
+                    item.UnitOfMeasureId = row.UnitOfMeasureId.Value;
+                }
+                else
+                {
+                    item.UnitOfMeasureId = ResolveUnitOfMeasureFromValuationRow(null, itemCode);
+                }
+
+                var barcode = NormalizeBarcode(row.Barcode);
+                if (!string.IsNullOrWhiteSpace(barcode))
+                {
+                    item.Barcode = barcode;
+                }
+
+                item.UpdatedAt = now;
+                item.UpdatedBy = ImportUser;
+                _unitOfWork.Repository<Item>().Update(item);
+            }
+
+            var quantity = Math.Round(row.Weight, 2);
+            var rate = item.PurchaseRate > 0m ? item.PurchaseRate : 1m;
+            var amount = Math.Round(quantity * rate, 2);
+            pendingLines.Add((row, item, rate, amount));
+            stockByItemCode[itemCode] = stockByItemCode.GetValueOrDefault(itemCode) + quantity;
+
+            var lotNo = row.LotNo?.Trim() ?? string.Empty;
+            var cartonKey = (itemCode, lotNo);
+            cartonsByItemCodeAndLot[cartonKey] =
+                cartonsByItemCodeAndLot.GetValueOrDefault(cartonKey) + Math.Round(row.Cartons, 2);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var bill = new VendorBill
+        {
+            CompanyId = companyId,
+            VendorId = vendor.Id,
+            BillNumber = OpeningStockBillNumber,
+            RefNo = OpeningStockRefNo,
+            BillDate = OpeningStockDate,
+            TotalQuantity = pendingLines.Sum(x => Math.Round(x.Row.Weight, 2)),
+            TotalCartons = pendingLines.Sum(x => Math.Round(x.Row.Cartons, 2)),
+            TaxAmount = 0m,
+            NetAmount = pendingLines.Sum(x => x.Amount),
+            Status = BillStatus.Approved,
+            CreatedAt = now,
+            CreatedBy = ImportUser
+        };
+
+        await _unitOfWork.Repository<VendorBill>().AddAsync(bill, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var billLines = pendingLines.Select(x => new VendorBillLine
+        {
+            VendorBillId = bill.Id,
+            ItemId = x.Item.Id,
+            Description = x.Row.Description,
+            StackNo = x.Row.StackNo?.Trim(),
+            LotNo = x.Row.LotNo?.Trim(),
+            Quantity = Math.Round(x.Row.Weight, 2),
+            Cartons = Math.Round(x.Row.Cartons, 2),
+            Rate = x.Rate,
+            Amount = x.Amount
+        }).ToList();
+
+        await _unitOfWork.Repository<VendorBillLine>().AddRangeAsync(billLines, cancellationToken);
+
+        var warehouseId = await GetDefaultWarehouseIdAsync(companyId, cancellationToken);
+        if (warehouseId.HasValue)
+        {
+            var inventoryTransactions = pendingLines
+                .Where(x => Math.Round(x.Row.Weight, 2) > 0m)
+                .Select(x => new InventoryTransaction
+                {
+                    CompanyId = companyId,
+                    ItemId = x.Item.Id,
+                    WarehouseId = warehouseId.Value,
+                    TransactionType = InventoryTransactionType.Opening,
+                    StackNo = string.IsNullOrWhiteSpace(x.Row.StackNo) ? null : x.Row.StackNo.Trim(),
+                    LotNo = string.IsNullOrWhiteSpace(x.Row.LotNo) ? null : x.Row.LotNo.Trim(),
+                    Quantity = Math.Round(x.Row.Weight, 2),
+                    UnitCost = x.Rate,
+                    TotalCost = x.Amount,
+                    TransactionDate = OpeningStockDate,
+                    ReferenceNo = OpeningStockBillNumber,
+                    Notes = $"Opening stock {OpeningStockBillNumber}",
+                    CreatedAt = now,
+                    CreatedBy = ImportUser
+                })
+                .ToList();
+
+            if (inventoryTransactions.Count > 0)
+            {
+                await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                    inventoryTransactions,
+                    cancellationToken);
+            }
+        }
+
+        var updatedItemIds = new HashSet<int>();
+        foreach (var item in items.Where(i =>
+                     stockByItemCode.ContainsKey(i.ItemCode)
+                     || cartonsByItemCodeAndLot.Keys.Any(k =>
+                         string.Equals(k.ItemCode, i.ItemCode, StringComparison.OrdinalIgnoreCase))))
+        {
+            if (stockByItemCode.TryGetValue(item.ItemCode, out var stock))
+            {
+                item.CurrentStock = Math.Round(stock, 2);
+            }
+
+            var itemLot = item.LotNo?.Trim() ?? string.Empty;
+            var cartonKey = (item.ItemCode, itemLot);
+            if (cartonsByItemCodeAndLot.TryGetValue(cartonKey, out var cartons))
+            {
+                item.Cartons = Math.Round(cartons, 2);
+            }
+
+            item.UpdatedAt = now;
+            item.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<Item>().Update(item);
+            updatedItemIds.Add(item.Id);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _itemCartonSyncService.SyncItemsAsync(companyId, updatedItemIds, cancellationToken);
+
+        _logger.LogInformation(
+            "Imported opening stock for company {CompanyId}: {LineCount} stack/lot lines, {ItemCount} items updated.",
+            companyId,
+            billLines.Count,
+            updatedItemIds.Count);
+
+        return (billLines.Count, 0);
+    }
+
+    private async Task RollbackPreviousOpeningStockAsync(
+        int companyId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var openingBillIds = await _unitOfWork.Repository<VendorBill>()
+            .Query(asNoTracking: false)
+            .Where(b => b.CompanyId == companyId
+                        && (b.RefNo == OpeningStockRefNo || b.BillNumber == OpeningStockBillNumber))
+            .Select(b => b.Id)
+            .ToListAsync(cancellationToken);
+
+        if (openingBillIds.Count > 0)
+        {
+            var billLines = await _unitOfWork.Repository<VendorBillLine>()
+                .Query(asNoTracking: false)
+                .Where(l => openingBillIds.Contains(l.VendorBillId))
+                .ToListAsync(cancellationToken);
+
+            foreach (var line in billLines)
+            {
+                _unitOfWork.Repository<VendorBillLine>().Remove(line);
+            }
+
+            var bills = await _unitOfWork.Repository<VendorBill>()
+                .Query(asNoTracking: false)
+                .Where(b => openingBillIds.Contains(b.Id))
+                .ToListAsync(cancellationToken);
+
+            foreach (var bill in bills)
+            {
+                _unitOfWork.Repository<VendorBill>().Remove(bill);
+            }
+        }
+
+        var openingTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == companyId
+                        && (t.ReferenceNo == OpeningStockBillNumber
+                            || (t.Notes != null && t.Notes.Contains(OpeningStockBillNumber))))
+            .ToListAsync(cancellationToken);
+
+        foreach (var transaction in openingTransactions)
+        {
+            _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+        }
+
+        var resetItems = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId
+                        && (i.ItemCode.StartsWith("W") || i.ItemCode.StartsWith("C")))
+            .ToListAsync(cancellationToken);
+
+        foreach (var item in resetItems)
+        {
+            item.CurrentStock = 0m;
+            item.Cartons = 0m;
+            item.UpdatedAt = now;
+            item.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<Item>().Update(item);
+        }
+
+        if (openingBillIds.Count > 0 || openingTransactions.Count > 0 || resetItems.Count > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "Rolled back previous opening stock for company {CompanyId}: {BillCount} bills, {TxnCount} transactions, {ItemCount} items reset.",
+                companyId,
+                openingBillIds.Count,
+                openingTransactions.Count,
+                resetItems.Count);
+        }
+    }
+
+    private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
+        await _unitOfWork.Repository<Warehouse>()
+            .Query()
+            .Where(w => w.CompanyId == companyId && w.IsActive)
+            .OrderBy(w => w.Code)
+            .Select(w => (int?)w.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<Vendor> GetOrCreateOpeningStockVendorAsync(
+        int companyId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var vendor = await _unitOfWork.Repository<Vendor>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                v => v.CompanyId == companyId && v.VendorCode == OpeningStockVendorCode,
+                cancellationToken);
+
+        if (vendor is not null)
+        {
+            return vendor;
+        }
+
+        vendor = new Vendor
+        {
+            CompanyId = companyId,
+            VendorCode = OpeningStockVendorCode,
+            VendorName = "Opening Stock Import",
+            DefaultSalesTaxRate = 0m,
+            IsActive = true,
+            CreatedAt = now,
+            CreatedBy = ImportUser
+        };
+
+        await _unitOfWork.Repository<Vendor>().AddAsync(vendor, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return vendor;
+    }
+
+    private static string? NormalizeBarcode(string? barcode)
+    {
+        if (string.IsNullOrWhiteSpace(barcode))
+        {
+            return null;
+        }
+
+        var value = barcode.Trim();
+        return value.Equals("null", StringComparison.OrdinalIgnoreCase) ? null : value;
     }
 
     private async Task<int> ImportCustomerBalancesCsvAsync(

@@ -3,9 +3,12 @@
 @{
     ViewData["Title"] = "Sales Invoices";
     var canEdit = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("Sales.Delete");
 }
 
-<div id="sales-invoice-permissions" class="d-none" data-can-edit="@canEdit.ToString().ToLower()"></div>
+<div id="sales-invoice-permissions" class="d-none"
+     data-can-edit="@canEdit.ToString().ToLower()"
+     data-can-delete="@canDelete.ToString().ToLower()"></div>
 
 <div id="sales-company-warning" class="alert alert-warning d-none mb-3"></div>
 

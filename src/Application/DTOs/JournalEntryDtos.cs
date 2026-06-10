@@ -11,7 +11,8 @@ public record JournalEntryListItemDto(
     decimal TotalDebit,
     string Status,
     bool CanPost,
-    bool CanDelete);
+    bool CanDelete,
+    bool CanEdit);
 
 public record JournalEntryLineDto(
     int Id,
@@ -36,6 +37,7 @@ public record JournalEntryDetailDto(
     decimal TotalCredit,
     bool CanPost,
     bool CanDelete,
+    bool CanEdit,
     IReadOnlyList<JournalEntryLineDto> Lines);
 
 public class JournalEntryLineSaveRequest
@@ -48,6 +50,7 @@ public class JournalEntryLineSaveRequest
 
 public class JournalEntrySaveRequest
 {
+    public int? Id { get; set; }
     public string EntryNumber { get; set; } = string.Empty;
     public DateTime EntryDate { get; set; }
     public string? Description { get; set; }

@@ -21,6 +21,7 @@ public class Item : CompanyAuditableEntity
     public decimal MinimumStock { get; set; }
     public decimal ReorderLevel { get; set; }
     public decimal CurrentStock { get; set; }
+    public decimal Cartons { get; set; }
     public CostingMethod CostingMethod { get; set; } = CostingMethod.FIFO;
     public bool IsActive { get; set; } = true;
 

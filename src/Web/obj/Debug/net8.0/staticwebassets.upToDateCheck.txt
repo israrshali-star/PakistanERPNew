@@ -5,6 +5,7 @@ wwwroot\favicon.ico
 wwwroot\js\app.js
 wwwroot\js\dashboard.js
 wwwroot\js\modules\audit-logs.js
+wwwroot\js\modules\banking-operations.js
 wwwroot\js\modules\bank-reconciliations.js
 wwwroot\js\modules\banks.js
 wwwroot\js\modules\bank-transactions.js

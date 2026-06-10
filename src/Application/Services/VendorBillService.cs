@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PakistanAccountingERP.Application.Common.Constants;
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -12,14 +13,11 @@ namespace PakistanAccountingERP.Application.Services;
 
 public partial class VendorBillService : IVendorBillService
 {
-    private const string AccountsPayableNumber = "2100";
-    private const string InputTaxRecoverableNumber = "1400";
-    private const string InventoryNumber = "1300";
-
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly IItemCartonSyncService _itemCartonSyncService;
     private readonly ILogger<VendorBillService> _logger;
 
     public VendorBillService(
@@ -27,12 +25,14 @@ public partial class VendorBillService : IVendorBillService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        IItemCartonSyncService itemCartonSyncService,
         ILogger<VendorBillService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _itemCartonSyncService = itemCartonSyncService;
         _logger = logger;
     }
 
@@ -74,6 +74,7 @@ public partial class VendorBillService : IVendorBillService
                 b.BillDate,
                 b.NetAmount,
                 b.Status.ToString(),
+                b.Status == BillStatus.Draft,
                 b.Status == BillStatus.Draft,
                 b.Status == BillStatus.Draft,
                 b.Status != BillStatus.Cancelled))
@@ -268,8 +269,8 @@ public partial class VendorBillService : IVendorBillService
         }
 
         var subTotal = Math.Round(lineBuild.Lines.Sum(l => l.Amount), 2);
-        var taxRate = request.TaxRate ?? vendor.DefaultSalesTaxRate;
-        var taxAmount = Math.Round(subTotal * Math.Max(0m, taxRate) / 100m, 2);
+        var taxRate = ResolveBillTaxRate(request.TaxRate, vendor.DefaultSalesTaxRate);
+        var taxAmount = Math.Round(lineBuild.TaxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
         var netAmount = Math.Round(subTotal + taxAmount, 2);
         var now = DateTime.UtcNow;
 
@@ -311,6 +312,131 @@ public partial class VendorBillService : IVendorBillService
         try
         {
             await _auditService.LogAsync("Create", "VendorBills", entity.Id.ToString(), null, billNumber, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit log failed for vendor bill {BillId}", entity.Id);
+        }
+
+        return new VendorBillSaveResult(true, null, entity.Id);
+    }
+
+    public async Task<VendorBillSaveResult> UpdateAsync(
+        VendorBillSaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!request.Id.HasValue || request.Id.Value <= 0)
+        {
+            return new VendorBillSaveResult(false, "Bill id is required.", null);
+        }
+
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return companyError!;
+        }
+
+        if (request.VendorId <= 0)
+        {
+            return new VendorBillSaveResult(false, "Vendor is required.", null);
+        }
+
+        if (request.Lines.Count == 0)
+        {
+            return new VendorBillSaveResult(false, "Add at least one bill line.", null);
+        }
+
+        var entity = await _unitOfWork.Repository<VendorBill>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(b => b.Id == request.Id.Value && b.CompanyId == companyId, cancellationToken);
+
+        if (entity is null)
+        {
+            return new VendorBillSaveResult(false, "Vendor bill not found.", null);
+        }
+
+        if (entity.Status != BillStatus.Draft)
+        {
+            return new VendorBillSaveResult(false, "Only draft bills can be edited.", null);
+        }
+
+        var vendor = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .FirstOrDefaultAsync(v => v.Id == request.VendorId && v.CompanyId == companyId, cancellationToken);
+
+        if (vendor is null)
+        {
+            return new VendorBillSaveResult(false, "Vendor not found.", null);
+        }
+
+        var billNumber = string.IsNullOrWhiteSpace(request.BillNumber)
+            ? entity.BillNumber
+            : request.BillNumber.Trim();
+
+        var numberExists = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .AnyAsync(b => b.CompanyId == companyId
+                           && b.BillNumber == billNumber
+                           && b.Id != entity.Id, cancellationToken);
+
+        if (numberExists)
+        {
+            return new VendorBillSaveResult(false, "Bill number already exists.", null);
+        }
+
+        var lineBuild = await BuildLineEntitiesAsync(request.Lines, companyId, cancellationToken);
+        if (!lineBuild.Success)
+        {
+            return new VendorBillSaveResult(false, lineBuild.Message, null);
+        }
+
+        var existingLines = await _unitOfWork.Repository<VendorBillLine>()
+            .Query(asNoTracking: false)
+            .Where(l => l.VendorBillId == entity.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var existingLine in existingLines)
+        {
+            _unitOfWork.Repository<VendorBillLine>().Remove(existingLine);
+        }
+
+        var subTotal = Math.Round(lineBuild.Lines.Sum(l => l.Amount), 2);
+        var taxRate = ResolveBillTaxRate(request.TaxRate, vendor.DefaultSalesTaxRate);
+        var taxAmount = Math.Round(lineBuild.TaxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
+        var netAmount = Math.Round(subTotal + taxAmount, 2);
+        var now = DateTime.UtcNow;
+
+        entity.VendorId = vendor.Id;
+        entity.BillNumber = billNumber;
+        entity.RefNo = request.RefNo?.Trim();
+        entity.BillDate = request.BillDate.Date;
+        entity.TotalQuantity = lineBuild.Lines.Sum(l => l.Quantity);
+        entity.TotalCartons = lineBuild.Lines.Sum(l => l.Cartons);
+        entity.TaxAmount = taxAmount;
+        entity.NetAmount = netAmount;
+        entity.UpdatedAt = now;
+        entity.UpdatedBy = _currentUser.UserName ?? "system";
+
+        try
+        {
+            _unitOfWork.Repository<VendorBill>().Update(entity);
+
+            foreach (var line in lineBuild.Lines)
+            {
+                line.VendorBillId = entity.Id;
+            }
+
+            await _unitOfWork.Repository<VendorBillLine>().AddRangeAsync(lineBuild.Lines, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to update vendor bill {BillId}", entity.Id);
+            return new VendorBillSaveResult(false, "Could not update vendor bill.", null);
+        }
+
+        try
+        {
+            await _auditService.LogAsync("Update", "VendorBills", entity.Id.ToString(), null, billNumber, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -399,9 +525,9 @@ public partial class VendorBillService : IVendorBillService
         }
 
         var journalLines = new List<JournalEntryLine>();
-        AddJournalLine(journalLines, accounts.InventoryAccountId, subTotal, 0m, "Inventory");
-        AddJournalLine(journalLines, accounts.InputTaxAccountId, taxAmount, 0m, "Input Tax Recoverable");
-        AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Accounts Payable");
+        AddJournalLine(journalLines, accounts.InventoryAccountId, subTotal, 0m, "Inventory Asset");
+        AddJournalLine(journalLines, accounts.InputTaxAccountId, taxAmount, 0m, "Pre Paid Sales Tax");
+        AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Account Payable");
 
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
         var now = DateTime.UtcNow;
@@ -485,6 +611,11 @@ public partial class VendorBillService : IVendorBillService
 
             _unitOfWork.Repository<VendorBill>().Update(bill);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (itemLineIds.Count > 0)
+            {
+                await _itemCartonSyncService.SyncItemsAsync(companyId, itemLineIds, cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
@@ -604,7 +735,7 @@ public partial class VendorBillService : IVendorBillService
         return new VendorBillActionResult(true, "Vendor bill deleted.", null);
     }
 
-    private async Task<(bool Success, string? Message, List<VendorBillLine> Lines)> BuildLineEntitiesAsync(
+    private async Task<(bool Success, string? Message, List<VendorBillLine> Lines, decimal TaxableSubTotal)> BuildLineEntitiesAsync(
         IReadOnlyList<VendorBillLineSaveRequest> lines,
         int companyId,
         CancellationToken cancellationToken)
@@ -615,28 +746,29 @@ public partial class VendorBillService : IVendorBillService
             .ToList();
 
         var items = itemIds.Count == 0
-            ? new Dictionary<int, (string Code, string Name, string? Description, string StackNo, string LotNo)>()
+            ? new Dictionary<int, (string Code, string Name, string? Description, string StackNo, string LotNo, ItemType ItemType)>()
             : await _unitOfWork.Repository<Item>()
                 .Query()
                 .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
-                .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.Description, i.StackNo, i.LotNo })
+                .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.Description, i.StackNo, i.LotNo, i.ItemType })
                 .ToDictionaryAsync(
                     i => i.Id,
-                    i => (Code: i.ItemCode, Name: i.ItemName, Description: i.Description, StackNo: i.StackNo, LotNo: i.LotNo),
+                    i => (Code: i.ItemCode, Name: i.ItemName, Description: i.Description, StackNo: i.StackNo, LotNo: i.LotNo, ItemType: i.ItemType),
                     cancellationToken);
 
         if (items.Count != itemIds.Count)
         {
-            return (false, "One or more items are invalid.", []);
+            return (false, "One or more items are invalid.", [], 0m);
         }
 
         var entities = new List<VendorBillLine>();
+        decimal taxableSubTotal = 0m;
 
         foreach (var line in lines)
         {
             if (line.Quantity <= 0 || line.Rate < 0)
             {
-                return (false, "Each line needs a positive quantity and non-negative rate.", []);
+                return (false, "Each line needs a positive quantity and non-negative rate.", [], 0m);
             }
 
             string? description = line.Description?.Trim();
@@ -651,10 +783,15 @@ public partial class VendorBillService : IVendorBillService
             }
             else if (string.IsNullOrWhiteSpace(description))
             {
-                return (false, "Each line needs an item or a description.", []);
+                return (false, "Each line needs an item or a description.", [], 0m);
             }
 
             var amount = Math.Round(line.Quantity * line.Rate, 2);
+            var isTaxable = !itemId.HasValue || items[itemId.Value].ItemType != ItemType.Service;
+            if (isTaxable)
+            {
+                taxableSubTotal += amount;
+            }
 
             string? stackNo = line.StackNo?.Trim();
             string? lotNo = line.LotNo?.Trim();
@@ -685,29 +822,29 @@ public partial class VendorBillService : IVendorBillService
             });
         }
 
-        return (true, null, entities);
+        return (true, null, entities, Math.Round(taxableSubTotal, 2));
     }
 
     private async Task<(bool Success, string? Message, int PayableAccountId, int InputTaxAccountId, int InventoryAccountId)>
         ResolvePostingAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
-        var payable = await GetAccountIdAsync(companyId, AccountsPayableNumber, cancellationToken);
-        var inputTax = await GetAccountIdAsync(companyId, InputTaxRecoverableNumber, cancellationToken);
-        var inventory = await GetAccountIdAsync(companyId, InventoryNumber, cancellationToken);
+        var payable = await GetAccountIdAsync(companyId, AccountsPayable, cancellationToken);
+        var inputTax = await GetAccountIdAsync(companyId, PrepaidSalesTax, cancellationToken);
+        var inventory = await GetAccountIdAsync(companyId, InventoryAsset, cancellationToken);
 
         if (payable is null)
         {
-            return (false, $"Chart of account {AccountsPayableNumber} (Accounts Payable) not found.", 0, 0, 0);
+            return (false, $"Chart of account {AccountsPayable} (Account Payable) not found.", 0, 0, 0);
         }
 
         if (inputTax is null)
         {
-            return (false, $"Chart of account {InputTaxRecoverableNumber} (Input Tax Recoverable) not found.", 0, 0, 0);
+            return (false, $"Chart of account {PrepaidSalesTax} (Pre Paid Sales Tax) not found.", 0, 0, 0);
         }
 
         if (inventory is null)
         {
-            return (false, $"Chart of account {InventoryNumber} (Inventory) not found.", 0, 0, 0);
+            return (false, $"Chart of account {InventoryAsset} (Inventory Asset) not found.", 0, 0, 0);
         }
 
         return (true, null, payable.Value, inputTax.Value, inventory.Value);
@@ -815,6 +952,16 @@ public partial class VendorBillService : IVendorBillService
             4 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
             _ => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate)
         };
+    }
+
+    private static decimal ResolveBillTaxRate(decimal? requestTaxRate, decimal vendorDefaultTaxRate)
+    {
+        if (requestTaxRate is > 0m)
+        {
+            return requestTaxRate.Value;
+        }
+
+        return vendorDefaultTaxRate > 0m ? vendorDefaultTaxRate : 18m;
     }
 
     [GeneratedRegex(@"^BILL-(\d+)$", RegexOptions.IgnoreCase)]

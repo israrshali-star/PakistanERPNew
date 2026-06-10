@@ -61,50 +61,108 @@ public class StackLotInventoryService : IStackLotInventoryService
         return ToAvailabilityDto(balance);
     }
 
-    public async Task<IReadOnlyList<string>> GetLotNumbersAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<LotItemOptionDto>> GetLotNumbersAsync(CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
         var fromItems = await _unitOfWork.Repository<Domain.Entities.Item>()
             .Query()
-            .Where(i => i.CompanyId == companyId && i.IsActive && i.LotNo != "")
-            .Select(i => i.LotNo)
+            .Where(i => i.CompanyId == companyId
+                        && i.IsActive
+                        && i.LotNo != ""
+                        && i.ItemType != ItemType.Service)
+            .Select(i => new { i.ItemCode, i.LotNo })
+            .ToListAsync(cancellationToken);
+
+        var fromServices = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && i.IsActive && i.ItemType == ItemType.Service)
+            .Select(i => new { i.ItemCode, LotNo = string.Empty })
             .ToListAsync(cancellationToken);
 
         var fromPurchases = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
                         && l.VendorBill.Status == BillStatus.Approved
+                        && l.ItemId != null
                         && l.LotNo != null
                         && l.LotNo != "")
-            .Select(l => l.LotNo!)
+            .Select(l => new { ItemCode = l.Item!.ItemCode, LotNo = l.LotNo! })
             .ToListAsync(cancellationToken);
 
         return fromItems
+            .Concat(fromServices)
             .Concat(fromPurchases)
-            .Select(l => l.Trim())
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new LotItemOptionDto(x.ItemCode.Trim(), x.LotNo.Trim()))
+            .Where(x => !string.IsNullOrWhiteSpace(x.ItemCode))
+            .GroupBy(x => (ItemCode: x.ItemCode.ToUpperInvariant(), LotNo: x.LotNo.ToUpperInvariant()))
+            .Select(g => g.First())
+            .OrderBy(x => x.ItemCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.LotNo, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    public async Task<LotDetailLookupDto?> GetLotDetailAsync(string lotNo, CancellationToken cancellationToken = default)
+    public async Task<LotDetailLookupDto?> GetLotDetailAsync(
+        string lotNo,
+        string? itemCode = null,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(lotNo))
+        var normalizedLot = string.IsNullOrWhiteSpace(lotNo) ? string.Empty : lotNo.Trim();
+        var lotUpper = normalizedLot.ToUpperInvariant();
+        var normalizedItemCode = string.IsNullOrWhiteSpace(itemCode) ? null : itemCode.Trim();
+        var itemCodeUpper = normalizedItemCode?.ToUpperInvariant();
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var itemByCode = itemCodeUpper is null
+            ? null
+            : await _unitOfWork.Repository<Domain.Entities.Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId
+                            && i.IsActive
+                            && i.ItemCode.ToUpper() == itemCodeUpper)
+                .Select(i => new
+                {
+                    i.Id,
+                    i.ItemCode,
+                    i.ItemName,
+                    i.Description,
+                    i.HSCode,
+                    i.ItemType,
+                    UnitSymbol = i.UnitOfMeasure.Symbol,
+                    i.SaleRate,
+                    i.PurchaseRate
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (itemByCode is not null
+            && (itemByCode.ItemType == ItemType.Service || string.IsNullOrWhiteSpace(normalizedLot)))
+        {
+            return new LotDetailLookupDto(
+                itemByCode.ItemType == ItemType.Service ? string.Empty : normalizedLot,
+                itemByCode.Id,
+                itemByCode.ItemCode,
+                itemByCode.ItemName,
+                itemByCode.Description ?? itemByCode.ItemName,
+                itemByCode.HSCode,
+                InventoryUnitDisplay.Format(itemByCode.ItemCode, itemByCode.UnitSymbol),
+                itemByCode.SaleRate,
+                itemByCode.PurchaseRate,
+                null,
+                Array.Empty<string>(),
+                itemByCode.ItemType);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedLot))
         {
             return null;
         }
-
-        var normalizedLot = lotNo.Trim();
-        var lotUpper = normalizedLot.ToUpperInvariant();
-        var companyId = _currentCompany.GetRequiredCompanyId();
 
         var purchaseLine = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
                         && l.VendorBill.Status == BillStatus.Approved
                         && l.ItemId != null
+                        && (itemCodeUpper == null || l.Item!.ItemCode.ToUpper() == itemCodeUpper)
                         && ((l.LotNo != null && l.LotNo.ToUpper() == lotUpper)
                             || (l.LotNo == null && l.Item!.LotNo.ToUpper() == lotUpper)
                             || l.Item!.LotNo.ToUpper() == lotUpper))
@@ -121,6 +179,7 @@ public class StackLotInventoryService : IStackLotInventoryService
                 ItemHsCode = l.Item.HSCode,
                 ItemStackNo = l.Item.StackNo,
                 ItemLotNo = l.Item.LotNo,
+                ItemType = l.Item.ItemType,
                 UnitSymbol = l.Item.UnitOfMeasure.Symbol,
                 l.Item.SaleRate,
                 l.Item.PurchaseRate
@@ -145,12 +204,16 @@ public class StackLotInventoryService : IStackLotInventoryService
                 purchaseLine.SaleRate,
                 purchaseLine.PurchaseRate,
                 defaultStack,
-                stackNos);
+                stackNos,
+                purchaseLine.ItemType);
         }
 
         var item = await _unitOfWork.Repository<Domain.Entities.Item>()
             .Query()
-            .Where(i => i.CompanyId == companyId && i.IsActive && i.LotNo.ToUpper() == lotUpper)
+            .Where(i => i.CompanyId == companyId
+                        && i.IsActive
+                        && i.LotNo.ToUpper() == lotUpper
+                        && (itemCodeUpper == null || i.ItemCode.ToUpper() == itemCodeUpper))
             .Select(i => new
             {
                 i.Id,
@@ -159,6 +222,7 @@ public class StackLotInventoryService : IStackLotInventoryService
                 i.Description,
                 i.HSCode,
                 i.StackNo,
+                i.ItemType,
                 UnitSymbol = i.UnitOfMeasure.Symbol,
                 i.SaleRate,
                 i.PurchaseRate
@@ -184,7 +248,8 @@ public class StackLotInventoryService : IStackLotInventoryService
             item.SaleRate,
             item.PurchaseRate,
             itemDefaultStack,
-            itemStackNos);
+            itemStackNos,
+            item.ItemType);
     }
 
     private async Task<IReadOnlyList<string>> GetStackNumbersForLotAsync(
@@ -227,6 +292,12 @@ public class StackLotInventoryService : IStackLotInventoryService
 
         var companyId = _currentCompany.GetRequiredCompanyId();
         var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
+        var itemTypes = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.ItemType })
+            .ToDictionaryAsync(i => i.Id, i => i.ItemType, cancellationToken);
+
         var balances = await BuildBalanceMapAsync(companyId, itemIds, excludeInvoiceId, cancellationToken);
 
         var grouped = lines
@@ -242,6 +313,11 @@ public class StackLotInventoryService : IStackLotInventoryService
         foreach (var group in grouped)
         {
             var key = group.Key;
+            if (itemTypes.TryGetValue(key.ItemId, out var itemType) && itemType == ItemType.Service)
+            {
+                continue;
+            }
+
             var itemCode = group.First().ItemCode;
             var requestedWeight = group.Sum(x => x.Quantity);
             var requestedCartons = group.Sum(x => x.Cartons);
@@ -337,6 +413,30 @@ public class StackLotInventoryService : IStackLotInventoryService
             .Select(NormalizeSale)
             .ToList();
 
+        var manualMovementsQuery = _unitOfWork.Repository<Domain.Entities.InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId
+                        && t.ReferenceNo != null
+                        && !t.ReferenceNo.StartsWith("BILL-")
+                        && !t.ReferenceNo.StartsWith("INV-"));
+
+        if (itemIds.Count > 0)
+        {
+            manualMovementsQuery = manualMovementsQuery.Where(t => itemIds.Contains(t.ItemId));
+        }
+
+        var manualMovements = await manualMovementsQuery
+            .Select(t => new ManualMovementRow(
+                t.ItemId,
+                t.Item.ItemCode,
+                t.StackNo,
+                t.LotNo,
+                t.Item.StackNo,
+                t.Item.LotNo,
+                t.TransactionType,
+                t.Quantity))
+            .ToListAsync(cancellationToken);
+
         var balances = new Dictionary<StackLotKey, StackLotBalance>();
 
         foreach (var purchase in purchases)
@@ -364,6 +464,27 @@ public class StackLotInventoryService : IStackLotInventoryService
             var multiplier = sale.InvoiceType == InvoiceType.CreditNote ? -1m : 1m;
             balance.SoldWeight += sale.Quantity * multiplier;
             balance.SoldCartons += sale.Cartons * multiplier;
+        }
+
+        foreach (var movement in manualMovements.Select(NormalizeManualMovement))
+        {
+            var key = StackLotKey.From(movement.ItemId, movement.StackNo, movement.LotNo);
+            if (!balances.TryGetValue(key, out var balance))
+            {
+                balance = new StackLotBalance(movement.ItemId, movement.ItemCode, key.StackNo, key.LotNo);
+                balances[key] = balance;
+            }
+
+            switch (movement.TransactionType)
+            {
+                case InventoryTransactionType.StockIn:
+                case InventoryTransactionType.Opening:
+                    balance.PurchasedWeight += movement.Quantity;
+                    break;
+                case InventoryTransactionType.StockOut:
+                    balance.SoldWeight += movement.Quantity;
+                    break;
+            }
         }
 
         foreach (var balance in balances.Values)
@@ -412,6 +533,13 @@ public class StackLotInventoryService : IStackLotInventoryService
         };
 
     private static SaleRow NormalizeSale(SaleRow row) =>
+        row with
+        {
+            StackNo = ResolveStackLot(row.StackNo, row.ItemStackNo),
+            LotNo = ResolveStackLot(row.LotNo, row.ItemLotNo)
+        };
+
+    private static ManualMovementRow NormalizeManualMovement(ManualMovementRow row) =>
         row with
         {
             StackNo = ResolveStackLot(row.StackNo, row.ItemStackNo),
@@ -470,4 +598,14 @@ public class StackLotInventoryService : IStackLotInventoryService
         decimal Quantity,
         decimal Cartons,
         InvoiceType InvoiceType);
+
+    private sealed record ManualMovementRow(
+        int ItemId,
+        string ItemCode,
+        string? StackNo,
+        string? LotNo,
+        string ItemStackNo,
+        string ItemLotNo,
+        InventoryTransactionType TransactionType,
+        decimal Quantity);
 }

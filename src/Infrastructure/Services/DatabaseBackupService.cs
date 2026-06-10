@@ -85,7 +85,7 @@ public class DatabaseBackupService : IDatabaseBackupService
         var startedAt = DateTime.UtcNow;
         var dbName = GetDatabaseName();
         var fileName = $"{dbName}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
-        var backupDirectory = GetStorageRoot();
+        var backupDirectory = await ResolveBackupDirectoryAsync(cancellationToken);
         Directory.CreateDirectory(backupDirectory);
         var filePath = Path.Combine(backupDirectory, fileName);
 
@@ -232,6 +232,39 @@ public class DatabaseBackupService : IDatabaseBackupService
     {
         var raw = string.IsNullOrWhiteSpace(_options.StoragePath) ? "App_Data/Backups" : _options.StoragePath;
         return Path.IsPathRooted(raw) ? raw : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, raw));
+    }
+
+    private async Task<string> ResolveBackupDirectoryAsync(CancellationToken cancellationToken)
+    {
+        var configured = GetStorageRoot();
+
+        try
+        {
+            await using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new SqlCommand(
+                """
+                DECLARE @BackupDirectory NVARCHAR(4000);
+                EXEC master.dbo.xp_instance_regread
+                    @rootkey = N'HKEY_LOCAL_MACHINE',
+                    @key = N'Software\Microsoft\MSSQLServer\MSSQLServer',
+                    @value_name = N'BackupDirectory',
+                    @value = @BackupDirectory OUTPUT;
+                SELECT @BackupDirectory;
+                """,
+                connection);
+            var result = await command.ExecuteScalarAsync(cancellationToken) as string;
+            if (!string.IsNullOrWhiteSpace(result))
+            {
+                return result;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read SQL Server default backup directory; using configured path {Path}.", configured);
+        }
+
+        return configured;
     }
 
     private static IQueryable<DatabaseBackupHistory> ApplyOrdering(

@@ -1,20 +1,44 @@
+@using System.Text.Json
+@using PakistanAccountingERP.Application.DTOs
+@model SalesInvoiceDetailDto?
 @{
-    ViewData["Title"] = "Create Sales Invoice";
+    var isCopy = ViewData["IsCopy"] as bool? == true;
+    var isEdit = Model != null && !isCopy;
+    ViewData["Title"] = isEdit ? "Edit Sales Invoice" : (isCopy ? "Recreate Sales Invoice" : "Create Sales Invoice");
+    var invoiceJson = (isEdit || isCopy) && Model != null
+        ? JsonSerializer.Serialize(Model, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+        : null;
+    var copyFromNumber = ViewData["CopyFromNumber"] as string;
 }
 
 <div id="invoice-company-warning" class="alert alert-warning d-none mb-3"></div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
-        <h4 class="text-primary mb-0">Create Sales Invoice</h4>
-        <p class="text-muted small mb-0">Draft invoice with customer, FBR scenario, and line items</p>
+        <h4 class="text-primary mb-0">@(isEdit ? "Edit Sales Invoice" : (isCopy ? "Recreate Sales Invoice" : "Create Sales Invoice"))</h4>
+        <p class="text-muted small mb-0">@(isEdit ? "Update this draft before posting to GL" : (isCopy ? "New draft copied from " + copyFromNumber + " — review lines and save" : "Draft invoice with customer, FBR scenario, and line items"))</p>
     </div>
     <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
         <i class="fa-solid fa-arrow-left me-1"></i>Back to Sales List
     </a>
 </div>
 
-<form id="sales-invoice-form" class="invoice-create-compact">
+@if (isCopy)
+{
+    <div class="alert alert-info py-2 small mb-2">
+        <i class="fa-solid fa-copy me-1"></i>
+        Recreating invoice from <strong>@copyFromNumber</strong>. A new invoice number will be assigned when you save.
+    </div>
+}
+
+@if (isEdit || isCopy)
+{
+    <script type="application/json" id="invoice-edit-data">@Html.Raw(invoiceJson)</script>
+}
+
+<form id="sales-invoice-form" class="invoice-create-compact"
+      data-edit-id="@(isEdit ? Model!.Id : "")"
+      data-copy-mode="@(isCopy ? "true" : "")">
     <input type="hidden" id="province-id" />
     <input type="hidden" id="buyer-ntn" />
     <input type="hidden" id="buyer-cnic" />
@@ -127,7 +151,7 @@
 
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary" id="btn-save-invoice">
-            <i class="fa-solid fa-floppy-disk me-1"></i>Save Draft Invoice
+            <i class="fa-solid fa-floppy-disk me-1"></i>@(isEdit ? "Update Draft Invoice" : "Save Draft Invoice")
         </button>
         <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
     </div>
@@ -152,10 +176,35 @@
             white-space: nowrap;
         }
 
+        .invoice-create-compact .table-compact th:nth-child(1),
+        .invoice-create-compact .table-compact td:nth-child(1) {
+            min-width: 7.5rem;
+            width: 7.5rem;
+        }
+
         .invoice-create-compact .table-compact th:nth-child(3),
         .invoice-create-compact .table-compact td:nth-child(3) {
             white-space: normal;
             min-width: 7rem;
+        }
+
+        .invoice-create-compact .line-lot-cell .select2-container {
+            min-width: 7rem !important;
+            width: 100% !important;
+        }
+
+        .invoice-create-compact .line-lot-cell .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            padding: 0.25rem 0.45rem;
+            font-size: 0.8rem;
+        }
+
+        .invoice-create-compact .line-lot-cell .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding-left: 0;
+            padding-right: 1.2rem;
+            line-height: 1.35;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .invoice-create-compact .form-control-xs,
@@ -164,6 +213,11 @@
             font-size: 0.72rem;
             line-height: 1.25;
             min-height: 1.45rem;
+        }
+
+        .invoice-create-compact .form-select-sm.line-lot {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            font-size: 0.8rem;
         }
 
         .invoice-create-compact .line-stock-hint {

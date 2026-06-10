@@ -1,132 +1,139 @@
-@using PakistanAccountingERP.Application.DTOs
-@using PakistanAccountingERP.Application.Interfaces.Services
-@using PakistanAccountingERP.Domain.Enums
-@inject IPermissionService PermissionService
-@model JournalEntryDetailDto
-@{
-    ViewData["Title"] = "Journal " + Model.EntryNumber;
-    var canEdit = await PermissionService.HasPermissionAsync("JournalEntries.Edit");
-    var canDelete = await PermissionService.HasPermissionAsync("JournalEntries.Delete");
-    var canPost = canEdit && Model.CanPost;
-    var canDeleteEntry = canDelete && Model.CanDelete;
-}
-
-<div id="je-detail"
-     data-id="@Model.Id"
-     data-can-post="@canPost.ToString().ToLower()"
-     data-can-delete="@canDeleteEntry.ToString().ToLower()"></div>
-
-<div id="je-action-message" class="alert d-none mb-3"></div>
-
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <div>
-        <h4 class="text-primary mb-0">@Model.EntryNumber</h4>
-        <p class="text-muted small mb-0">@Model.SourceLabel</p>
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
-            <i class="fa-solid fa-arrow-left me-1"></i>Back to list
-        </a>
-        @if (canPost)
-        {
-            <button type="button" class="btn btn-success btn-sm" id="btn-post-entry">
-                <i class="fa-solid fa-check me-1"></i>Post to GL
-            </button>
-        }
-        @if (canDeleteEntry)
-        {
-            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-delete-entry">
-                <i class="fa-solid fa-trash me-1"></i>Delete
-            </button>
-        }
-        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
-            <i class="fa-solid fa-print me-1"></i>Print
-        </button>
-    </div>
-</div>
-
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card p-3 h-100">
-            <div class="text-muted small">Status</div>
-            <div class="fw-semibold">
-                @{
-                    var statusClass = Model.Status switch
-                    {
-                        JournalStatus.Posted => "text-success",
-                        JournalStatus.Reversed => "text-danger",
-                        _ => "text-secondary"
-                    };
-                }
-                <span class="@statusClass">@Model.Status</span>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-3 h-100">
-            <div class="text-muted small">Entry Date</div>
-            <div class="fw-semibold">@Model.EntryDate.ToString("dd/MM/yyyy")</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-3 h-100">
-            <div class="text-muted small">Source</div>
-            <div class="fw-semibold">
-                @if (!string.IsNullOrEmpty(Model.SourceUrl))
-                {
-                    <a href="@Model.SourceUrl">@Model.SourceLabel</a>
-                }
-                else
-                {
-                    @Model.SourceLabel
-                }
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-3 h-100">
-            <div class="text-muted small">Description</div>
-            <div class="fw-semibold">@(Model.Description ?? "—")</div>
-        </div>
-    </div>
-</div>
-
-<div class="card p-3">
-    <h6 class="text-primary mb-3">Journal Lines</h6>
-    <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Account #</th>
-                    <th>Account Name</th>
-                    <th>Memo</th>
-                    <th class="text-end">Debit</th>
-                    <th class="text-end">Credit</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var line in Model.Lines)
-                {
-                    <tr>
-                        <td><code>@line.AccountNumber</code></td>
-                        <td>@line.AccountName</td>
-                        <td>@(line.Memo ?? "—")</td>
-                        <td class="text-end text-currency">@(line.Debit > 0 ? line.Debit.ToString("N2") : "—")</td>
-                        <td class="text-end text-currency">@(line.Credit > 0 ? line.Credit.ToString("N2") : "—")</td>
-                    </tr>
-                }
-            </tbody>
-            <tfoot class="table-light">
-                <tr>
-                    <th colspan="3" class="text-end">Totals</th>
-                    <th class="text-end text-currency">@Model.TotalDebit.ToString("N2")</th>
-                    <th class="text-end text-currency">@Model.TotalCredit.ToString("N2")</th>
-                </tr>
-            </tfoot>
-        </table>
-    </div>
-</div>
-
-@section Scripts {
-    <script src="~/js/modules/journal-entry-details.js" asp-append-version="true"></script>
-}
+@using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Application.Interfaces.Services
+@using PakistanAccountingERP.Domain.Enums
+@inject IPermissionService PermissionService
+@model JournalEntryDetailDto
+@{
+    ViewData["Title"] = "Journal " + Model.EntryNumber;
+    var canEditPermission = await PermissionService.HasPermissionAsync("JournalEntries.Edit");
+    var canDelete = await PermissionService.HasPermissionAsync("JournalEntries.Delete");
+    var canPost = canEditPermission && Model.CanPost;
+    var canDeleteEntry = canDelete && Model.CanDelete;
+    var canEditEntry = canEditPermission && Model.CanEdit;
+}
+
+<div id="je-detail"
+     data-id="@Model.Id"
+     data-can-post="@canPost.ToString().ToLower()"
+     data-can-delete="@canDeleteEntry.ToString().ToLower()"></div>
+
+<div id="je-action-message" class="alert d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">@Model.EntryNumber</h4>
+        <p class="text-muted small mb-0">@Model.SourceLabel</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back to list
+        </a>
+        @if (canEditEntry)
+        {
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-pen me-1"></i>Edit
+            </a>
+        }
+        @if (canPost)
+        {
+            <button type="button" class="btn btn-success btn-sm" id="btn-post-entry">
+                <i class="fa-solid fa-check me-1"></i>Post to GL
+            </button>
+        }
+        @if (canDeleteEntry)
+        {
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-delete-entry">
+                <i class="fa-solid fa-trash me-1"></i>Delete
+            </button>
+        }
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
+            <i class="fa-solid fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Status</div>
+            <div class="fw-semibold">
+                @{
+                    var statusClass = Model.Status switch
+                    {
+                        JournalStatus.Posted => "text-success",
+                        JournalStatus.Reversed => "text-danger",
+                        _ => "text-secondary"
+                    };
+                }
+                <span class="@statusClass">@Model.Status</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Entry Date</div>
+            <div class="fw-semibold">@Model.EntryDate.ToString("dd/MM/yyyy")</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Source</div>
+            <div class="fw-semibold">
+                @if (!string.IsNullOrEmpty(Model.SourceUrl))
+                {
+                    <a href="@Model.SourceUrl">@Model.SourceLabel</a>
+                }
+                else
+                {
+                    @Model.SourceLabel
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Description</div>
+            <div class="fw-semibold">@(Model.Description ?? "—")</div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-3">
+    <h6 class="text-primary mb-3">Journal Lines</h6>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Account #</th>
+                    <th>Account Name</th>
+                    <th>Memo</th>
+                    <th class="text-end">Debit</th>
+                    <th class="text-end">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in Model.Lines)
+                {
+                    <tr>
+                        <td><code>@line.AccountNumber</code></td>
+                        <td>@line.AccountName</td>
+                        <td>@(line.Memo ?? "—")</td>
+                        <td class="text-end text-currency">@(line.Debit > 0 ? line.Debit.ToString("N2") : "—")</td>
+                        <td class="text-end text-currency">@(line.Credit > 0 ? line.Credit.ToString("N2") : "—")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <th colspan="3" class="text-end">Totals</th>
+                    <th class="text-end text-currency">@Model.TotalDebit.ToString("N2")</th>
+                    <th class="text-end text-currency">@Model.TotalCredit.ToString("N2")</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/journal-entry-details.js" asp-append-version="true"></script>
+}

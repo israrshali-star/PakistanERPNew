@@ -4,44 +4,75 @@ namespace PakistanAccountingERP.Application.DTOs;
 
 public record BankTransactionDto(
     int Id,
-    int BankId,
-    string BankName,
+    int ChartOfAccountId,
+    string AccountLabel,
     BankTransactionType TransactionType,
-    int? TransferToBankId,
-    string? TransferToBankName,
+    int? TransferToChartOfAccountId,
+    string? TransferToAccountLabel,
+    int? CounterChartOfAccountId,
+    string? PartyName,
     DateTime TransactionDate,
     string? ChequeNumber,
     DateTime? ChequeDate,
     decimal Amount,
     string? Description,
-    bool IsReconciled);
+    bool IsReconciled,
+    int? JournalEntryId);
 
 public record BankTransactionListItemDto(
     int Id,
-    string BankName,
+    string AccountLabel,
     DateTime TransactionDate,
     string TransactionType,
-    string? TransferToBankName,
+    string? TransferToAccountLabel,
     decimal Amount,
     string? Description,
+    string? PartyName,
     bool IsReconciled);
 
 public class BankTransactionSaveRequest
 {
-    public int BankId { get; set; }
+    public int ChartOfAccountId { get; set; }
     public BankTransactionType TransactionType { get; set; }
-    public int? TransferToBankId { get; set; }
+    public int? TransferToChartOfAccountId { get; set; }
+    public int? CounterChartOfAccountId { get; set; }
+    public string? PartyName { get; set; }
     public DateTime TransactionDate { get; set; }
     public string? ChequeNumber { get; set; }
     public DateTime? ChequeDate { get; set; }
     public decimal Amount { get; set; }
     public string? Description { get; set; }
+    public List<int> CustomerReceiptIds { get; set; } = [];
 }
+
+public record UndepositedChequeDto(
+    int Id,
+    string CustomerName,
+    string ReceiptNumber,
+    string? ChequeNumber,
+    decimal Amount,
+    DateTime ReceiptDate,
+    DateTime? ChequeDate);
 
 public record BankTransactionSaveResult(bool Success, string? Message, BankTransactionDto? Transaction);
 
-public record BankTransactionBankLookupDto(
+public record BankCoaLookupDto(
     int Id,
-    string BankName,
     string AccountNumber,
-    decimal CurrentBalance);
+    string AccountName,
+    decimal Balance)
+{
+    public string Label => AccountNumber + " — " + AccountName;
+}
+
+public record BankUndepositedSummaryDto(decimal Balance, string AccountNumber);
+
+public record BankNextChequeNumberDto(string? NextChequeNumber, bool IsConfigured);
+
+public class BankNextChequeNumberSaveRequest
+{
+    public int ChartOfAccountId { get; set; }
+    public string NextChequeNumber { get; set; } = string.Empty;
+}
+
+public record BankNextChequeNumberSaveResult(bool Success, string? Message, BankNextChequeNumberDto? NextChequeNumber);

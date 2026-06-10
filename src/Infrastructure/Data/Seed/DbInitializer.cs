@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Domain.Entities;
 using PakistanAccountingERP.Domain.Enums;
 using PakistanAccountingERP.Infrastructure.Identity;
@@ -461,7 +462,7 @@ public static class DbInitializer
         }
 
         var cashAccountId = await context.ChartOfAccounts
-            .Where(a => a.CompanyId == companyId && a.AccountNumber == "1100")
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == GlAccountNumbers.CashInHand)
             .Select(a => (int?)a.Id)
             .FirstOrDefaultAsync(cancellationToken);
 

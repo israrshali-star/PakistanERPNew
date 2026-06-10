@@ -85,6 +85,7 @@ public partial class JournalEntryService : IJournalEntryService
                 cancellationToken);
 
             var isManual = IsManualEntry(entry.ReferenceType);
+            var canEdit = CanEditEntry(entry.Status, isManual);
             rows.Add(new JournalEntryListItemDto(
                 entry.Id,
                 entry.EntryNumber,
@@ -94,7 +95,8 @@ public partial class JournalEntryService : IJournalEntryService
                 entry.TotalDebit,
                 entry.Status.ToString(),
                 entry.Status == JournalStatus.Draft && isManual,
-                entry.Status == JournalStatus.Draft && isManual));
+                entry.Status == JournalStatus.Draft && isManual,
+                canEdit));
         }
 
         return new DataTableResponse<JournalEntryListItemDto>(
@@ -146,6 +148,8 @@ public partial class JournalEntryService : IJournalEntryService
         var totalDebit = entry.Lines.Sum(l => l.Debit);
         var totalCredit = entry.Lines.Sum(l => l.Credit);
 
+        var canEdit = CanEditEntry(entry.Status, isManual);
+
         return new JournalEntryDetailDto(
             entry.Id,
             entry.EntryNumber,
@@ -160,6 +164,7 @@ public partial class JournalEntryService : IJournalEntryService
             totalCredit,
             entry.Status == JournalStatus.Draft && isManual,
             entry.Status == JournalStatus.Draft && isManual,
+            canEdit,
             entry.Lines);
     }
 
@@ -272,6 +277,79 @@ public partial class JournalEntryService : IJournalEntryService
         }
 
         return new JournalEntrySaveResult(true, null, entity.Id);
+    }
+
+    public async Task<JournalEntrySaveResult> UpdateAsync(
+        int id,
+        JournalEntrySaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return companyError!;
+        }
+
+        var entry = await _unitOfWork.Repository<JournalEntry>()
+            .Query(asNoTracking: false)
+            .Include(j => j.Lines)
+            .FirstOrDefaultAsync(j => j.Id == id && j.CompanyId == companyId, cancellationToken);
+
+        if (entry is null)
+        {
+            return new JournalEntrySaveResult(false, "Journal entry not found.", null);
+        }
+
+        var isManual = IsManualEntry(entry.ReferenceType);
+        if (!CanEditEntry(entry.Status, isManual))
+        {
+            return new JournalEntrySaveResult(false, GetEditDeniedMessage(entry.Status, isManual), null);
+        }
+
+        var lineBuild = await BuildLineEntitiesAsync(request.Lines, companyId, cancellationToken);
+        if (!lineBuild.Success)
+        {
+            return new JournalEntrySaveResult(false, lineBuild.Message, null);
+        }
+
+        var oldSnapshot = entry.EntryNumber;
+        var now = DateTime.UtcNow;
+
+        entry.EntryDate = request.EntryDate.Date;
+        entry.Description = request.Description?.Trim();
+        entry.UpdatedAt = now;
+        entry.UpdatedBy = _currentUser.UserName;
+
+        _unitOfWork.Repository<JournalEntryLine>().RemoveRange(entry.Lines);
+
+        try
+        {
+            _unitOfWork.Repository<JournalEntry>().Update(entry);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            foreach (var line in lineBuild.Lines)
+            {
+                line.JournalEntryId = entry.Id;
+            }
+
+            await _unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(lineBuild.Lines, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to update journal entry {EntryId}", id);
+            return new JournalEntrySaveResult(false, "Could not save journal entry.", null);
+        }
+
+        try
+        {
+            await _auditService.LogAsync("Update", "JournalEntries", id.ToString(), oldSnapshot, entry.EntryNumber, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit log failed for journal entry {EntryId}", id);
+        }
+
+        return new JournalEntrySaveResult(true, null, entry.Id);
     }
 
     public async Task<JournalEntryActionResult> PostAsync(int id, CancellationToken cancellationToken = default)
@@ -503,6 +581,28 @@ public partial class JournalEntryService : IJournalEntryService
 
     private static bool IsManualEntry(string? referenceType) =>
         string.IsNullOrWhiteSpace(referenceType) || referenceType == ReferenceTypes.Manual;
+
+    private bool IsSuperAdmin() =>
+        _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+
+    private bool CanEditEntry(JournalStatus status, bool isManual) =>
+        status != JournalStatus.Reversed
+        && (IsSuperAdmin() || (status == JournalStatus.Draft && isManual));
+
+    private static string GetEditDeniedMessage(JournalStatus status, bool isManual)
+    {
+        if (status == JournalStatus.Reversed)
+        {
+            return "Reversed journal entries cannot be edited.";
+        }
+
+        if (!isManual)
+        {
+            return "System-generated entries cannot be edited.";
+        }
+
+        return "Only draft entries can be edited.";
+    }
 
     private static JournalEntryActionResult ToActionError(JournalEntrySaveResult error) =>
         new(error.Success, error.Message, null);

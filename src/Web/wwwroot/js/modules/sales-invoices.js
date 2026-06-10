@@ -3,6 +3,7 @@
 
     var dataTable = null;
     var canEdit = false;
+    var canDelete = false;
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -16,14 +17,14 @@
         return body.message || body.Message || fallback;
     }
 
-    function runInvoiceAction(id, action, confirmText, successReload) {
+    function runInvoiceAction(id, action, confirmText, successReload, method) {
         if (!confirm(confirmText)) {
             return;
         }
 
         $.ajax({
-            url: '/api/sales-invoices/' + id + action,
-            method: 'POST'
+            url: '/api/sales-invoices/' + id + (action || ''),
+            method: method || 'POST'
         })
             .done(function () {
                 if (successReload && dataTable) {
@@ -57,7 +58,17 @@
                         return '<a href="/SalesInvoices/Details/' + row.id + '"><code>' + escapeHtml(d) + '</code></a>';
                     }
                 },
-                { data: 'customerName' },
+                {
+                    data: 'customerName',
+                    render: function (d, type, row) {
+                        var name = escapeHtml(d);
+                        if (!row.customerId) {
+                            return name;
+                        }
+                        return '<a href="/Customers/Ledger/' + row.customerId + '" class="text-decoration-none" title="Customer ledger">' +
+                            name + ' <i class="fa-solid fa-book text-primary ms-1" style="font-size:0.85em"></i></a>';
+                    }
+                },
                 {
                     data: 'invoiceDate',
                     render: function (d) {
@@ -104,6 +115,13 @@
                         var actions =
                             '<a href="/SalesInvoices/Details/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="View"><i class="fa-solid fa-eye"></i></a>';
 
+                        if (row.customerId) {
+                            actions += '<a href="/Customers/Ledger/' + row.customerId + '" class="btn btn-link btn-sm p-0 me-1" title="Customer ledger"><i class="fa-solid fa-book"></i></a>';
+                        }
+
+                        if (canEdit && row.canEdit) {
+                            actions += '<a href="/SalesInvoices/Edit/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="Edit draft"><i class="fa-solid fa-pen"></i></a>';
+                        }
                         if (canEdit && row.canPost) {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-post-invoice" data-id="' + id + '" title="Post to GL"><i class="fa-solid fa-book"></i></button>';
                         }
@@ -112,6 +130,9 @@
                         }
                         if (canEdit && row.status === 'Draft') {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-cancel-invoice" data-id="' + id + '" title="Cancel"><i class="fa-solid fa-ban"></i></button>';
+                        }
+                        if (canDelete && row.canDelete) {
+                            actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-invoice" data-id="' + id + '" title="Delete"><i class="fa-solid fa-trash"></i></button>';
                         }
 
                         return actions;
@@ -126,6 +147,7 @@
 
     $(function () {
         canEdit = $('#sales-invoice-permissions').data('can-edit') === true;
+        canDelete = $('#sales-invoice-permissions').data('can-delete') === true;
 
         $.getJSON('/api/company/current')
             .done(initDataTable)
@@ -163,6 +185,16 @@
 
         $('#sales-invoices-table').on('click', '.btn-cancel-invoice', function () {
             runInvoiceAction($(this).data('id'), '/cancel', 'Cancel this draft invoice?', true);
+        });
+
+        $('#sales-invoices-table').on('click', '.btn-delete-invoice', function () {
+            runInvoiceAction(
+                $(this).data('id'),
+                '',
+                'Permanently delete this invoice and its GL journal entry? This cannot be undone.',
+                true,
+                'DELETE'
+            );
         });
     });
 })();

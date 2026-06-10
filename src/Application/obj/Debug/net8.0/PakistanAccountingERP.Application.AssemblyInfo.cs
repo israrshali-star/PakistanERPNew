@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PakistanAccountingERP.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ac1fad1785a37358b1ed3bcb5599b0b0f467eeb1")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+993d3d704e62accfdfd645ff810020a6bca6033c")]
 [assembly: System.Reflection.AssemblyProductAttribute("PakistanAccountingERP.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PakistanAccountingERP.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

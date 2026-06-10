@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
+using PakistanAccountingERP.Domain.Enums;
 using PakistanAccountingERP.Web.Authorization;
 
 namespace PakistanAccountingERP.Web.Controllers;
@@ -29,6 +30,35 @@ public class VendorBillsController : Controller
         ViewData["BreadcrumbParent"] = "Purchase";
         ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
         return View();
+    }
+
+    [RequirePermission("Purchase.Edit")]
+    public async Task<IActionResult> Edit(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var bill = await _vendorBillService.GetDetailAsync(id, cancellationToken);
+            if (bill is null)
+            {
+                return NotFound();
+            }
+
+            if (bill.Status != BillStatus.Draft)
+            {
+                TempData["Error"] = "Only draft bills can be edited.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
+            ViewData["BreadcrumbParent"] = "Purchase";
+            ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+            ViewData["EditBillId"] = id;
+            return View("Create", bill);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(Index));
+        }
     }
 
     public async Task<IActionResult> Details(int id, CancellationToken cancellationToken)
@@ -172,6 +202,32 @@ public class VendorBillsApiController : ControllerBase
         try
         {
             var result = await _vendorBillService.CreateAsync(request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new VendorBillSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpPut("{id:int}")]
+    [RequirePermission("Purchase.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Update(
+        int id,
+        [FromBody] VendorBillSaveRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new VendorBillSaveResult(false, "Invalid request body.", null));
+        }
+
+        request.Id = id;
+
+        try
+        {
+            var result = await _vendorBillService.UpdateAsync(request, cancellationToken);
             return result.Success ? Ok(result) : BadRequest(result);
         }
         catch (InvalidOperationException ex)

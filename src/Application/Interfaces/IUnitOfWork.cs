@@ -3,7 +3,7 @@ namespace PakistanAccountingERP.Application.Interfaces;
 /// <summary>
 /// Coordinates repositories and persists changes through a single DbContext.
 /// </summary>
-public interface IUnitOfWork : IAsyncDisposable
+public interface IUnitOfWork : IDisposable, IAsyncDisposable
 {
     /// <summary>Gets a repository for the given entity type (cached per unit-of-work instance).</summary>
     IRepository<TEntity> Repository<TEntity>() where TEntity : class;

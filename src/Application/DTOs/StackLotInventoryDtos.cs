@@ -1,3 +1,5 @@
+using PakistanAccountingERP.Domain.Enums;
+
 namespace PakistanAccountingERP.Application.DTOs;
 
 public record StackLotAvailabilityDto(
@@ -21,6 +23,8 @@ public record StackLotSaleValidationLine(
     decimal Quantity,
     decimal Cartons);
 
+public record LotItemOptionDto(string ItemCode, string LotNo);
+
 public record LotDetailLookupDto(
     string LotNo,
     int ItemId,
@@ -32,4 +36,5 @@ public record LotDetailLookupDto(
     decimal SaleRate,
     decimal PurchaseRate,
     string? DefaultStackNo,
-    IReadOnlyList<string> StackNos);
+    IReadOnlyList<string> StackNos,
+    ItemType ItemType);

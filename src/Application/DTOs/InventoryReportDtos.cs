@@ -7,6 +7,7 @@ public record StockSummaryLineDto(
     string? CategoryName,
     string UnitSymbol,
     decimal CurrentStock,
+    decimal CurrentCartons,
     decimal MinimumStock,
     decimal ReorderLevel,
     decimal PurchaseRate,
@@ -17,6 +18,7 @@ public record StockSummaryReportDto(
     DateTime AsOfDate,
     int ItemCount,
     decimal TotalStockValue,
+    decimal TotalCartons,
     IReadOnlyList<StockSummaryLineDto> Lines);
 
 public record LowStockLineDto(
@@ -44,6 +46,8 @@ public record StockMovementLineDto(
     string WarehouseName,
     decimal QtyIn,
     decimal QtyOut,
+    decimal CartonsIn,
+    decimal CartonsOut,
     decimal AdjustmentQty,
     decimal UnitCost,
     decimal TotalCost,
@@ -61,6 +65,8 @@ public record StockMovementReportDto(
     int TransactionCount,
     decimal TotalQtyIn,
     decimal TotalQtyOut,
+    decimal TotalCartonsIn,
+    decimal TotalCartonsOut,
     IReadOnlyList<StockMovementLineDto> Lines);
 
 public record InventoryReportItemLookupDto(int Id, string ItemCode, string ItemName);

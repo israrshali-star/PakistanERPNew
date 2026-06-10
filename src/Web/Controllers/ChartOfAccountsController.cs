@@ -102,6 +102,21 @@ public class ChartOfAccountsApiController : ControllerBase
         return account is null ? NotFound() : Ok(account);
     }
 
+    [HttpGet("{id:int}/ledger")]
+    [RequirePermission("ChartOfAccounts.View")]
+    public async Task<IActionResult> Ledger(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var ledger = await _chartOfAccountsService.GetLedgerAsync(id, cancellationToken);
+            return ledger is null ? NotFound() : Ok(ledger);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost]
     [RequirePermission("ChartOfAccounts.Create")]
     [IgnoreAntiforgeryToken]

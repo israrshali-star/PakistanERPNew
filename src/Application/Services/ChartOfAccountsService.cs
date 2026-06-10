@@ -429,6 +429,15 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
         var hasChildren = await HasChildrenAsync(entity.Id, cancellationToken);
 
+        if (!IsSuperAdmin()
+            && (entity.TypeId != request.TypeId || entity.SubTypeId != request.SubTypeId))
+        {
+            return new ChartOfAccountSaveResult(
+                false,
+                "Only SuperAdmin can change account type or sub-type.",
+                null);
+        }
+
         entity.AccountNumber = request.AccountNumber.Trim();
         entity.AccountName = request.AccountName.Trim();
         entity.TypeId = request.TypeId;
@@ -515,6 +524,70 @@ public class ChartOfAccountsService : IChartOfAccountsService
         await TryAuditAsync("Delete", id.ToString(), oldSnapshot, null, cancellationToken);
 
         return new ChartOfAccountSaveResult(true, "Account deleted successfully.", null);
+    }
+
+    public async Task<ChartOfAccountLedgerDto?> GetLedgerAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        var account = await GetByIdAsync(id, cancellationToken);
+        if (account is null || account.IsGroupAccount)
+        {
+            return null;
+        }
+
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var balance = account.OpeningBalance;
+        var entries = new List<ChartOfAccountLedgerEntryDto>();
+
+        if (account.OpeningBalance != 0m)
+        {
+            entries.Add(new ChartOfAccountLedgerEntryDto(
+                DateTime.MinValue,
+                "OPENING",
+                "Opening Balance",
+                account.OpeningBalance > 0 ? account.OpeningBalance : 0m,
+                account.OpeningBalance < 0 ? Math.Abs(account.OpeningBalance) : 0m,
+                account.OpeningBalance));
+        }
+
+        var lines = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.ChartOfAccountId == id
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted)
+            .OrderBy(l => l.JournalEntry.EntryDate)
+            .ThenBy(l => l.JournalEntry.Id)
+            .ThenBy(l => l.Id)
+            .Select(l => new
+            {
+                l.JournalEntry.EntryDate,
+                l.JournalEntry.EntryNumber,
+                l.JournalEntry.Description,
+                l.Debit,
+                l.Credit,
+                l.Memo
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var line in lines)
+        {
+            balance += line.Debit - line.Credit;
+
+            var description = !string.IsNullOrWhiteSpace(line.Memo)
+                ? line.Memo
+                : line.Description ?? "Journal Entry";
+
+            entries.Add(new ChartOfAccountLedgerEntryDto(
+                line.EntryDate,
+                line.EntryNumber,
+                description,
+                line.Debit,
+                line.Credit,
+                balance));
+        }
+
+        return new ChartOfAccountLedgerDto(account, entries, balance);
     }
 
     public async Task<byte[]> ExportToExcelAsync(CancellationToken cancellationToken = default)
@@ -957,6 +1030,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
         return next;
     }
+
+    private bool IsSuperAdmin() =>
+        _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 
     private bool TryGetCompanyId(out int companyId, out ChartOfAccountSaveResult? error)
     {

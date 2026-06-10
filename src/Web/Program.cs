@@ -82,7 +82,7 @@ try
 
     await DbInitializer.InitializeAsync(app.Services);
 
-    Log.Information("Pakistan Accounting ERP started ({Environment})", app.Environment.EnvironmentName);
+    Log.Information("Pakistan Accounting ERP ready ({Environment})", app.Environment.EnvironmentName);
     app.Run();
 }
 catch (Exception ex)

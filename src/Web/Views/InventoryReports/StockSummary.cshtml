@@ -79,6 +79,7 @@
                     <th>Category</th>
                     <th>UOM</th>
                     <th class="text-end">On Hand</th>
+                    <th class="text-end">Cartons</th>
                     <th class="text-end">Min</th>
                     <th class="text-end">Reorder</th>
                     <th class="text-end">Rate</th>
@@ -86,11 +87,13 @@
                 </tr>
             </thead>
             <tbody id="report-lines">
-                <tr><td colspan="9" class="text-muted text-center">No data loaded.</td></tr>
+                <tr><td colspan="10" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="report-footer" class="d-none table-light">
                 <tr>
-                    <th colspan="8" class="text-end">Total Stock Value</th>
+                    <th colspan="4" class="text-end">Totals</th>
+                    <th class="text-end" id="report-total-cartons">0</th>
+                    <th colspan="3"></th>
                     <th class="text-end" id="report-total-value">0.00</th>
                 </tr>
             </tfoot>

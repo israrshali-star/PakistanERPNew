@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using System.Text.Json;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -22,10 +23,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private readonly IStackLotInventoryService _stackLotInventory;
     private readonly ILogger<SalesInvoiceService> _logger;
 
-    private const string AccountsReceivableNumber = "1200";
-    private const string SalesTaxPayableNumber = "2200";
-    private const string SalesRevenueNumber = "4100";
-    private const string SalesReturnsNumber = "4200";
+    private const string CartageItemCode = "ITEM-0002";
 
     public SalesInvoiceService(
         IUnitOfWork unitOfWork,
@@ -78,14 +76,17 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             .Select(i => new SalesInvoiceListItemDto(
                 i.Id,
                 i.InvoiceNumber,
+                i.CustomerId,
                 i.Customer.BuyerName,
                 i.InvoiceDate,
                 i.NetTotal,
                 i.Status.ToString(),
                 i.FbrInvoiceNumber,
                 i.Status == InvoiceStatus.Draft,
+                i.Status == InvoiceStatus.Draft,
                 i.Status == InvoiceStatus.Posted && i.FbrSubmittedAt == null,
                 i.FbrSubmittedAt != null,
+                i.FbrSubmittedAt == null,
                 i.Status != InvoiceStatus.Cancelled))
             .ToListAsync(cancellationToken);
 
@@ -171,6 +172,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.HSCode,
                 i.StackNo,
                 i.LotNo,
+                i.ItemType,
                 UnitSymbol = i.UnitOfMeasure.Symbol ?? "PCS",
                 i.SaleRate
             })
@@ -187,7 +189,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.LotNo,
                 InventoryUnitDisplay.Format(i.ItemCode, i.UnitSymbol),
                 i.SaleRate,
-                defaultTaxRate))
+                defaultTaxRate,
+                i.ItemType))
             .ToList();
     }
 
@@ -245,6 +248,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.Description,
                 i.StackNo,
                 i.LotNo,
+                i.ItemType,
                 UnitSymbol = i.UnitOfMeasure.Symbol ?? "PCS"
             })
             .ToDictionaryAsync(i => i.Id, cancellationToken);
@@ -254,33 +258,293 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "One or more items are invalid.", null);
         }
 
-        var scenarioTaxRate = await ResolveScenarioTaxRateAsync(companyId, request.ScenarioId, cancellationToken);
+        var itemSnapshots = items.ToDictionary(
+            x => x.Key,
+            x => new InvoiceItemSnapshot(
+                x.Value.Id,
+                x.Value.ItemCode,
+                x.Value.HSCode,
+                x.Value.ItemName,
+                x.Value.Description,
+                x.Value.StackNo,
+                x.Value.LotNo,
+                x.Value.ItemType,
+                x.Value.UnitSymbol));
 
+        var lineBuild = BuildInvoiceLineEntities(request.Lines, itemSnapshots);
+        if (!lineBuild.Success)
+        {
+            return new SalesInvoiceSaveResult(false, lineBuild.Message, null);
+        }
+
+        var stockValidation = await _stackLotInventory.ValidateSaleLinesAsync(
+            request.InvoiceType,
+            lineBuild.ValidationLines,
+            excludeInvoiceId: null,
+            cancellationToken);
+
+        if (!stockValidation.Success)
+        {
+            return new SalesInvoiceSaveResult(false, stockValidation.Message, null);
+        }
+
+        var now = DateTime.UtcNow;
+        var netTotal = Math.Round(lineBuild.SubTotal - lineBuild.DiscountTotal + lineBuild.TaxTotal, 2);
+
+        var entity = new SalesInvoice
+        {
+            CompanyId = companyId,
+            InvoiceNumber = invoiceNumber,
+            CustomerId = customer.Id,
+            BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address,
+            ProvinceId = request.ProvinceId ?? customer.ProvinceId,
+            BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN,
+            BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC,
+            InvoiceDate = request.InvoiceDate.Date,
+            InvoiceType = request.InvoiceType,
+            ScenarioId = request.ScenarioId ?? customer.ScenarioId,
+            SubTotal = lineBuild.SubTotal,
+            DiscountAmount = lineBuild.DiscountTotal,
+            TaxAmount = lineBuild.TaxTotal,
+            NetTotal = netTotal,
+            Status = InvoiceStatus.Draft,
+            CreatedAt = now,
+            CreatedBy = _currentUser.UserName ?? "system"
+        };
+
+        try
+        {
+            await _unitOfWork.Repository<SalesInvoice>().AddAsync(entity, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            foreach (var line in lineBuild.Lines)
+            {
+                line.SalesInvoiceId = entity.Id;
+            }
+
+            await _unitOfWork.Repository<SalesInvoiceLine>().AddRangeAsync(lineBuild.Lines, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to create sales invoice {InvoiceNumber}", invoiceNumber);
+            return new SalesInvoiceSaveResult(false, "Could not save invoice. Check customer, items, and company.", null);
+        }
+
+        try
+        {
+            await _auditService.LogAsync("Create", "SalesInvoices", entity.Id.ToString(), null, invoiceNumber, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit log failed for sales invoice {InvoiceId}", entity.Id);
+        }
+
+        return new SalesInvoiceSaveResult(true, null, entity.Id);
+    }
+
+    public async Task<SalesInvoiceSaveResult> UpdateAsync(
+        SalesInvoiceSaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!request.Id.HasValue || request.Id.Value <= 0)
+        {
+            return new SalesInvoiceSaveResult(false, "Invoice id is required.", null);
+        }
+
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return companyError!;
+        }
+
+        if (request.CustomerId <= 0)
+        {
+            return new SalesInvoiceSaveResult(false, "Customer is required.", null);
+        }
+
+        if (request.Lines.Count == 0)
+        {
+            return new SalesInvoiceSaveResult(false, "Add at least one invoice line.", null);
+        }
+
+        var entity = await _unitOfWork.Repository<SalesInvoice>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(i => i.Id == request.Id.Value && i.CompanyId == companyId, cancellationToken);
+
+        if (entity is null)
+        {
+            return new SalesInvoiceSaveResult(false, "Invoice not found.", null);
+        }
+
+        if (entity.Status != InvoiceStatus.Draft)
+        {
+            return new SalesInvoiceSaveResult(false, "Only draft invoices can be edited.", null);
+        }
+
+        var customer = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .FirstOrDefaultAsync(c => c.Id == request.CustomerId && c.CompanyId == companyId, cancellationToken);
+
+        if (customer is null)
+        {
+            return new SalesInvoiceSaveResult(false, "Customer not found.", null);
+        }
+
+        var invoiceNumber = string.IsNullOrWhiteSpace(request.InvoiceNumber)
+            ? entity.InvoiceNumber
+            : request.InvoiceNumber.Trim();
+
+        var numberExists = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .AnyAsync(i => i.CompanyId == companyId
+                           && i.InvoiceNumber == invoiceNumber
+                           && i.Id != entity.Id, cancellationToken);
+
+        if (numberExists)
+        {
+            return new SalesInvoiceSaveResult(false, "Invoice number already exists.", null);
+        }
+
+        var itemIds = request.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var items = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+            .Select(i => new
+            {
+                i.Id,
+                i.ItemCode,
+                i.HSCode,
+                i.ItemName,
+                i.Description,
+                i.StackNo,
+                i.LotNo,
+                i.ItemType,
+                UnitSymbol = i.UnitOfMeasure.Symbol ?? "PCS"
+            })
+            .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+        if (items.Count != itemIds.Count)
+        {
+            return new SalesInvoiceSaveResult(false, "One or more items are invalid.", null);
+        }
+
+        var itemSnapshots = items.ToDictionary(
+            x => x.Key,
+            x => new InvoiceItemSnapshot(
+                x.Value.Id,
+                x.Value.ItemCode,
+                x.Value.HSCode,
+                x.Value.ItemName,
+                x.Value.Description,
+                x.Value.StackNo,
+                x.Value.LotNo,
+                x.Value.ItemType,
+                x.Value.UnitSymbol));
+
+        var lineBuild = BuildInvoiceLineEntities(request.Lines, itemSnapshots);
+        if (!lineBuild.Success)
+        {
+            return new SalesInvoiceSaveResult(false, lineBuild.Message, null);
+        }
+
+        var stockValidation = await _stackLotInventory.ValidateSaleLinesAsync(
+            request.InvoiceType,
+            lineBuild.ValidationLines,
+            excludeInvoiceId: entity.Id,
+            cancellationToken);
+
+        if (!stockValidation.Success)
+        {
+            return new SalesInvoiceSaveResult(false, stockValidation.Message, null);
+        }
+
+        var existingLines = await _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query(asNoTracking: false)
+            .Where(l => l.SalesInvoiceId == entity.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var existingLine in existingLines)
+        {
+            _unitOfWork.Repository<SalesInvoiceLine>().Remove(existingLine);
+        }
+
+        var now = DateTime.UtcNow;
+        var netTotal = Math.Round(lineBuild.SubTotal - lineBuild.DiscountTotal + lineBuild.TaxTotal, 2);
+
+        entity.InvoiceNumber = invoiceNumber;
+        entity.CustomerId = customer.Id;
+        entity.BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address;
+        entity.ProvinceId = request.ProvinceId ?? customer.ProvinceId;
+        entity.BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN;
+        entity.BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC;
+        entity.InvoiceDate = request.InvoiceDate.Date;
+        entity.InvoiceType = request.InvoiceType;
+        entity.ScenarioId = request.ScenarioId ?? customer.ScenarioId;
+        entity.SubTotal = lineBuild.SubTotal;
+        entity.DiscountAmount = lineBuild.DiscountTotal;
+        entity.TaxAmount = lineBuild.TaxTotal;
+        entity.NetTotal = netTotal;
+        entity.UpdatedAt = now;
+        entity.UpdatedBy = _currentUser.UserName ?? "system";
+
+        try
+        {
+            _unitOfWork.Repository<SalesInvoice>().Update(entity);
+
+            foreach (var line in lineBuild.Lines)
+            {
+                line.SalesInvoiceId = entity.Id;
+            }
+
+            await _unitOfWork.Repository<SalesInvoiceLine>().AddRangeAsync(lineBuild.Lines, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to update sales invoice {InvoiceId}", entity.Id);
+            return new SalesInvoiceSaveResult(false, "Could not update invoice.", null);
+        }
+
+        await TryAuditAsync("Update", entity.Id.ToString(), null, invoiceNumber, cancellationToken);
+
+        return new SalesInvoiceSaveResult(true, null, entity.Id);
+    }
+
+    private static InvoiceLineBuildResult BuildInvoiceLineEntities(
+        IReadOnlyList<SalesInvoiceLineSaveRequest> lines,
+        Dictionary<int, InvoiceItemSnapshot> items)
+    {
         var validationLines = new List<StackLotSaleValidationLine>();
         var lineEntities = new List<SalesInvoiceLine>();
         decimal subTotal = 0m;
         decimal discountTotal = 0m;
         decimal taxTotal = 0m;
 
-        foreach (var line in request.Lines)
+        foreach (var line in lines)
         {
             if (line.ItemId <= 0 || line.Quantity <= 0 || line.Price < 0)
             {
-                return new SalesInvoiceSaveResult(false, "Each line needs an item, quantity, and price.", null);
+                return InvoiceLineBuildResult.Failed("Each line needs an item, quantity, and price.");
             }
 
             var item = items[line.ItemId];
             var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? item.StackNo : line.StackNo.Trim();
-            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? item.LotNo : line.LotNo.Trim();
+            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? item.LotNo : line.LotNo?.Trim();
 
-            validationLines.Add(new StackLotSaleValidationLine(
-                line.ItemId,
-                item.ItemCode,
-                string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
-                string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
-                line.Quantity,
-                Math.Max(0m, line.Cartons)));
-            var taxRate = scenarioTaxRate ?? line.TaxRate;
+            if (item.ItemType != ItemType.Service)
+            {
+                validationLines.Add(new StackLotSaleValidationLine(
+                    line.ItemId,
+                    item.ItemCode,
+                    string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
+                    string.IsNullOrWhiteSpace(lotNo) ? null : lotNo,
+                    line.Quantity,
+                    Math.Max(0m, line.Cartons)));
+            }
+
+            var taxRate = IsCartageOrService(item)
+                ? 0m
+                : Math.Max(0m, line.TaxRate);
             var lineSubTotal = Math.Round(line.Quantity * line.Price, 2);
             var lineDiscount = Math.Round(Math.Max(0m, line.Discount), 2);
             var taxable = Math.Round(lineSubTotal - lineDiscount, 2);
@@ -315,71 +579,44 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             });
         }
 
-        var netTotal = Math.Round(subTotal - discountTotal + taxTotal, 2);
-
-        var stockValidation = await _stackLotInventory.ValidateSaleLinesAsync(
-            request.InvoiceType,
+        return InvoiceLineBuildResult.Succeeded(
+            lineEntities,
             validationLines,
-            excludeInvoiceId: null,
-            cancellationToken);
+            subTotal,
+            discountTotal,
+            taxTotal);
+    }
 
-        if (!stockValidation.Success)
-        {
-            return new SalesInvoiceSaveResult(false, stockValidation.Message, null);
-        }
+    private sealed record InvoiceItemSnapshot(
+        int Id,
+        string ItemCode,
+        string? HSCode,
+        string ItemName,
+        string? Description,
+        string StackNo,
+        string LotNo,
+        ItemType ItemType,
+        string UnitSymbol);
 
-        var now = DateTime.UtcNow;
+    private sealed record InvoiceLineBuildResult(
+        bool Success,
+        string? Message,
+        List<SalesInvoiceLine> Lines,
+        List<StackLotSaleValidationLine> ValidationLines,
+        decimal SubTotal,
+        decimal DiscountTotal,
+        decimal TaxTotal)
+    {
+        public static InvoiceLineBuildResult Failed(string message) =>
+            new(false, message, [], [], 0m, 0m, 0m);
 
-        var entity = new SalesInvoice
-        {
-            CompanyId = companyId,
-            InvoiceNumber = invoiceNumber,
-            CustomerId = customer.Id,
-            BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address,
-            ProvinceId = request.ProvinceId ?? customer.ProvinceId,
-            BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN,
-            BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC,
-            InvoiceDate = request.InvoiceDate.Date,
-            InvoiceType = request.InvoiceType,
-            ScenarioId = request.ScenarioId ?? customer.ScenarioId,
-            SubTotal = subTotal,
-            DiscountAmount = discountTotal,
-            TaxAmount = taxTotal,
-            NetTotal = netTotal,
-            Status = InvoiceStatus.Draft,
-            CreatedAt = now,
-            CreatedBy = _currentUser.UserName ?? "system"
-        };
-
-        try
-        {
-            await _unitOfWork.Repository<SalesInvoice>().AddAsync(entity, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            foreach (var line in lineEntities)
-            {
-                line.SalesInvoiceId = entity.Id;
-            }
-
-            await _unitOfWork.Repository<SalesInvoiceLine>().AddRangeAsync(lineEntities, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex)
-        {
-            _logger.LogError(ex, "Failed to create sales invoice {InvoiceNumber}", invoiceNumber);
-            return new SalesInvoiceSaveResult(false, "Could not save invoice. Check customer, items, and company.", null);
-        }
-
-        try
-        {
-            await _auditService.LogAsync("Create", "SalesInvoices", entity.Id.ToString(), null, invoiceNumber, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Audit log failed for sales invoice {InvoiceId}", entity.Id);
-        }
-
-        return new SalesInvoiceSaveResult(true, null, entity.Id);
+        public static InvoiceLineBuildResult Succeeded(
+            List<SalesInvoiceLine> lines,
+            List<StackLotSaleValidationLine> validationLines,
+            decimal subTotal,
+            decimal discountTotal,
+            decimal taxTotal) =>
+            new(true, null, lines, validationLines, subTotal, discountTotal, taxTotal);
     }
 
     public async Task<SalesInvoiceDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default)
@@ -425,6 +662,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.FbrSubmittedAt != null,
                 i.Lines.Select(l => new SalesInvoiceLineDto(
                     l.Id,
+                    l.ItemId,
                     l.Item.ItemCode,
                     l.Item.ItemName,
                     l.Item.Description,
@@ -483,13 +721,48 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceActionResult(false, accounts.Message, null);
         }
 
-        var salesAmount = Math.Round(invoice.SubTotal - invoice.DiscountAmount, 2);
-        var taxAmount = Math.Round(invoice.TaxAmount, 2);
+        var lineItemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var cartageItemIds = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => lineItemIds.Contains(i.Id)
+                && i.CompanyId == companyId
+                && i.ItemCode == CartageItemCode)
+            .Select(i => i.Id)
+            .ToListAsync(cancellationToken);
+        var cartageItemIdSet = cartageItemIds.ToHashSet();
+
+        decimal goodsSalesAmount = 0m;
+        decimal goodsTaxAmount = 0m;
+        decimal cartageAmount = 0m;
+
+        foreach (var line in invoice.Lines)
+        {
+            if (cartageItemIdSet.Contains(line.ItemId))
+            {
+                cartageAmount += Math.Round(line.LineTotal, 2);
+                continue;
+            }
+
+            goodsSalesAmount += Math.Round(Math.Max(0m, line.Quantity * line.Price - line.Discount), 2);
+            goodsTaxAmount += Math.Round(line.TaxAmount, 2);
+        }
+
+        goodsSalesAmount = Math.Round(goodsSalesAmount, 2);
+        goodsTaxAmount = Math.Round(goodsTaxAmount, 2);
+        cartageAmount = Math.Round(cartageAmount, 2);
         var netTotal = Math.Round(invoice.NetTotal, 2);
 
-        if (salesAmount + taxAmount != netTotal)
+        if (goodsSalesAmount + goodsTaxAmount + cartageAmount != netTotal)
         {
             return new SalesInvoiceActionResult(false, "Invoice totals are inconsistent. Cannot post.", null);
+        }
+
+        if (cartageAmount > 0m && accounts.CartageAccountId is null)
+        {
+            return new SalesInvoiceActionResult(
+                false,
+                $"Chart of account {CartagePayable} (Cartage Payable) not found.",
+                null);
         }
 
         var journalLines = BuildJournalLines(
@@ -497,8 +770,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             accounts.ArAccountId,
             accounts.RevenueAccountId,
             accounts.TaxAccountId,
-            salesAmount,
-            taxAmount,
+            accounts.CartageAccountId,
+            goodsSalesAmount,
+            goodsTaxAmount,
+            cartageAmount,
             netTotal);
 
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
@@ -529,6 +804,97 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             }
 
             await _unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(journalLines, cancellationToken);
+
+            var inventoryItemIds = invoice.Lines
+                .Where(l => !cartageItemIdSet.Contains(l.ItemId))
+                .Select(l => l.ItemId)
+                .Distinct()
+                .ToList();
+
+            if (inventoryItemIds.Count > 0)
+            {
+                var inventoryItems = await _unitOfWork.Repository<Item>()
+                    .Query(asNoTracking: false)
+                    .Where(i => i.CompanyId == companyId && inventoryItemIds.Contains(i.Id))
+                    .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+                var goodsLines = invoice.Lines
+                    .Where(l => !cartageItemIdSet.Contains(l.ItemId)
+                                && inventoryItems.TryGetValue(l.ItemId, out var item)
+                                && item.ItemType != ItemType.Service)
+                    .ToList();
+
+                if (goodsLines.Count > 0
+                    && invoice.InvoiceType is InvoiceType.SalesInvoice or InvoiceType.CreditNote)
+                {
+                    var warehouseId = await GetDefaultWarehouseIdAsync(companyId, cancellationToken);
+                    if (!warehouseId.HasValue)
+                    {
+                        return new SalesInvoiceActionResult(
+                            false,
+                            "No active warehouse found. Add a warehouse before posting inventory invoices.",
+                            null);
+                    }
+
+                    var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+                    var inventoryTransactions = new List<InventoryTransaction>();
+
+                    foreach (var line in goodsLines)
+                    {
+                        var item = inventoryItems[line.ItemId];
+                        var quantity = Math.Round(line.Quantity, 2);
+                        if (quantity <= 0m)
+                        {
+                            continue;
+                        }
+
+                        if (!isCreditNote && item.CurrentStock < quantity)
+                        {
+                            return new SalesInvoiceActionResult(
+                                false,
+                                $"Insufficient stock for {item.ItemCode}. Available: {item.CurrentStock:N2}",
+                                null);
+                        }
+
+                        var unitCost = Math.Round(item.PurchaseRate, 2);
+                        var transactionType = isCreditNote
+                            ? InventoryTransactionType.StockIn
+                            : InventoryTransactionType.StockOut;
+
+                        inventoryTransactions.Add(new InventoryTransaction
+                        {
+                            CompanyId = companyId,
+                            ItemId = item.Id,
+                            WarehouseId = warehouseId.Value,
+                            TransactionType = transactionType,
+                            StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
+                            LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
+                            Quantity = quantity,
+                            UnitCost = unitCost,
+                            TotalCost = Math.Round(quantity * unitCost, 2),
+                            TransactionDate = invoice.InvoiceDate,
+                            ReferenceNo = invoice.InvoiceNumber,
+                            Notes = $"Sales invoice {invoice.InvoiceNumber}",
+                            CreatedAt = now,
+                            CreatedBy = userName
+                        });
+
+                        item.CurrentStock = isCreditNote
+                            ? Math.Round(item.CurrentStock + quantity, 2)
+                            : Math.Round(item.CurrentStock - quantity, 2);
+                        item.UpdatedAt = now;
+                        item.UpdatedBy = userName;
+                        _unitOfWork.Repository<Item>().Update(item);
+                    }
+
+                    if (inventoryTransactions.Count > 0)
+                    {
+                        await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                            inventoryTransactions,
+                            cancellationToken);
+                    }
+                }
+            }
 
             invoice.Status = InvoiceStatus.Posted;
             invoice.JournalEntryId = journalEntry.Id;
@@ -582,6 +948,88 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var detail = await GetDetailAsync(id, cancellationToken);
         return new SalesInvoiceActionResult(true, "Invoice cancelled.", detail);
+    }
+
+    public async Task<SalesInvoiceActionResult> DeleteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return ToActionError(companyError!);
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query(asNoTracking: false)
+            .Include(i => i.Lines)
+            .Include(i => i.Attachments)
+            .FirstOrDefaultAsync(i => i.Id == id && i.CompanyId == companyId, cancellationToken);
+
+        if (invoice is null)
+        {
+            return new SalesInvoiceActionResult(false, "Invoice not found.", null);
+        }
+
+        if (invoice.FbrSubmittedAt.HasValue)
+        {
+            return new SalesInvoiceActionResult(
+                false,
+                "Invoices submitted to FBR cannot be deleted.",
+                null);
+        }
+
+        var invoiceNumber = invoice.InvoiceNumber;
+        var journalEntryId = invoice.JournalEntryId;
+
+        foreach (var line in invoice.Lines.ToList())
+        {
+            _unitOfWork.Repository<SalesInvoiceLine>().Remove(line);
+        }
+
+        foreach (var attachment in invoice.Attachments.ToList())
+        {
+            _unitOfWork.Repository<SalesInvoiceAttachment>().Remove(attachment);
+        }
+
+        invoice.JournalEntryId = null;
+        _unitOfWork.Repository<SalesInvoice>().Update(invoice);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        if (journalEntryId.HasValue)
+        {
+            var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+                .Query(asNoTracking: false)
+                .Where(l => l.JournalEntryId == journalEntryId.Value)
+                .ToListAsync(cancellationToken);
+
+            foreach (var journalLine in journalLines)
+            {
+                _unitOfWork.Repository<JournalEntryLine>().Remove(journalLine);
+            }
+
+            var journalEntry = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(j => j.Id == journalEntryId.Value && j.CompanyId == companyId, cancellationToken);
+
+            if (journalEntry is not null)
+            {
+                _unitOfWork.Repository<JournalEntry>().Remove(journalEntry);
+            }
+        }
+
+        _unitOfWork.Repository<SalesInvoice>().Remove(invoice);
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to delete sales invoice {InvoiceId}", id);
+            return new SalesInvoiceActionResult(false, "Could not delete invoice.", null);
+        }
+
+        await TryAuditAsync("Delete", id.ToString(), invoiceNumber, null, cancellationToken);
+
+        return new SalesInvoiceActionResult(true, "Invoice deleted.", null);
     }
 
     public async Task<SalesInvoiceActionResult> SubmitToFbrAsync(int id, CancellationToken cancellationToken = default)
@@ -1017,6 +1465,34 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         return rates.Registered;
     }
 
+    private async Task<decimal> GetFallbackTaxRateAsync(
+        int companyId,
+        int? scenarioId,
+        decimal? scenarioTaxRate,
+        CancellationToken cancellationToken)
+    {
+        if (scenarioTaxRate.HasValue)
+        {
+            return scenarioTaxRate.Value;
+        }
+
+        if (!scenarioId.HasValue)
+        {
+            return await GetDefaultTaxRateAsync(companyId, cancellationToken);
+        }
+
+        var scenarioCode = await _unitOfWork.Repository<ScenarioType>()
+            .Query()
+            .Where(s => s.ScenarioId == scenarioId.Value)
+            .Select(s => s.Code)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var rates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
+        return string.Equals(scenarioCode, UnregisteredScenarioCode, StringComparison.OrdinalIgnoreCase)
+            ? rates.Unregistered
+            : rates.Registered;
+    }
+
     private async Task<(decimal Registered, decimal Unregistered)> GetCompanyTaxRatesAsync(
         int companyId,
         CancellationToken cancellationToken)
@@ -1030,31 +1506,6 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         return rates is null
             ? (18m, 22m)
             : (rates.SalesTaxRate, rates.UnregisteredSalesTaxRate);
-    }
-
-    private async Task<decimal?> ResolveScenarioTaxRateAsync(
-        int companyId,
-        int? scenarioId,
-        CancellationToken cancellationToken)
-    {
-        if (!scenarioId.HasValue)
-        {
-            return null;
-        }
-
-        var scenarioCode = await _unitOfWork.Repository<ScenarioType>()
-            .Query()
-            .Where(s => s.ScenarioId == scenarioId.Value)
-            .Select(s => s.Code)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (!string.Equals(scenarioCode, UnregisteredScenarioCode, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var rates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
-        return rates.Unregistered;
     }
 
     private static IQueryable<SalesInvoice> ApplyOrdering(IQueryable<SalesInvoice> query, DataTableRequest request)
@@ -1088,37 +1539,38 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         return true;
     }
 
-    private async Task<(bool Success, string? Message, int ArAccountId, int RevenueAccountId, int TaxAccountId)>
+    private async Task<(bool Success, string? Message, int ArAccountId, int RevenueAccountId, int TaxAccountId, int? CartageAccountId)>
         ResolvePostingAccountsAsync(
             int companyId,
             InvoiceType invoiceType,
             CancellationToken cancellationToken)
     {
-        var ar = await GetAccountIdAsync(companyId, AccountsReceivableNumber, cancellationToken);
-        var tax = await GetAccountIdAsync(companyId, SalesTaxPayableNumber, cancellationToken);
+        var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
+        var tax = await GetAccountIdAsync(companyId, SalesTaxPayable, cancellationToken);
+        var cartage = await GetAccountIdAsync(companyId, CartagePayable, cancellationToken);
 
         var revenueNumber = invoiceType == InvoiceType.CreditNote
-            ? SalesReturnsNumber
-            : SalesRevenueNumber;
+            ? SalesReturns
+            : SalesRevenue;
 
         var revenue = await GetAccountIdAsync(companyId, revenueNumber, cancellationToken);
 
         if (ar is null)
         {
-            return (false, $"Chart of account {AccountsReceivableNumber} (Accounts Receivable) not found.", 0, 0, 0);
+            return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0, 0, null);
         }
 
         if (tax is null)
         {
-            return (false, $"Chart of account {SalesTaxPayableNumber} (Sales Tax Payable) not found.", 0, 0, 0);
+            return (false, $"Chart of account {SalesTaxPayable} (Sales Tax Payable) not found.", 0, 0, 0, null);
         }
 
         if (revenue is null)
         {
-            return (false, $"Chart of account {revenueNumber} not found.", 0, 0, 0);
+            return (false, $"Chart of account {revenueNumber} not found.", 0, 0, 0, null);
         }
 
-        return (true, null, ar.Value, revenue.Value, tax.Value);
+        return (true, null, ar.Value, revenue.Value, tax.Value, cartage);
     }
 
     private async Task<int?> GetAccountIdAsync(
@@ -1138,8 +1590,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         int arAccountId,
         int revenueAccountId,
         int taxAccountId,
+        int? cartageAccountId,
         decimal salesAmount,
         decimal taxAmount,
+        decimal cartageAmount,
         decimal netTotal)
     {
         var lines = new List<JournalEntryLine>();
@@ -1153,20 +1607,39 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 Credit = netTotal,
                 Memo = "Accounts Receivable"
             });
-            lines.Add(new JournalEntryLine
+
+            if (salesAmount > 0m)
             {
-                ChartOfAccountId = revenueAccountId,
-                Debit = salesAmount,
-                Credit = 0m,
-                Memo = "Sales Returns"
-            });
-            lines.Add(new JournalEntryLine
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = revenueAccountId,
+                    Debit = salesAmount,
+                    Credit = 0m,
+                    Memo = "Sales Returns"
+                });
+            }
+
+            if (taxAmount > 0m)
             {
-                ChartOfAccountId = taxAccountId,
-                Debit = taxAmount,
-                Credit = 0m,
-                Memo = "Sales Tax Payable"
-            });
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = taxAccountId,
+                    Debit = taxAmount,
+                    Credit = 0m,
+                    Memo = "Sales Tax Payable"
+                });
+            }
+
+            if (cartageAmount > 0m && cartageAccountId.HasValue)
+            {
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = cartageAccountId.Value,
+                    Debit = cartageAmount,
+                    Credit = 0m,
+                    Memo = "Cartage Payable"
+                });
+            }
         }
         else
         {
@@ -1177,24 +1650,55 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 Credit = 0m,
                 Memo = "Accounts Receivable"
             });
-            lines.Add(new JournalEntryLine
+
+            if (salesAmount > 0m)
             {
-                ChartOfAccountId = revenueAccountId,
-                Debit = 0m,
-                Credit = salesAmount,
-                Memo = "Sales Revenue"
-            });
-            lines.Add(new JournalEntryLine
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = revenueAccountId,
+                    Debit = 0m,
+                    Credit = salesAmount,
+                    Memo = "Sales Revenue"
+                });
+            }
+
+            if (taxAmount > 0m)
             {
-                ChartOfAccountId = taxAccountId,
-                Debit = 0m,
-                Credit = taxAmount,
-                Memo = "Sales Tax Payable"
-            });
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = taxAccountId,
+                    Debit = 0m,
+                    Credit = taxAmount,
+                    Memo = "Sales Tax Payable"
+                });
+            }
+
+            if (cartageAmount > 0m && cartageAccountId.HasValue)
+            {
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = cartageAccountId.Value,
+                    Debit = 0m,
+                    Credit = cartageAmount,
+                    Memo = "Cartage Payable"
+                });
+            }
         }
 
         return lines;
     }
+
+    private static bool IsCartageOrService(InvoiceItemSnapshot item) =>
+        item.ItemType == ItemType.Service
+        || string.Equals(item.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase);
+
+    private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
+        await _unitOfWork.Repository<Warehouse>()
+            .Query()
+            .Where(w => w.CompanyId == companyId && w.IsActive)
+            .OrderBy(w => w.Code)
+            .Select(w => (int?)w.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     private async Task<string> GenerateNextJournalEntryNumberAsync(
         int companyId,

@@ -29,7 +29,7 @@
         }
 
         const labels = monthlySales.map(function (p) { return p.label; });
-        const data = monthlySales.map(function (p) { return p.amount; });
+        const data = monthlySales.map(function (p) { return p.cartons; });
 
         if (salesChart) {
             salesChart.destroy();
@@ -40,7 +40,7 @@
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Sales (PKR)',
+                    label: 'Cartons Sold',
                     data: data,
                     backgroundColor: 'rgba(13, 110, 253, 0.7)',
                     borderRadius: 4
@@ -54,7 +54,7 @@
                         beginAtZero: true,
                         ticks: {
                             callback: function (value) {
-                                return 'PKR ' + Number(value).toLocaleString('en-PK');
+                                return Number(value).toLocaleString('en-PK');
                             }
                         }
                     }

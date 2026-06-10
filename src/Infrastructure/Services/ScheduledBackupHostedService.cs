@@ -39,22 +39,22 @@ public class ScheduledBackupHostedService : BackgroundService
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var backupService = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
-                await backupService.RunBackupAsync(JobRunType.Scheduled, stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Scheduled backup run failed.");
-            }
-
-            try
-            {
                 await Task.Delay(interval, stoppingToken);
             }
             catch (TaskCanceledException)
             {
                 break;
+            }
+
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var backupService = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
+                await backupService.RunBackupAsync(JobRunType.Scheduled, stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Scheduled backup run failed.");
             }
         }
     }

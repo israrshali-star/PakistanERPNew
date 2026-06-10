@@ -64,3 +64,16 @@ public record ChartOfAccountSaveResult(
 public record SuggestedAccountNumberDto(string AccountNumber);
 
 public record ParentAccountLookupDto(int Id, string AccountNumber, string AccountName);
+
+public record ChartOfAccountLedgerEntryDto(
+    DateTime Date,
+    string Reference,
+    string Description,
+    decimal Debit,
+    decimal Credit,
+    decimal Balance);
+
+public record ChartOfAccountLedgerDto(
+    ChartOfAccountDto Account,
+    IReadOnlyList<ChartOfAccountLedgerEntryDto> Entries,
+    decimal ClosingBalance);

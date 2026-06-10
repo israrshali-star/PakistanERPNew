@@ -13,8 +13,16 @@
         return {
             mode: 'purchase',
             validateQty: false,
-            onRecalc: recalcTotals
+            onRecalc: recalcTotals,
+            onApplied: function ($row) {
+                recalcTotals();
+            }
         };
+    }
+
+    function getBillTaxRate() {
+        var rate = parseFloat($('#tax-rate').val());
+        return isNaN(rate) || rate < 0 ? 0 : rate;
     }
 
     function showError(message) {
@@ -43,23 +51,34 @@
             .text(message || 'Select a company from the top navbar before entering a bill.');
     }
 
+    function updateTaxRateLabel() {
+        var rate = getBillTaxRate();
+        $('#tax-rate-label').text('(' + rate.toFixed(2) + '%)');
+    }
+
     function recalcTotals() {
         var subtotal = 0;
-        var taxRate = parseFloat($('#tax-rate').val()) || 0;
+        var taxableSubtotal = 0;
+        var taxRate = getBillTaxRate();
 
         $('#bill-lines-body tr').each(function () {
             var $row = $(this);
             var qty = parseFloat($row.find('.line-qty').val()) || 0;
             var rate = parseFloat($row.find('.line-rate').val()) || 0;
             var amount = qty * rate;
+            var isTaxable = $row.data('is-taxable') !== false;
 
             $row.find('.line-amount').text(formatCurrency(amount));
             subtotal += amount;
+            if (isTaxable) {
+                taxableSubtotal += amount;
+            }
         });
 
-        var tax = subtotal * taxRate / 100;
+        var tax = taxableSubtotal * taxRate / 100;
         var net = subtotal + tax;
 
+        updateTaxRateLabel();
         $('#total-subtotal').text(formatCurrency(subtotal));
         $('#total-tax').text(formatCurrency(tax));
         $('#total-net').text(formatCurrency(net));
@@ -71,15 +90,15 @@
         var lotOptions = window.LotStackLine.buildLotOptions(prefill && prefill.lotNo);
         var $row = $(
             '<tr data-line-id="' + rowId + '">' +
-            '<td><select class="form-select form-select-sm line-lot">' + lotOptions + '</select></td>' +
+            '<td class="line-lot-cell"><select class="form-select form-select-sm line-lot">' + lotOptions + '</select></td>' +
             '<td><input type="hidden" class="line-item-id" />' +
-            '<input type="text" class="form-control form-control-sm line-item-name" readonly placeholder="From lot" /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-desc" maxlength="500" placeholder="Required if no item" /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-stack" maxlength="50" />' +
+            '<input type="text" class="form-control form-control-xs line-item-name" readonly placeholder="Lot" /></td>' +
+            '<td><input type="text" class="form-control form-control-xs line-desc" maxlength="500" placeholder="Required if no item" /></td>' +
+            '<td><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
-            '<td><input type="number" class="form-control form-control-sm text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
-            '<td><input type="number" class="form-control form-control-sm text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
-            '<td><input type="number" class="form-control form-control-sm text-end line-rate" min="0" step="0.01" value="0" required /></td>' +
+            '<td><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
+            '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
+            '<td><input type="number" class="form-control form-control-xs text-end line-rate" min="0" step="0.01" value="0" required /></td>' +
             '<td class="text-end text-currency line-amount">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
             '</tr>'
@@ -90,9 +109,10 @@
         var $lotSelect = $row.find('.line-lot');
         window.LotStackLine.initLotSelect($lotSelect, $('#vendor-bill-form'));
 
-        if (prefill && prefill.lotNo) {
-            $lotSelect.val(prefill.lotNo).trigger('change');
-            if (prefill.rate) {
+        var lotSelectValue = prefill && (prefill.lotNo || prefill.lotValue);
+        if (lotSelectValue) {
+            $lotSelect.val(lotSelectValue).trigger('change');
+            if (prefill.rate != null) {
                 $row.find('.line-rate').val(prefill.rate);
             }
         }
@@ -104,22 +124,95 @@
         var vendorId = parseInt($('#vendor-id').val(), 10);
         var vendor = vendors.find(function (v) { return v.id === vendorId; });
 
-        if (vendor && vendor.defaultTaxRate != null) {
+        if (vendor && vendor.defaultTaxRate != null && vendor.defaultTaxRate > 0) {
             $('#tax-rate').val(vendor.defaultTaxRate);
             recalcTotals();
         }
     }
 
+    function getEditId() {
+        var raw = $('#vendor-bill-form').data('edit-id');
+        var id = parseInt(raw, 10);
+        return id > 0 ? id : null;
+    }
+
+    function loadEditBill() {
+        var $data = $('#bill-edit-data');
+        if (!$data.length) {
+            return;
+        }
+
+        var bill = JSON.parse($data.text());
+        $('#bill-number').val(bill.billNumber || bill.BillNumber);
+        $('#bill-date').val((bill.billDate || bill.BillDate || '').substring(0, 10));
+        $('#ref-no').val(bill.refNo || bill.RefNo || '');
+        $('#vendor-id').val(String(bill.vendorId || bill.VendorId)).trigger('change');
+
+        var subTotal = bill.subTotal != null ? bill.subTotal : bill.SubTotal;
+        var taxAmount = bill.taxAmount != null ? bill.taxAmount : bill.TaxAmount;
+        if (subTotal > 0 && taxAmount >= 0) {
+            $('#tax-rate').val(((taxAmount / subTotal) * 100).toFixed(2));
+        }
+
+        $('#bill-lines-body').empty();
+        (bill.lines || bill.Lines || []).forEach(function (line) {
+            var itemCode = line.itemCode || line.ItemCode || '';
+            var lotNo = line.lotNo || line.LotNo || '';
+            var lotValue = itemCode
+                ? window.LotStackLine.buildLotSelectValue(itemCode, lotNo)
+                : lotNo;
+            addLine({
+                lotNo: lotValue,
+                qty: line.quantity != null ? line.quantity : line.Quantity,
+                cartons: line.cartons != null ? line.cartons : line.Cartons,
+                rate: line.rate != null ? line.rate : line.Rate,
+                description: line.description || line.Description,
+                stackNo: line.stackNo || line.StackNo,
+                itemId: line.itemId || line.ItemId
+            });
+            var $row = $('#bill-lines-body tr').last();
+            if (line.description || line.Description) {
+                $row.find('.line-desc').val(line.description || line.Description);
+            }
+            if (line.stackNo || line.StackNo) {
+                $row.find('.line-stack').val(line.stackNo || line.StackNo);
+            }
+            if (line.itemId || line.ItemId) {
+                $row.find('.line-item-id').val(line.itemId || line.ItemId);
+            }
+            if (!lotNo && itemCode) {
+                $row.data('requires-stock', false);
+                $row.data('is-taxable', false);
+            }
+        });
+        recalcTotals();
+    }
+
     function loadLookups() {
+        var editId = getEditId();
+        var numberRequest = editId
+            ? $.Deferred().resolve([{ billNumber: '' }]).promise()
+            : $.getJSON('/api/vendor-bills/next-bill-number');
+
         return $.when(
-            $.getJSON('/api/vendor-bills/next-bill-number'),
+            numberRequest,
             $.getJSON('/api/vendor-bills/vendors'),
             $.getJSON('/api/vendor-bills/items'),
+            $.getJSON('/api/sales-invoices/tax-rates'),
             window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, vendorsRes, itemsRes) {
-            $('#bill-number').val(numberRes[0].billNumber);
+        ).then(function (numberRes, vendorsRes, itemsRes, taxRatesRes) {
+            if (!editId) {
+                $('#bill-number').val(numberRes[0].billNumber || numberRes[0].BillNumber);
+            }
             vendors = vendorsRes[0] || [];
             items = itemsRes[0] || [];
+            var taxRates = taxRatesRes[0] || {};
+            var companyTaxRate = taxRates.registeredSalesTaxRate != null
+                ? taxRates.registeredSalesTaxRate
+                : (taxRates.RegisteredSalesTaxRate || 18);
+            if (!$('#tax-rate').val() || parseFloat($('#tax-rate').val()) <= 0) {
+                $('#tax-rate').val(companyTaxRate);
+            }
 
             var $vendor = $('#vendor-id');
             $vendor.find('option:not(:first)').remove();
@@ -131,12 +224,27 @@
                 $vendor.select2({ theme: 'bootstrap-5', width: '100%' });
             }
 
+            if (items.length === 0) {
+                $('#no-items-hint').removeClass('d-none');
+            } else {
+                $('#no-items-hint').addClass('d-none');
+            }
+
             if (vendors.length === 0) {
                 showError('No active vendors found. Add a vendor under Purchase → Vendors first.');
             }
 
-            if ($('#bill-lines-body tr').length === 0) {
-                var firstLot = window.LotStackLine.lotNumbers[0];
+            if (editId) {
+                loadEditBill();
+            } else if ($('#bill-lines-body tr').length === 0) {
+                var firstOption = window.LotStackLine.lotNumbers[0];
+                var firstLot = firstOption
+                    ? (typeof firstOption === 'string'
+                        ? firstOption
+                        : window.LotStackLine.buildLotSelectValue(
+                            firstOption.itemCode || firstOption.ItemCode,
+                            firstOption.lotNo || firstOption.LotNo))
+                    : null;
                 var firstItem = items[0];
                 addLine({
                     lotNo: firstLot || (firstItem && firstItem.lotNo),
@@ -255,10 +363,12 @@
         $('#bill-lines-body tr').each(function () {
             var $row = $(this);
             var itemId = parseInt($row.find('.line-item-id').val(), 10) || null;
-            var lotNo = $row.find('.line-lot').val();
+            var lotSelection = window.LotStackLine.parseLotSelectValue($row.find('.line-lot').val());
+            var lotNo = lotSelection.lotNo;
             var description = $row.find('.line-desc').val().trim();
+            var requiresStock = $row.data('requires-stock') !== false;
 
-            if (!lotNo || !String(lotNo).trim()) {
+            if (requiresStock && (!lotNo || !String(lotNo).trim())) {
                 lineValid = false;
                 return false;
             }
@@ -272,7 +382,7 @@
                 itemId: itemId,
                 description: description || null,
                 stackNo: $row.find('.line-stack').val().trim() || null,
-                lotNo: String(lotNo).trim(),
+                lotNo: lotNo && String(lotNo).trim() ? String(lotNo).trim() : null,
                 cartons: parseFloat($row.find('.line-cartons').val()) || 0,
                 quantity: parseFloat($row.find('.line-qty').val()) || 0,
                 rate: parseFloat($row.find('.line-rate').val()) || 0
@@ -280,7 +390,7 @@
         });
 
         if (!lineValid) {
-            showError('Each line needs a lot number and either a linked item or a description.');
+            showError('Each goods line needs a lot number. Service/charge lines need only the service item selected.');
             return;
         }
 
@@ -294,16 +404,17 @@
             vendorId: vendorId,
             billDate: billDate,
             refNo: $('#ref-no').val().trim() || null,
-            taxRate: parseFloat($('#tax-rate').val()) || 0,
+            taxRate: getBillTaxRate(),
             lines: lines
         };
 
-        var $btn = $('#vendor-bill-form button[type="submit"]');
+        var editId = getEditId();
+        var $btn = $('#btn-save-bill');
         $btn.prop('disabled', true);
 
         $.ajax({
-            url: '/api/vendor-bills',
-            method: 'POST',
+            url: editId ? '/api/vendor-bills/' + editId : '/api/vendor-bills',
+            method: editId ? 'PUT' : 'POST',
             contentType: 'application/json',
             data: JSON.stringify(payload)
         })

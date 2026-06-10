@@ -7,7 +7,7 @@ public record DashboardSummaryDto(
     decimal OutstandingPayables,
     decimal InventoryValue);
 
-public record MonthlySalesPointDto(string Label, decimal Amount);
+public record MonthlySalesPointDto(string Label, decimal Cartons);
 
 public record TopCustomerBalanceDto(int CustomerId, string BuyerName, string BuyerId, decimal Balance);
 

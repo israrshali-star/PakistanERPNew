@@ -10,12 +10,15 @@
         return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    function formatQty(value) {
+    function formatQty(value, isCarton) {
         var num = parseFloat(value) || 0;
         if (num === 0) {
             return '—';
         }
-        return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return num.toLocaleString('en-PK', {
+            minimumFractionDigits: isCarton ? 0 : 2,
+            maximumFractionDigits: isCarton ? 0 : 2
+        });
     }
 
     function formatDate(value) {
@@ -59,7 +62,7 @@
         $tbody.empty();
 
         if (!data.lines || data.lines.length === 0) {
-            $tbody.append('<tr><td colspan="9" class="text-muted text-center">No transactions in this period.</td></tr>');
+            $tbody.append('<tr><td colspan="13" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
@@ -71,10 +74,14 @@
                 '<td>' + (line.referenceNo ? '<code>' + escapeHtml(line.referenceNo) + '</code>' : '—') + '</td>' +
                 '<td>' + escapeHtml(line.transactionType) + '</td>' +
                 '<td><code>' + escapeHtml(line.itemCode) + '</code> ' + escapeHtml(line.itemName) + '</td>' +
+                '<td>' + escapeHtml(line.stackNo || '—') + '</td>' +
+                '<td>' + escapeHtml(line.lotNo || '—') + '</td>' +
                 '<td>' + escapeHtml(line.warehouseName) + '</td>' +
-                '<td class="text-end text-success">' + formatQty(line.qtyIn) + '</td>' +
-                '<td class="text-end text-danger">' + formatQty(line.qtyOut) + '</td>' +
-                '<td class="text-end">' + formatQty(line.adjustmentQty) + '</td>' +
+                '<td class="text-end text-success">' + formatQty(line.qtyIn, false) + '</td>' +
+                '<td class="text-end text-danger">' + formatQty(line.qtyOut, false) + '</td>' +
+                '<td class="text-end text-success">' + formatQty(line.cartonsIn, true) + '</td>' +
+                '<td class="text-end text-danger">' + formatQty(line.cartonsOut, true) + '</td>' +
+                '<td class="text-end">' + formatQty(line.adjustmentQty, false) + '</td>' +
                 '<td class="text-end">' + formatAmount(line.totalCost) + '</td>' +
                 '</tr>'
             );
@@ -82,6 +89,8 @@
 
         $('#report-total-in').text(formatAmount(data.totalQtyIn));
         $('#report-total-out').text(formatAmount(data.totalQtyOut));
+        $('#report-total-ctn-in').text(formatQty(data.totalCartonsIn, true));
+        $('#report-total-ctn-out').text(formatQty(data.totalCartonsOut, true));
         $('#report-footer').removeClass('d-none');
     }
 
@@ -136,8 +145,10 @@
     $(function () {
         var today = new Date();
         var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        var openingStockStart = new Date(2026, 4, 31);
+        var defaultFrom = monthStart < openingStockStart ? monthStart : openingStockStart;
 
-        $('#filter-from').val(toInputDate(monthStart));
+        $('#filter-from').val(toInputDate(defaultFrom));
         $('#filter-to').val(toInputDate(today));
 
         $.getJSON('/api/company/current')

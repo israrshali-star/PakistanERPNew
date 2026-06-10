@@ -12,6 +12,8 @@ public class Bank : CompanyAuditableEntity
     public int? ChartOfAccountId { get; set; }
     public decimal OpeningBalance { get; set; }
     public decimal CurrentBalance { get; set; }
+    /// <summary>Next cheque number to suggest when writing a cheque from this bank.</summary>
+    public string? NextChequeNumber { get; set; }
     public bool IsActive { get; set; } = true;
 
     public ChartOfAccount? ChartOfAccount { get; set; }

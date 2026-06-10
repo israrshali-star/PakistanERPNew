@@ -20,6 +20,11 @@ public interface IJournalEntryService
         JournalEntrySaveRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<JournalEntrySaveResult> UpdateAsync(
+        int id,
+        JournalEntrySaveRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<JournalEntryActionResult> PostAsync(int id, CancellationToken cancellationToken = default);
 
     Task<JournalEntryActionResult> DeleteAsync(int id, CancellationToken cancellationToken = default);

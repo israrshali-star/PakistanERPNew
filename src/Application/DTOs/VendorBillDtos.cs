@@ -9,6 +9,7 @@ public record VendorBillListItemDto(
     DateTime BillDate,
     decimal NetAmount,
     string Status,
+    bool CanEdit,
     bool CanApprove,
     bool CanDelete,
     bool IsActive);
@@ -58,6 +59,7 @@ public class VendorBillLineSaveRequest
 
 public class VendorBillSaveRequest
 {
+    public int? Id { get; set; }
     public string BillNumber { get; set; } = string.Empty;
     public int VendorId { get; set; }
     public DateTime BillDate { get; set; }

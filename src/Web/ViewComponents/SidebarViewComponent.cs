@@ -65,8 +65,9 @@ public class SidebarViewComponent : ViewComponent
             Title = "Banking", Icon = "fa-building-columns",
             Children =
             [
-                new() { Title = "Bank Accounts", Controller = "Banks", Action = "Index", Permission = "Banking.View" },
-                new() { Title = "Transactions", Controller = "BankTransactions", Action = "Index", Permission = "Banking.View" },
+                new() { Title = "Write Cheque", Controller = "BankTransactions", Action = "WriteCheque", Permission = "Banking.View" },
+                new() { Title = "Make Deposit", Controller = "BankTransactions", Action = "MakeDeposit", Permission = "Banking.View" },
+                new() { Title = "Transfer", Controller = "BankTransactions", Action = "Transfer", Permission = "Banking.View" },
                 new() { Title = "Bank Reconciliation", Controller = "BankReconciliations", Action = "Index", Permission = "Banking.View" }
             ]
         },

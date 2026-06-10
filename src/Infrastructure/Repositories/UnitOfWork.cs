@@ -65,6 +65,15 @@ public class UnitOfWork : IUnitOfWork
         _transaction = null;
     }
 
+    public void Dispose()
+    {
+        if (_transaction is not null)
+        {
+            _transaction.Dispose();
+            _transaction = null;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_transaction is not null)

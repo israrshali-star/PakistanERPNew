@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PakistanAccountingERP.Application.Common.Constants;
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -12,10 +13,6 @@ namespace PakistanAccountingERP.Application.Services;
 
 public partial class CustomerGlPostingService : ICustomerGlPostingService
 {
-    private const string AccountsReceivableNumber = "1200";
-    private const string CashInHandNumber = "1100";
-    private const string RetainedEarningsNumber = "3200";
-
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
@@ -119,11 +116,24 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
             return new GlPostingResult(false, accounts.Message);
         }
 
+        var partyName = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.Id == receipt.CustomerId && c.CompanyId == companyId)
+            .Select(c => c.BuyerName)
+            .FirstOrDefaultAsync(cancellationToken) ?? "Customer";
+        partyName = partyName.Trim();
+
+        var cashAccountId = await GetAccountIdAsync(companyId, CashInHand, cancellationToken);
+        var receiptRef = receipt.ReceiptNumber.Trim();
+        var debitMemo = cashAccountId.HasValue && accounts.DebitAccountId == cashAccountId.Value
+            ? partyName
+            : $"{partyName} — {receiptRef}";
+
         var amount = Math.Round(receipt.Amount, 2);
         var lines = new List<JournalEntryLine>
         {
-            CreateLine(accounts.DebitAccountId, amount, 0m, accounts.DebitMemo),
-            CreateLine(accounts.ArAccountId, 0m, amount, "Accounts Receivable")
+            CreateLine(accounts.DebitAccountId, amount, 0m, debitMemo),
+            CreateLine(accounts.ArAccountId, 0m, amount, partyName)
         };
 
         var postResult = await CreatePostedJournalAsync(
@@ -256,7 +266,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         decimal amountChange,
         CancellationToken cancellationToken)
     {
-        if (amountChange == 0m || paymentMethod == PaymentMethod.Cash || !bankId.HasValue)
+        if (amountChange == 0m || paymentMethod != PaymentMethod.BankTransfer || !bankId.HasValue)
         {
             return;
         }
@@ -280,40 +290,51 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
     private async Task<(bool Success, string? Message, int ArAccountId, int EquityAccountId)>
         ResolveOpeningBalanceAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
-        var ar = await GetAccountIdAsync(companyId, AccountsReceivableNumber, cancellationToken);
-        var equity = await GetAccountIdAsync(companyId, RetainedEarningsNumber, cancellationToken);
+        var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
+        var equity = await GetAccountIdAsync(companyId, RetainedEarnings, cancellationToken);
 
         if (ar is null)
         {
-            return (false, $"Chart of account {AccountsReceivableNumber} (Accounts Receivable) not found.", 0, 0);
+            return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0);
         }
 
         if (equity is null)
         {
-            return (false, $"Chart of account {RetainedEarningsNumber} (Retained Earnings) not found.", 0, 0);
+            return (false, $"Chart of account {RetainedEarnings} (Retained Earnings) not found.", 0, 0);
         }
 
         return (true, null, ar.Value, equity.Value);
     }
 
-    private async Task<(bool Success, string? Message, int ArAccountId, int DebitAccountId, string DebitMemo)>
+    private async Task<(bool Success, string? Message, int ArAccountId, int DebitAccountId)>
         ResolveReceiptAccountsAsync(int companyId, CustomerReceipt receipt, CancellationToken cancellationToken)
     {
-        var ar = await GetAccountIdAsync(companyId, AccountsReceivableNumber, cancellationToken);
+        var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
         if (ar is null)
         {
-            return (false, $"Chart of account {AccountsReceivableNumber} (Accounts Receivable) not found.", 0, 0, string.Empty);
+            return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0);
         }
 
         if (receipt.PaymentMethod == PaymentMethod.Cash || !receipt.BankId.HasValue)
         {
-            var cash = await GetAccountIdAsync(companyId, CashInHandNumber, cancellationToken);
+            var cash = await GetAccountIdAsync(companyId, CashInHand, cancellationToken);
             if (cash is null)
             {
-                return (false, $"Chart of account {CashInHandNumber} (Cash In Hand) not found.", 0, 0, string.Empty);
+                return (false, $"Chart of account {CashInHand} (Cash In Hand) not found.", 0, 0);
             }
 
-            return (true, null, ar.Value, cash.Value, "Cash In Hand");
+            return (true, null, ar.Value, cash.Value);
+        }
+
+        if (receipt.PaymentMethod == PaymentMethod.Cheque)
+        {
+            var undeposited = await GetAccountIdAsync(companyId, UndepositedFunds, cancellationToken);
+            if (undeposited is null)
+            {
+                return (false, $"Chart of account {UndepositedFunds} (Undeposited Funds) not found.", 0, 0);
+            }
+
+            return (true, null, ar.Value, undeposited.Value);
         }
 
         var bank = await _unitOfWork.Repository<Bank>()
@@ -324,15 +345,15 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
         if (bank is null)
         {
-            return (false, "Selected bank account is not valid.", 0, 0, string.Empty);
+            return (false, "Selected bank account is not valid.", 0, 0);
         }
 
         if (!bank.ChartOfAccountId.HasValue)
         {
-            return (false, $"Bank \"{bank.BankName}\" is not linked to a chart of account.", 0, 0, string.Empty);
+            return (false, $"Bank \"{bank.BankName}\" is not linked to a chart of account.", 0, 0);
         }
 
-        return (true, null, ar.Value, bank.ChartOfAccountId.Value, bank.BankName);
+        return (true, null, ar.Value, bank.ChartOfAccountId.Value);
     }
 
     private async Task<int?> GetAccountIdAsync(

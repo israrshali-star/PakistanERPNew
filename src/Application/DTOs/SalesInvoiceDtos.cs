@@ -5,18 +5,22 @@ namespace PakistanAccountingERP.Application.DTOs;
 public record SalesInvoiceListItemDto(
     int Id,
     string InvoiceNumber,
+    int CustomerId,
     string CustomerName,
     DateTime InvoiceDate,
     decimal NetTotal,
     string Status,
     string? FbrInvoiceNumber,
+    bool CanEdit,
     bool CanPost,
     bool CanSubmitFbr,
     bool HasFbrPdf,
+    bool CanDelete,
     bool IsActive);
 
 public record SalesInvoiceLineDto(
     int Id,
+    int ItemId,
     string ItemCode,
     string ItemName,
     string? ItemDescription,
@@ -90,7 +94,8 @@ public record SalesInvoiceItemLookupDto(
     string LotNo,
     string UnitSymbol,
     decimal SaleRate,
-    decimal DefaultTaxRate);
+    decimal DefaultTaxRate,
+    ItemType ItemType);
 
 public record NextInvoiceNumberDto(string InvoiceNumber);
 
@@ -111,6 +116,7 @@ public class SalesInvoiceLineSaveRequest
 
 public class SalesInvoiceSaveRequest
 {
+    public int? Id { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
     public int CustomerId { get; set; }
     public DateTime InvoiceDate { get; set; }

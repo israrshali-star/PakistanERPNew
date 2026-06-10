@@ -1,108 +1,208 @@
+@using System.Text.Json
+@using PakistanAccountingERP.Application.DTOs
+@model VendorBillDetailDto?
 @{
-    ViewData["Title"] = "Enter Vendor Bill";
+    var isEdit = Model != null;
+    ViewData["Title"] = isEdit ? "Edit Vendor Bill" : "Enter Vendor Bill";
+    var editJson = isEdit
+        ? JsonSerializer.Serialize(Model, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+        : null;
 }
 
 <div id="bill-company-warning" class="alert alert-warning d-none mb-3"></div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
-        <h4 class="text-primary mb-0">Enter Vendor Bill</h4>
-        <p class="text-muted small mb-0">Create a draft purchase bill with line items</p>
+        <h4 class="text-primary mb-0">@(isEdit ? "Edit Vendor Bill" : "Enter Vendor Bill")</h4>
+        <p class="text-muted small mb-0">@(isEdit ? "Update this draft before approving and posting to GL" : "Create a draft purchase bill with line items")</p>
     </div>
     <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
         <i class="fa-solid fa-arrow-left me-1"></i>Back to Bills
     </a>
 </div>
 
-<form id="vendor-bill-form">
-    <div class="card p-3 mb-3">
-        <h6 class="text-primary mb-3">Bill Header</h6>
-        <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label" for="bill-number">Bill Number</label>
-                <input type="text" class="form-control" id="bill-number" readonly />
+@if (isEdit)
+{
+    <script type="application/json" id="bill-edit-data">@Html.Raw(editJson)</script>
+}
+
+<form id="vendor-bill-form" class="bill-create-compact"
+      data-edit-id="@(isEdit ? Model!.Id : "")">
+    <div class="card p-2 mb-2">
+        <h6 class="text-primary mb-2 small fw-semibold">Bill Header</h6>
+        <div class="row g-2">
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="bill-number">Bill #</label>
+                <input type="text" class="form-control form-control-sm" id="bill-number" readonly />
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="bill-date">Bill Date</label>
-                <input type="date" class="form-control" id="bill-date" required />
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="bill-date">Date</label>
+                <input type="date" class="form-control form-control-sm" id="bill-date" required />
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="vendor-id">Vendor</label>
-                <select class="form-select select2" id="vendor-id" required>
-                    <option value="">— Select vendor —</option>
+            <div class="col-md-3 col-6">
+                <label class="form-label form-label-sm" for="vendor-id">Vendor</label>
+                <select class="form-select form-select-sm select2" id="vendor-id" required>
+                    <option value="">— Select —</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="ref-no">Supplier Ref #</label>
-                <input type="text" class="form-control" id="ref-no" maxlength="100" />
+            <div class="col-md-3 col-6">
+                <label class="form-label form-label-sm" for="ref-no">Supplier Ref #</label>
+                <input type="text" class="form-control form-control-sm" id="ref-no" maxlength="100" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label" for="tax-rate">Tax Rate %</label>
-                <input type="number" class="form-control" id="tax-rate" step="0.01" min="0" value="18" />
+            <div class="col-md-2 col-6">
+                <label class="form-label form-label-sm" for="tax-rate">Tax Rate %</label>
+                <input type="number" class="form-control form-control-sm" id="tax-rate" step="0.01" min="0" value="18" />
             </div>
         </div>
     </div>
 
-    <div class="card p-3 mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="text-primary mb-0">Line Items</h6>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-line">
+    <div class="card p-2 mb-2" id="bill-lower-section">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="text-primary mb-0 small fw-semibold">Line Items</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" id="btn-add-line">
                 <i class="fa-solid fa-plus me-1"></i>Add Line
             </button>
         </div>
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
+            <table class="table table-sm table-compact align-middle mb-0" id="bill-lines-table">
+                <thead class="table-light">
                     <tr>
-                        <th style="min-width:120px">Lot No</th>
-                        <th style="min-width:160px">Item Name</th>
-                        <th style="min-width:140px">Description</th>
-                        <th style="width:100px">Stack No</th>
-                        <th class="text-end" style="width:80px">Cartons</th>
-                        <th class="text-end" style="width:80px">Qty (Weight)</th>
-                        <th class="text-end" style="width:100px">Rate</th>
-                        <th class="text-end" style="width:100px">Amount</th>
-                        <th style="width:40px"></th>
+                        <th>Lot</th>
+                        <th>Item</th>
+                        <th>Description</th>
+                        <th>Stack</th>
+                        <th class="text-end">Ctn</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">Rate</th>
+                        <th class="text-end">Amount</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="bill-lines-body"></tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="7" class="text-end fw-semibold">Subtotal</td>
-                        <td class="text-end text-currency fw-semibold" id="total-subtotal">0.00</td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td colspan="7" class="text-end">Sales Tax</td>
-                        <td class="text-end text-currency" id="total-tax">0.00</td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td colspan="7" class="text-end fw-bold">Net Total</td>
-                        <td class="text-end text-currency fw-bold" id="total-net">0.00</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
             </table>
         </div>
+        <p class="text-muted small mt-2 mb-0 d-none" id="no-items-hint">No active items found. Add items under Inventory first.</p>
     </div>
 
-    <div class="card p-3 mb-3">
-        <h6 class="text-primary mb-3">Supporting Documents</h6>
-        <p class="text-muted small mb-2">Attach JPG, PNG, or PDF files (max 10 MB each, up to 10 files). Files upload when the bill is saved.</p>
-        <input type="file" class="form-control" id="bill-attachments" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
-        <ul class="list-group list-group-flush mt-2" id="attachment-preview-list"></ul>
+    <div class="row g-2 mb-2">
+        <div class="col-md-8">
+            <div class="card p-2 h-100">
+                <h6 class="text-primary mb-2 small fw-semibold">Supporting Documents</h6>
+                <p class="text-muted small mb-1">JPG, PNG, PDF — max 10 MB each, up to 10 files.</p>
+                <input type="file" class="form-control form-control-sm" id="bill-attachments" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
+                <ul class="list-group list-group-flush mt-2" id="attachment-preview-list"></ul>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-2 small">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal</span>
+                    <span class="text-currency" id="total-subtotal">0.00</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Sales Tax <span class="text-muted" id="tax-rate-label">(18%)</span></span>
+                    <span class="text-currency" id="total-tax">0.00</span>
+                </div>
+                <hr class="my-2" />
+                <div class="d-flex justify-content-between fw-semibold">
+                    <span>Net Total</span>
+                    <span class="text-currency text-primary" id="total-net">0.00</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="alert alert-danger d-none" id="bill-form-error"></div>
 
     <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary">
-            <i class="fa-solid fa-floppy-disk me-1"></i>Save Draft Bill
+        <button type="submit" class="btn btn-primary" id="btn-save-bill">
+            <i class="fa-solid fa-floppy-disk me-1"></i>@(isEdit ? "Update Draft Bill" : "Save Draft Bill")
         </button>
         <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
+
+@section Styles {
+    <style>
+        .bill-create-compact .form-label-sm {
+            font-size: 0.72rem;
+            margin-bottom: 0.15rem;
+            color: var(--bs-secondary-color);
+        }
+
+        .bill-create-compact .table-compact {
+            font-size: 0.72rem;
+        }
+
+        .bill-create-compact .table-compact th,
+        .bill-create-compact .table-compact td {
+            padding: 0.2rem 0.25rem;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .bill-create-compact .table-compact th:nth-child(1),
+        .bill-create-compact .table-compact td:nth-child(1) {
+            min-width: 7.5rem;
+            width: 7.5rem;
+        }
+
+        .bill-create-compact .table-compact th:nth-child(3),
+        .bill-create-compact .table-compact td:nth-child(3) {
+            white-space: normal;
+            min-width: 7rem;
+        }
+
+        .bill-create-compact .line-lot-cell .select2-container {
+            min-width: 7rem !important;
+            width: 100% !important;
+        }
+
+        .bill-create-compact .line-lot-cell .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            padding: 0.25rem 0.45rem;
+            font-size: 0.8rem;
+        }
+
+        .bill-create-compact .line-lot-cell .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding-left: 0;
+            padding-right: 1.2rem;
+            line-height: 1.35;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .bill-create-compact .form-control-xs,
+        .bill-create-compact .form-select-xs {
+            padding: 0.1rem 0.3rem;
+            font-size: 0.72rem;
+            line-height: 1.25;
+            min-height: 1.45rem;
+        }
+
+        .bill-create-compact .form-select-sm.line-lot {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            font-size: 0.8rem;
+        }
+
+        .bill-create-compact .line-stock-hint {
+            font-size: 0.65rem !important;
+            line-height: 1.2;
+            margin-top: 0.1rem !important;
+        }
+
+        .bill-create-compact .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            padding: 0.2rem 0.4rem;
+            font-size: 0.8rem;
+        }
+
+        .bill-create-compact .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding: 0;
+            line-height: 1.4;
+        }
+    </style>
+}
 
 @section Scripts {
     <script src="~/js/modules/lot-stack-line-helper.js" asp-append-version="true"></script>

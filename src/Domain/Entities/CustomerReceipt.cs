@@ -15,8 +15,11 @@ public class CustomerReceipt : CompanyAuditableEntity
     public string? ChequeNumber { get; set; }
     public DateTime? ChequeDate { get; set; }
     public string? Notes { get; set; }
+    public bool IsDeposited { get; set; }
+    public int? DepositedBankTransactionId { get; set; }
 
     public Customer Customer { get; set; } = null!;
     public Bank? Bank { get; set; }
+    public BankTransaction? DepositedBankTransaction { get; set; }
     public Company Company { get; set; } = null!;
 }

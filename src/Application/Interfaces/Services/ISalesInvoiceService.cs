@@ -22,11 +22,17 @@ public interface ISalesInvoiceService
         SalesInvoiceSaveRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<SalesInvoiceSaveResult> UpdateAsync(
+        SalesInvoiceSaveRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<SalesInvoiceDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> PostAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> CancelAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<SalesInvoiceActionResult> DeleteAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> SubmitToFbrAsync(int id, CancellationToken cancellationToken = default);
 

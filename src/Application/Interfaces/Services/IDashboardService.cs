@@ -10,12 +10,11 @@ public interface IDashboardService
     /// <summary>Returns KPI summary cards for the active company.</summary>
     Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Returns monthly posted sales totals for the last 12 months.</summary>
+    /// <summary>Returns monthly posted sales cartons for the last 12 months.</summary>
     Task<IReadOnlyList<MonthlySalesPointDto>> GetMonthlySalesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Returns top customers by outstanding balance (opening + posted invoices minus receipts).</summary>
+    /// <summary>Returns customers with non-zero balance (opening + posted invoices minus receipts), sorted ascending.</summary>
     Task<IReadOnlyList<TopCustomerBalanceDto>> GetTopCustomersByBalanceAsync(
-        int count = 5,
         CancellationToken cancellationToken = default);
 
     /// <summary>Returns items where current stock is below minimum stock.</summary>

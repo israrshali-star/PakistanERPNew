@@ -202,6 +202,12 @@ public class CustomerReceiptConfiguration : IEntityTypeConfiguration<CustomerRec
             .WithMany()
             .HasForeignKey(x => x.CompanyId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.DepositedBankTransaction)
+            .WithMany(t => t.DepositedCustomerReceipts)
+            .HasForeignKey(x => x.DepositedBankTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => new { x.CompanyId, x.IsDeposited })
+            .HasDatabaseName("IX_CustomerReceipts_CompanyId_IsDeposited");
     }
 }
 
@@ -242,6 +248,7 @@ public class BankConfiguration : IEntityTypeConfiguration<Bank>
         builder.Property(x => x.AccountTitle).HasMaxLength(200).IsRequired();
         builder.Property(x => x.AccountNumber).HasMaxLength(50).IsRequired();
         builder.Property(x => x.IBAN).HasMaxLength(50);
+        builder.Property(x => x.NextChequeNumber).HasMaxLength(50);
         builder.HasIndex(x => x.CompanyId).HasDatabaseName("IX_Banks_CompanyId");
         builder.HasIndex(x => new { x.CompanyId, x.AccountNumber })
             .IsUnique()
@@ -290,12 +297,31 @@ public class BankTransactionConfiguration : IEntityTypeConfiguration<BankTransac
             .WithMany(x => x.TransferToTransactions)
             .HasForeignKey(x => x.TransferToBankId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ChartOfAccount)
+            .WithMany()
+            .HasForeignKey(x => x.ChartOfAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.TransferToChartOfAccount)
+            .WithMany()
+            .HasForeignKey(x => x.TransferToChartOfAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CounterChartOfAccount)
+            .WithMany()
+            .HasForeignKey(x => x.CounterChartOfAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.JournalEntry)
+            .WithMany()
+            .HasForeignKey(x => x.JournalEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.Property(x => x.PartyName).HasMaxLength(200);
         builder.HasOne(x => x.Company)
             .WithMany()
             .HasForeignKey(x => x.CompanyId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.BankId, x.TransactionDate }).HasDatabaseName("IX_BankTransactions_BankId_Date");
+        builder.HasIndex(x => x.ChartOfAccountId).HasDatabaseName("IX_BankTransactions_ChartOfAccountId");
         builder.HasIndex(x => x.TransferToBankId).HasDatabaseName("IX_BankTransactions_TransferTo");
+        builder.HasIndex(x => x.JournalEntryId).HasDatabaseName("IX_BankTransactions_JournalEntryId");
     }
 }
 

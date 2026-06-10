@@ -61,16 +61,19 @@ public class LookupController : Controller
     }
 
     [HttpGet("lot-detail")]
-    public async Task<IActionResult> LotDetail([FromQuery] string lotNo, CancellationToken cancellationToken)
+    public async Task<IActionResult> LotDetail(
+        [FromQuery] string lotNo,
+        [FromQuery] string? itemCode,
+        CancellationToken cancellationToken)
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(lotNo))
+            if (string.IsNullOrWhiteSpace(lotNo) && string.IsNullOrWhiteSpace(itemCode))
             {
-                return BadRequest(new { message = "Lot number is required." });
+                return BadRequest(new { message = "Item code or lot number is required." });
             }
 
-            var detail = await _stackLotInventory.GetLotDetailAsync(lotNo, cancellationToken);
+            var detail = await _stackLotInventory.GetLotDetailAsync(lotNo ?? string.Empty, itemCode, cancellationToken);
             return detail is null ? NotFound(new { message = "No item found for this lot number." }) : Ok(detail);
         }
         catch (InvalidOperationException ex)

@@ -86,6 +86,26 @@
             });
         }
 
+        if ($detail.data('can-delete') === true) {
+            $('#btn-delete-invoice').on('click', function () {
+                var invoiceId = $detail.data('id');
+                if (!confirm('Permanently delete this invoice and its GL journal entry? This cannot be undone.')) {
+                    return;
+                }
+
+                $.ajax({
+                    url: '/api/sales-invoices/' + invoiceId,
+                    method: 'DELETE'
+                })
+                    .done(function () {
+                        window.location.href = '/SalesInvoices';
+                    })
+                    .fail(function (xhr) {
+                        showMessage('danger', getApiErrorMessage(xhr, 'Failed to delete invoice.'));
+                    });
+            });
+        }
+
         $('#btn-download-challan').on('click', downloadDeliveryChallan);
 
         if ($detail.data('has-fbr-pdf') === true) {

@@ -123,48 +123,61 @@ public class DashboardService : IDashboardService
         var startMonth = new DateTime(today.Year, today.Month, 1).AddMonths(-11);
         var endExclusive = new DateTime(today.Year, today.Month, 1).AddMonths(1);
 
-        var salesByMonth = await _unitOfWork.Repository<SalesInvoice>()
+        var salesByMonth = await _unitOfWork.Repository<SalesInvoiceLine>()
             .Query()
-            .Where(i => i.CompanyId == companyId
-                        && i.Status == InvoiceStatus.Posted
-                        && i.InvoiceDate >= startMonth
-                        && i.InvoiceDate < endExclusive)
-            .GroupBy(i => new { i.InvoiceDate.Year, i.InvoiceDate.Month })
+            .Where(l => l.SalesInvoice.CompanyId == companyId
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted
+                        && l.SalesInvoice.InvoiceDate >= startMonth
+                        && l.SalesInvoice.InvoiceDate < endExclusive)
+            .GroupBy(l => new { l.SalesInvoice.InvoiceDate.Year, l.SalesInvoice.InvoiceDate.Month })
             .Select(g => new
             {
                 g.Key.Year,
                 g.Key.Month,
-                Amount = g.Sum(i => i.NetTotal)
+                Cartons = g.Sum(l => l.SalesInvoice.InvoiceType == InvoiceType.CreditNote
+                    ? -l.Cartons
+                    : l.Cartons)
             })
             .ToListAsync(cancellationToken);
 
-        var lookup = salesByMonth.ToDictionary(x => (x.Year, x.Month), x => x.Amount);
+        var lookup = salesByMonth.ToDictionary(x => (x.Year, x.Month), x => x.Cartons);
         var points = new List<MonthlySalesPointDto>();
 
         for (var i = 0; i < 12; i++)
         {
             var month = startMonth.AddMonths(i);
-            lookup.TryGetValue((month.Year, month.Month), out var amount);
-            points.Add(new MonthlySalesPointDto(month.ToString("MMM yyyy"), amount));
+            lookup.TryGetValue((month.Year, month.Month), out var cartons);
+            points.Add(new MonthlySalesPointDto(month.ToString("MMM yyyy"), cartons));
         }
 
         return points;
     }
 
     public async Task<IReadOnlyList<TopCustomerBalanceDto>> GetTopCustomersByBalanceAsync(
-        int count = 5,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
-        var invoiceTotals = await _unitOfWork.Repository<SalesInvoice>()
+        var postedInvoices = await _unitOfWork.Repository<SalesInvoice>()
             .Query()
             .Where(i => i.CompanyId == companyId && i.Status == InvoiceStatus.Posted)
-            .GroupBy(i => i.CustomerId)
-            .Select(g => new { CustomerId = g.Key, Total = g.Sum(i => i.NetTotal) })
+            .Select(i => new { i.CustomerId, i.InvoiceType, i.NetTotal })
             .ToListAsync(cancellationToken);
 
-        var invoiceLookup = invoiceTotals.ToDictionary(x => x.CustomerId, x => x.Total);
+        var invoiceTotalsByCustomer = postedInvoices
+            .GroupBy(i => i.CustomerId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.NetTotal : x.NetTotal));
+
+        var receiptTotalsByCustomer = await _unitOfWork.Repository<CustomerReceipt>()
+            .Query()
+            .Where(r => r.CompanyId == companyId)
+            .GroupBy(r => r.CustomerId)
+            .Select(g => new { CustomerId = g.Key, Total = g.Sum(r => r.Amount) })
+            .ToListAsync(cancellationToken);
+
+        var receiptLookup = receiptTotalsByCustomer.ToDictionary(x => x.CustomerId, x => x.Total);
 
         var customers = await _unitOfWork.Repository<Customer>()
             .Query()
@@ -175,16 +188,16 @@ public class DashboardService : IDashboardService
         return customers
             .Select(c =>
             {
-                invoiceLookup.TryGetValue(c.Id, out var invoiced);
+                invoiceTotalsByCustomer.TryGetValue(c.Id, out var invoiced);
+                receiptLookup.TryGetValue(c.Id, out var receipts);
                 return new TopCustomerBalanceDto(
                     c.Id,
                     c.BuyerName,
                     c.BuyerId,
-                    c.OpeningBalance + invoiced);
+                    c.OpeningBalance + invoiced - receipts);
             })
-            .Where(c => c.Balance > 0)
-            .OrderByDescending(c => c.Balance)
-            .Take(count)
+            .Where(c => c.Balance != 0)
+            .OrderBy(c => c.Balance)
             .ToList();
     }
 
