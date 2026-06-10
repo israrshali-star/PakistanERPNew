@@ -36,6 +36,13 @@ public class FinancialReportsController : Controller
         ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
         return View();
     }
+
+    public IActionResult ArAgingSummary()
+    {
+        ViewData["BreadcrumbParent"] = "Financial Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
 }
 
 [Authorize]
@@ -100,6 +107,25 @@ public class FinancialReportsApiController : ControllerBase
         {
             var report = await _financialReportService.GetBalanceSheetAsync(
                 new BalanceSheetReportRequest { AsOfDate = asOfDate },
+                cancellationToken);
+            return Ok(report);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("ar-aging-summary")]
+    [RequirePermission("Reports.View")]
+    public async Task<IActionResult> ArAgingSummary(
+        [FromQuery] DateTime asOfDate,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _financialReportService.GetArAgingSummaryAsync(
+                new ArAgingReportRequest { AsOfDate = asOfDate },
                 cancellationToken);
             return Ok(report);
         }

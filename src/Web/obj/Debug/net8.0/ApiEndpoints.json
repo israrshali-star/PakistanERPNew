@@ -888,6 +888,22 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.FinancialReportsApiController",
+    "Method": "ArAgingSummary",
+    "RelativePath": "api/financial-reports/ar-aging-summary",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "asOfDate",
+        "Type": "System.DateTime",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.FinancialReportsApiController",
     "Method": "BalanceSheet",
     "RelativePath": "api/financial-reports/balance-sheet",
     "HttpMethod": "GET",

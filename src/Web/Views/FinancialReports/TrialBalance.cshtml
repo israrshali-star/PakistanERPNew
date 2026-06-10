@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
     <div>
         <h4 class="text-primary mb-1">Trial Balance</h4>
-        <p class="text-muted small mb-0">Posted journal entries by account for a date range</p>
+        <p class="text-muted small mb-0">Closing debit and credit balances by account</p>
     </div>
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
@@ -37,51 +37,32 @@
     </div>
 </div>
 
-<div class="card p-4 report-print-area" id="report-content">
-    <div class="text-center mb-4">
-        <h5 class="text-primary mb-1">Trial Balance</h5>
-        <p class="text-muted small mb-0" id="report-period">Select dates and click Load</p>
+<div class="card p-4 report-print-area report-proforma" id="report-content">
+    <div class="report-proforma-header">
+        <div class="report-proforma-company" id="report-company-name"></div>
+        <div class="report-proforma-title">Trial Balance</div>
+        <p class="report-proforma-period" id="report-period">Select dates and click Load</p>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Account #</th>
-                    <th>Account Name</th>
-                    <th>Type</th>
-                    <th class="text-end">Opening</th>
-                    <th class="text-end">Period Debit</th>
-                    <th class="text-end">Period Credit</th>
-                    <th class="text-end">Closing Debit</th>
-                    <th class="text-end">Closing Credit</th>
-                </tr>
-            </thead>
-            <tbody id="report-lines">
-                <tr><td colspan="8" class="text-muted text-center">No data loaded.</td></tr>
-            </tbody>
-            <tfoot id="report-footer" class="d-none table-light">
-                <tr>
-                    <th colspan="6" class="text-end">Totals</th>
-                    <th class="text-end" id="report-total-debit">0.00</th>
-                    <th class="text-end" id="report-total-credit">0.00</th>
-                </tr>
-            </tfoot>
-        </table>
-    </div>
+    <table class="report-proforma-table">
+        <thead>
+            <tr>
+                <th class="col-label"></th>
+                <th class="col-debit text-end">Debit</th>
+                <th class="col-credit text-end">Credit</th>
+            </tr>
+        </thead>
+        <tbody id="report-lines">
+            <tr><td colspan="3" class="text-muted text-center">No data loaded.</td></tr>
+        </tbody>
+    </table>
 </div>
 
 @section Styles {
-    <style>
-        @@media print {
-            .sidebar, .top-navbar, .content-header, .app-footer, .no-print { display: none !important; }
-            .main-wrapper { margin: 0 !important; }
-            .content-area { padding: 0 !important; }
-            .report-print-area { border: none !important; box-shadow: none !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="~/css/financial-report-proforma.css" asp-append-version="true" />
 }
 
 @section Scripts {
+    <script src="~/js/modules/financial-report-common.js" asp-append-version="true"></script>
     <script src="~/js/modules/financial-report-trial-balance.js" asp-append-version="true"></script>
 }

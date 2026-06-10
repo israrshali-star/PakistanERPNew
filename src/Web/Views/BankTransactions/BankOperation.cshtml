@@ -1,0 +1,177 @@
+@using PakistanAccountingERP.Application.Interfaces.Services
+@using PakistanAccountingERP.Domain.Enums
+@inject IPermissionService PermissionService
+@{
+    var transactionType = (BankTransactionType)ViewData["TransactionType"]!;
+    var title = ViewData["Title"]?.ToString() ?? "Banking";
+    var canCreate = await PermissionService.HasPermissionAsync("Banking.Create");
+    var typeValue = (int)transactionType;
+    var subtitle = transactionType switch
+    {
+        BankTransactionType.Withdrawal => "Issue a cheque payment from a bank account in Chart of Accounts.",
+        BankTransactionType.Deposit => "Select undeposited cheques and move them from Undeposited Funds into a bank account.",
+        BankTransactionType.Transfer => "Move funds between Cash in Hand and bank accounts.",
+        _ => string.Empty
+    };
+}
+
+<div id="bank-op-permissions" class="d-none"
+     data-can-create="@canCreate.ToString().ToLower()"
+     data-transaction-type="@typeValue"></div>
+<div id="bank-op-company-warning" class="alert alert-warning d-none mb-3"></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="text-primary mb-0">@title</h4>
+        <p class="text-muted small mb-0">@subtitle</p>
+    </div>
+</div>
+
+@if (transactionType == BankTransactionType.Deposit)
+{
+    <div class="alert alert-info py-2 mb-3">
+        <strong>Undeposited Funds (<span id="undeposited-account-number">10017</span>):</strong>
+        PKR <span id="undeposited-balance">0.00</span> available to deposit.
+    </div>
+}
+
+<div class="card p-3 mb-3">
+    <form id="bank-op-form">
+        <div class="row g-3">
+            @if (transactionType == BankTransactionType.Transfer)
+            {
+                <div class="col-md-6">
+                    <label class="form-label" for="op-from-account-id">From Account</label>
+                    <select class="form-select select2" id="op-from-account-id" required>
+                        <option value="">— Select account —</option>
+                    </select>
+                    <div class="form-text" id="op-from-balance"></div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="op-to-account-id">To Account</label>
+                    <select class="form-select select2" id="op-to-account-id" required>
+                        <option value="">— Select account —</option>
+                    </select>
+                    <div class="form-text" id="op-to-balance"></div>
+                </div>
+            }
+            else
+            {
+                <div class="col-md-6">
+                    <label class="form-label" for="op-bank-account-id">Bank Account (COA)</label>
+                    <select class="form-select select2" id="op-bank-account-id" required>
+                        <option value="">— Select bank account —</option>
+                    </select>
+                    <div class="form-text" id="op-bank-balance"></div>
+                </div>
+            }
+
+            @if (transactionType == BankTransactionType.Deposit)
+            {
+                <div class="col-12">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <label class="form-label mb-0">Undeposited Cheques</label>
+                        <div class="small text-muted">
+                            Selected total: <strong>PKR <span id="deposit-selected-total">0.00</span></strong>
+                        </div>
+                    </div>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm table-hover mb-0" id="undeposited-cheques-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 2.5rem;">
+                                        <input type="checkbox" class="form-check-input" id="deposit-select-all" title="Select all" />
+                                    </th>
+                                    <th>Customer</th>
+                                    <th>Receipt #</th>
+                                    <th>Cheque #</th>
+                                    <th>Receipt Date</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="undeposited-cheques-body">
+                                <tr id="undeposited-cheques-empty">
+                                    <td colspan="6" class="text-center text-muted py-3">Loading undeposited cheques…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            @if (transactionType == BankTransactionType.Withdrawal)
+            {
+                <div class="col-md-6">
+                    <label class="form-label" for="op-party-name">Payee / Party</label>
+                    <input type="text" class="form-control" id="op-party-name" maxlength="200" required />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="op-counter-account-id">Pay To Account (COA)</label>
+                    <select class="form-select select2" id="op-counter-account-id" required>
+                        <option value="">— Select account —</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="op-cheque-number">Cheque #</label>
+                    <input type="text" class="form-control" id="op-cheque-number" maxlength="50" />
+                    <div class="form-text" id="op-cheque-number-hint">Auto-increments after each posted cheque.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="op-cheque-date">Cheque Date</label>
+                    <input type="date" class="form-control" id="op-cheque-date" />
+                </div>
+            }
+
+            <div class="col-md-4">
+                <label class="form-label" for="op-date">@(transactionType == BankTransactionType.Deposit ? "Deposit Date" : "Date")</label>
+                <input type="date" class="form-control" id="op-date" required />
+            </div>
+            @if (transactionType != BankTransactionType.Deposit)
+            {
+                <div class="col-md-4">
+                    <label class="form-label" for="op-amount">Amount (PKR)</label>
+                    <input type="number" class="form-control" id="op-amount" step="0.01" min="0.01" required />
+                </div>
+            }
+            <div class="col-12">
+                <label class="form-label" for="op-description">Description / Memo</label>
+                <textarea class="form-control" id="op-description" rows="2" maxlength="500"></textarea>
+            </div>
+        </div>
+        <div class="alert alert-danger d-none mt-3" id="bank-op-form-error"></div>
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary" id="btn-save-bank-op" permission="Banking.Create">
+                <i class="fa-solid fa-check me-1"></i>Post @title
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="card p-3">
+    <h6 class="text-primary mb-3">Recent @title Activity</h6>
+    <div class="table-responsive">
+        <table class="table table-hover w-100" id="bank-op-table">
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>Date</th>
+                    @if (transactionType == BankTransactionType.Transfer)
+                    {
+                        <th>To Account</th>
+                    }
+                    else if (transactionType == BankTransactionType.Withdrawal)
+                    {
+                        <th>Payee</th>
+                    }
+                    <th class="text-end">Amount</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/modules/banking-operations.js" asp-append-version="true"></script>
+}

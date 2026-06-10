@@ -15,4 +15,8 @@ public interface IFinancialReportService
     Task<BalanceSheetReportDto> GetBalanceSheetAsync(
         BalanceSheetReportRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<ArAgingSummaryReportDto> GetArAgingSummaryAsync(
+        ArAgingReportRequest request,
+        CancellationToken cancellationToken = default);
 }

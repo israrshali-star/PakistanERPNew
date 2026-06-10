@@ -1,5 +1,22 @@
 namespace PakistanAccountingERP.Application.DTOs;
 
+public enum FinancialReportRowKind
+{
+    SectionHeader = 1,
+    GroupHeader = 2,
+    Account = 3,
+    Subtotal = 4,
+    Total = 5
+}
+
+public record FinancialReportRowDto(
+    string Label,
+    int IndentLevel,
+    FinancialReportRowKind Kind,
+    decimal? Debit,
+    decimal? Credit,
+    decimal? Amount);
+
 public record TrialBalanceLineDto(
     int AccountId,
     string AccountNumber,
@@ -18,7 +35,8 @@ public record TrialBalanceReportDto(
     int AccountCount,
     decimal TotalClosingDebit,
     decimal TotalClosingCredit,
-    IReadOnlyList<TrialBalanceLineDto> Lines);
+    IReadOnlyList<TrialBalanceLineDto> Lines,
+    IReadOnlyList<FinancialReportRowDto> Rows);
 
 public record ProfitAndLossLineDto(
     int AccountId,
@@ -35,7 +53,8 @@ public record ProfitAndLossReportDto(
     decimal TotalExpenses,
     decimal GrossProfit,
     decimal NetProfit,
-    IReadOnlyList<ProfitAndLossLineDto> Lines);
+    IReadOnlyList<ProfitAndLossLineDto> Lines,
+    IReadOnlyList<FinancialReportRowDto> Rows);
 
 public record BalanceSheetLineDto(
     int AccountId,
@@ -51,7 +70,8 @@ public record BalanceSheetReportDto(
     decimal TotalEquity,
     decimal NetIncomeYtd,
     decimal TotalLiabilitiesAndEquity,
-    IReadOnlyList<BalanceSheetLineDto> Lines);
+    IReadOnlyList<BalanceSheetLineDto> Lines,
+    IReadOnlyList<FinancialReportRowDto> Rows);
 
 public class FinancialReportDateRangeRequest
 {
@@ -60,6 +80,33 @@ public class FinancialReportDateRangeRequest
 }
 
 public class BalanceSheetReportRequest
+{
+    public DateTime AsOfDate { get; set; }
+}
+
+public record ArAgingLineDto(
+    int CustomerId,
+    string CustomerCode,
+    string CustomerName,
+    decimal OpeningBalance,
+    decimal Current,
+    decimal Days31To60,
+    decimal Days61To90,
+    decimal Over90,
+    decimal Total);
+
+public record ArAgingSummaryReportDto(
+    DateTime AsOfDate,
+    int CustomerCount,
+    decimal TotalOpeningBalance,
+    decimal TotalCurrent,
+    decimal TotalDays31To60,
+    decimal TotalDays61To90,
+    decimal TotalOver90,
+    decimal GrandTotal,
+    IReadOnlyList<ArAgingLineDto> Lines);
+
+public class ArAgingReportRequest
 {
     public DateTime AsOfDate { get; set; }
 }

@@ -1,5 +1,6 @@
 wwwroot\css\auth.css
 wwwroot\css\fbr-invoice.css
+wwwroot\css\financial-report-proforma.css
 wwwroot\css\site.css
 wwwroot\favicon.ico
 wwwroot\js\app.js
@@ -15,7 +16,9 @@ wwwroot\js\modules\customer-receipts.js
 wwwroot\js\modules\customers.js
 wwwroot\js\modules\customer-statement.js
 wwwroot\js\modules\custom-reports.js
+wwwroot\js\modules\financial-report-ar-aging.js
 wwwroot\js\modules\financial-report-balance-sheet.js
+wwwroot\js\modules\financial-report-common.js
 wwwroot\js\modules\financial-report-profit-loss.js
 wwwroot\js\modules\financial-report-trial-balance.js
 wwwroot\js\modules\fiscal-years.js
