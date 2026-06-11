@@ -4,7 +4,7 @@
     const App = {
         init: function () {
             this.initSidebar();
-            this.loadCompanies();
+            this.loadCurrentCompany();
         },
 
         initSidebar: function () {
@@ -33,78 +33,38 @@
             });
         },
 
-        loadCompanies: function () {
-            const $list = $('#company-list');
-            const $name = $('#current-company-name');
+        getCompanyDisplayName: function (company) {
+            if (!company) {
+                return '';
+            }
 
-            $.getJSON('/api/company/list')
-                .done(function (companies) {
-                    if (!companies || companies.length === 0) {
-                        $name.text('No company');
-                        return;
-                    }
-
-                    $list.empty();
-
-                    companies.forEach(function (c) {
-                        const $item = $('<li></li>');
-                        const $link = $('<a class="dropdown-item" href="#"></a>')
-                            .text(c.companyName)
-                            .data('company-id', c.id)
-                            .on('click', function (e) {
-                                e.preventDefault();
-                                App.switchCompany(c.id, c.companyName);
-                            });
-
-                        $item.append($link);
-                        $list.append($item);
-                    });
-
-                    App.ensureCompanySelected(companies);
-                })
-                .fail(function () {
-                    $name.text('Company');
-                });
+            return company.companyName || company.CompanyName || '';
         },
 
-        ensureCompanySelected: function (companies) {
+        setCompanyDisplay: function (displayName, fallback) {
+            const hasCompany = !!displayName;
+            const headerName = hasCompany ? displayName : (fallback || 'PA ERP');
+
+            $('#header-company-name').attr('title', headerName);
+            $('#current-company-name').text(headerName);
+            $('#app-brand-name').text(hasCompany ? displayName : 'PA ERP');
+        },
+
+        loadCurrentCompany: function () {
+            App.setCompanyDisplay('', 'Loading...');
+
             $.getJSON('/api/company/current')
                 .done(function (company) {
-                    $('#current-company-name').text(company.companyName);
+                    App.setCompanyDisplay(App.getCompanyDisplayName(company), 'PA ERP');
                 })
                 .fail(function () {
-                    if (!companies || companies.length === 0) {
-                        $('#current-company-name').text('No company');
-                        return;
-                    }
-
-                    $('#current-company-name').text('Select company');
+                    App.setCompanyDisplay('', 'Select company');
                     window.location.href = '/Account/SelectCompany';
                 });
         },
 
         setCurrentCompanyName: function () {
-            $.getJSON('/api/company/current')
-                .done(function (company) {
-                    $('#current-company-name').text(company.companyName);
-                })
-                .fail(function () {
-                    $('#current-company-name').text('Select company');
-                });
-        },
-
-        switchCompany: function (companyId, companyName) {
-            $.ajax({
-                url: '/api/company/switch/' + companyId,
-                method: 'POST'
-            })
-                .done(function () {
-                    $('#current-company-name').text(companyName);
-                    window.location.reload();
-                })
-                .fail(function () {
-                    alert('Could not switch company. You may not have access.');
-                });
+            App.loadCurrentCompany();
         }
     };
 

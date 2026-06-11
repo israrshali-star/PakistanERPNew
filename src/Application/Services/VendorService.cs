@@ -82,7 +82,10 @@ public partial class VendorService : IVendorService
                 v.OpeningBalance + v.VendorBills
                     .Where(b => b.Status == BillStatus.Approved)
                     .Sum(b => b.NetAmount)
-                    - v.VendorPayments.Sum(p => p.Amount),
+                    - v.VendorPayments.Sum(p => p.Amount)
+                    - v.WriteChequePayments
+                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                        .Sum(bt => bt.Amount),
                 v.IsActive))
             .ToListAsync(cancellationToken);
 
@@ -108,7 +111,10 @@ public partial class VendorService : IVendorService
                 v.OpeningBalance + v.VendorBills
                     .Where(b => b.Status == BillStatus.Approved)
                     .Sum(b => b.NetAmount)
-                    - v.VendorPayments.Sum(p => p.Amount),
+                    - v.VendorPayments.Sum(p => p.Amount)
+                    - v.WriteChequePayments
+                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                        .Sum(bt => bt.Amount),
                 v.Address,
                 v.ProvinceId,
                 v.Province != null ? v.Province.Name : null,
@@ -515,6 +521,61 @@ public partial class VendorService : IVendorService
                 0m));
         }
 
+        var chequeQuery = _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.VendorId == vendorId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null);
+
+        if (fromDate.HasValue)
+        {
+            chequeQuery = chequeQuery.Where(bt => bt.TransactionDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            chequeQuery = chequeQuery.Where(bt => bt.TransactionDate <= toDate.Value);
+        }
+
+        var cheques = await chequeQuery
+            .OrderBy(bt => bt.TransactionDate)
+            .ThenBy(bt => bt.Id)
+            .Select(bt => new
+            {
+                bt.Id,
+                bt.TransactionDate,
+                bt.ChequeNumber,
+                bt.PaymentMethod,
+                bt.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var cheque in cheques)
+        {
+            var reference = cheque.PaymentMethod == PaymentMethod.Cheque
+                            && !string.IsNullOrWhiteSpace(cheque.ChequeNumber)
+                ? cheque.ChequeNumber.Trim()
+                : $"PAY-{cheque.Id:D4}";
+
+            var description = cheque.PaymentMethod switch
+            {
+                PaymentMethod.Cheque => "Cheque Payment",
+                PaymentMethod.BankTransfer => "Bank Transfer",
+                PaymentMethod.Cash => "Cash Payment",
+                _ => "Payment"
+            };
+
+            movements.Add((
+                cheque.TransactionDate,
+                2_000_000 + cheque.Id,
+                reference,
+                description,
+                cheque.Amount,
+                0m));
+        }
+
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
         {
             balance += movement.Credit - movement.Debit;
@@ -553,7 +614,17 @@ public partial class VendorService : IVendorService
             .Where(p => p.VendorId == vendorId && p.PaymentDate < beforeDate)
             .SumAsync(p => (decimal?)p.Amount, cancellationToken) ?? 0m;
 
-        return opening + billTotal - paymentTotal;
+        var chequeTotal = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.VendorId == vendorId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null
+                && bt.TransactionDate < beforeDate)
+            .SumAsync(bt => (decimal?)bt.Amount, cancellationToken) ?? 0m;
+
+        return opening + billTotal - paymentTotal - chequeTotal;
     }
 
     private async Task<VendorSaveResult> ValidateSaveRequestAsync(

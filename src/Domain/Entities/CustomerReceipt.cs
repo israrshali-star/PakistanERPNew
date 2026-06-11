@@ -11,10 +11,14 @@ public class CustomerReceipt : CompanyAuditableEntity
     public DateTime ReceiptDate { get; set; }
     public decimal Amount { get; set; }
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+    public ChequeBankType? ChequeBankType { get; set; }
     public int? BankId { get; set; }
     public string? ChequeNumber { get; set; }
     public DateTime? ChequeDate { get; set; }
     public string? Notes { get; set; }
+    public CustomerReceiptStatus Status { get; set; } = CustomerReceiptStatus.InClearing;
+    public DateTime? ClearedAt { get; set; }
+    public string? ClearedBy { get; set; }
     public bool IsDeposited { get; set; }
     public int? DepositedBankTransactionId { get; set; }
 

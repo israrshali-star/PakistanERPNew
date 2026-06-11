@@ -410,6 +410,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
@@ -433,6 +436,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("PaymentMethod")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("TransactionDate")
                         .HasColumnType("datetime2");
 
@@ -451,6 +457,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ChartOfAccountId")
@@ -460,6 +469,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 
                     b.HasIndex("CounterChartOfAccountId");
 
+                    b.HasIndex("CustomerId");
+
                     b.HasIndex("JournalEntryId")
                         .HasDatabaseName("IX_BankTransactions_JournalEntryId");
 
@@ -467,6 +478,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_BankTransactions_TransferTo");
 
                     b.HasIndex("TransferToChartOfAccountId");
+
+                    b.HasIndex("VendorId");
 
                     b.HasIndex("BankId", "TransactionDate")
                         .HasDatabaseName("IX_BankTransactions_BankId_Date");
@@ -740,12 +753,21 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<int?>("BankId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ChequeBankType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("ChequeDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("ChequeNumber")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ClearedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ClearedBy")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
@@ -788,6 +810,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -2502,6 +2527,11 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasForeignKey("CounterChartOfAccountId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PakistanAccountingERP.Domain.Entities.Customer", "Customer")
+                        .WithMany("WriteChequePayments")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PakistanAccountingERP.Domain.Entities.JournalEntry", "JournalEntry")
                         .WithMany()
                         .HasForeignKey("JournalEntryId")
@@ -2517,6 +2547,11 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasForeignKey("TransferToChartOfAccountId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PakistanAccountingERP.Domain.Entities.Vendor", "Vendor")
+                        .WithMany("WriteChequePayments")
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Bank");
 
                     b.Navigation("ChartOfAccount");
@@ -2525,11 +2560,15 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 
                     b.Navigation("CounterChartOfAccount");
 
+                    b.Navigation("Customer");
+
                     b.Navigation("JournalEntry");
 
                     b.Navigation("TransferToBank");
 
                     b.Navigation("TransferToChartOfAccount");
+
+                    b.Navigation("Vendor");
                 });
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.ChartOfAccount", b =>
@@ -3029,6 +3068,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Navigation("CustomerReceipts");
 
                     b.Navigation("SalesInvoices");
+
+                    b.Navigation("WriteChequePayments");
                 });
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.Item", b =>
@@ -3088,6 +3129,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Navigation("VendorBills");
 
                     b.Navigation("VendorPayments");
+
+                    b.Navigation("WriteChequePayments");
                 });
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.VendorBill", b =>

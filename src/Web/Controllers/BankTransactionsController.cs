@@ -116,13 +116,27 @@ public class BankTransactionsApiController : ControllerBase
         }
     }
 
+    [HttpGet("coa-deposit")]
+    [RequirePermission("Banking.View")]
+    public async Task<IActionResult> CoaDeposit(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _bankTransactionService.GetDepositCoaLookupsAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("coa-counter")]
     [RequirePermission("Banking.View")]
     public async Task<IActionResult> CoaCounter(CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await _bankTransactionService.GetCounterCoaLookupsAsync(cancellationToken));
+            return Ok(await _bankTransactionService.GetWriteChequePartyLookupsAsync(cancellationToken));
         }
         catch (InvalidOperationException ex)
         {

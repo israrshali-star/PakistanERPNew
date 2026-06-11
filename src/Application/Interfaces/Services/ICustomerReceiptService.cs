@@ -27,4 +27,9 @@ public interface ICustomerReceiptService
         CancellationToken cancellationToken = default);
 
     Task<CustomerReceiptSaveResult> DeleteAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<CustomerReceiptSaveResult> ApproveClearanceAsync(
+        int id,
+        CustomerReceiptApproveClearanceRequest? request,
+        CancellationToken cancellationToken = default);
 }

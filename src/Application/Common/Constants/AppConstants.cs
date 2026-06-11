@@ -20,6 +20,7 @@ public static class SessionKeys
 {
     public const string CompanyId = "CurrentCompanyId";
     public const string CompanyName = "CurrentCompanyName";
+    public const string CompanyLocked = "CompanySessionLocked";
 }
 
 public static class ReferenceTypes

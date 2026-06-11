@@ -169,8 +169,8 @@
     }
 
     function refreshNavbarCompanies() {
-        if (window.ErpApp && typeof window.ErpApp.loadCompanies === 'function') {
-            window.ErpApp.loadCompanies();
+        if (window.ErpApp && typeof window.ErpApp.loadCurrentCompany === 'function') {
+            window.ErpApp.loadCurrentCompany();
         }
     }
 

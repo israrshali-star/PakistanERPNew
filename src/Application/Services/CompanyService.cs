@@ -32,6 +32,9 @@ public class CompanyService : ICompanyService
         _logger = logger;
     }
 
+    public Task<IReadOnlyList<CompanyDto>> GetLoginCompaniesAsync(CancellationToken cancellationToken = default) =>
+        GetAllActiveCompaniesAsync(cancellationToken);
+
     public async Task<IReadOnlyList<CompanyDto>> GetUserCompaniesAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(_currentUser.UserId))
@@ -138,9 +141,19 @@ public class CompanyService : ICompanyService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<bool> SetCurrentCompanyAsync(int companyId, CancellationToken cancellationToken = default)
+    public async Task<bool> SetCurrentCompanyAsync(
+        int companyId,
+        bool lockSession = false,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(_currentUser.UserId))
+        {
+            return false;
+        }
+
+        if (_currentCompany.IsCompanyLocked
+            && _currentCompany.CompanyId.HasValue
+            && _currentCompany.CompanyId.Value != companyId)
         {
             return false;
         }
@@ -153,6 +166,12 @@ public class CompanyService : ICompanyService
         }
 
         await _currentCompany.SetCompanyAsync(companyId, cancellationToken);
+
+        if (lockSession)
+        {
+            await _currentCompany.LockCompanyAsync(cancellationToken);
+        }
+
         return true;
     }
 

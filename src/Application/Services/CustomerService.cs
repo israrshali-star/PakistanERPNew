@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -83,7 +84,13 @@ public partial class CustomerService : ICustomerService
                     + c.SalesInvoices
                         .Where(si => si.Status == InvoiceStatus.Posted)
                         .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal)
-                    - c.CustomerReceipts.Sum(r => r.Amount),
+                    - c.CustomerReceipts
+                        .Where(r => r.PaymentMethod != PaymentMethod.Cheque
+                                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null))
+                        .Sum(r => r.Amount)
+                    + c.WriteChequePayments
+                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                        .Sum(bt => bt.Amount),
                 c.IsActive))
             .ToListAsync(cancellationToken);
 
@@ -110,7 +117,13 @@ public partial class CustomerService : ICustomerService
                     + c.SalesInvoices
                         .Where(si => si.Status == InvoiceStatus.Posted)
                         .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal)
-                    - c.CustomerReceipts.Sum(r => r.Amount),
+                    - c.CustomerReceipts
+                        .Where(r => r.PaymentMethod != PaymentMethod.Cheque
+                                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null))
+                        .Sum(r => r.Amount)
+                    + c.WriteChequePayments
+                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                        .Sum(bt => bt.Amount),
                 c.Address,
                 c.ProvinceId,
                 c.Province != null ? c.Province.Name : null,
@@ -500,12 +513,15 @@ public partial class CustomerService : ICustomerService
                 r.ReceiptDate,
                 r.ReceiptNumber,
                 r.PaymentMethod,
+                r.Status,
+                r.ClearedAt,
+                r.ChequeNumber,
                 r.Amount,
                 r.Id
             })
             .ToListAsync(cancellationToken);
 
-        var movements = new List<(DateTime Date, int SortKey, string Reference, string Description, decimal Debit, decimal Credit)>();
+        var movements = new List<(DateTime Date, int SortKey, string Reference, string Description, decimal Debit, decimal Credit, decimal PendingCredit)>();
 
         foreach (var invoice in invoices)
         {
@@ -524,18 +540,87 @@ public partial class CustomerService : ICustomerService
                 invoice.InvoiceNumber,
                 invoice.InvoiceType.ToString(),
                 debit,
-                credit));
+                credit,
+                0m));
         }
 
         foreach (var receipt in receipts)
         {
+            var isPendingCheque = receipt.PaymentMethod == PaymentMethod.Cheque
+                                  && !CustomerReceiptBalanceRules.IsChequeCleared(
+                                      receipt.Status,
+                                      receipt.ClearedAt);
+            var chequeRef = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
+                ? receipt.ChequeNumber.Trim()
+                : receipt.ReceiptNumber;
+            var description = isPendingCheque
+                ? $"Cheque in Clearing ({chequeRef})"
+                : $"Customer Receipt ({receipt.PaymentMethod})";
+
             movements.Add((
                 receipt.ReceiptDate,
                 1_000_000 + receipt.Id,
                 receipt.ReceiptNumber,
-                $"Customer Receipt ({receipt.PaymentMethod})",
+                description,
                 0m,
-                receipt.Amount));
+                isPendingCheque ? 0m : receipt.Amount,
+                isPendingCheque ? receipt.Amount : 0m));
+        }
+
+        var chequeQuery = _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CustomerId == customerId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null);
+
+        if (fromDate.HasValue)
+        {
+            chequeQuery = chequeQuery.Where(bt => bt.TransactionDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            chequeQuery = chequeQuery.Where(bt => bt.TransactionDate <= toDate.Value);
+        }
+
+        var cheques = await chequeQuery
+            .OrderBy(bt => bt.TransactionDate)
+            .ThenBy(bt => bt.Id)
+            .Select(bt => new
+            {
+                bt.Id,
+                bt.TransactionDate,
+                bt.ChequeNumber,
+                bt.PaymentMethod,
+                bt.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var cheque in cheques)
+        {
+            var reference = cheque.PaymentMethod == PaymentMethod.Cheque
+                            && !string.IsNullOrWhiteSpace(cheque.ChequeNumber)
+                ? cheque.ChequeNumber.Trim()
+                : $"PAY-{cheque.Id:D4}";
+
+            var description = cheque.PaymentMethod switch
+            {
+                PaymentMethod.Cheque => "Cheque Payment",
+                PaymentMethod.BankTransfer => "Bank Transfer",
+                PaymentMethod.Cash => "Cash Payment",
+                _ => "Payment"
+            };
+
+            movements.Add((
+                cheque.TransactionDate,
+                2_000_000 + cheque.Id,
+                reference,
+                description,
+                cheque.Amount,
+                0m,
+                0m));
         }
 
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
@@ -548,7 +633,8 @@ public partial class CustomerService : ICustomerService
                 movement.Description,
                 movement.Debit,
                 movement.Credit,
-                balance));
+                balance,
+                movement.PendingCredit));
         }
 
         return entries;
@@ -578,10 +664,24 @@ public partial class CustomerService : ICustomerService
 
         var receiptTotal = await _unitOfWork.Repository<CustomerReceipt>()
             .Query()
-            .Where(r => r.CustomerId == customerId && r.ReceiptDate < beforeDate)
+            .Where(r =>
+                r.CustomerId == customerId
+                && r.ReceiptDate < beforeDate
+                && (r.PaymentMethod != PaymentMethod.Cheque
+                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null)))
             .SumAsync(r => r.Amount, cancellationToken);
 
-        return customer + movement - receiptTotal;
+        var chequeTotal = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CustomerId == customerId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null
+                && bt.TransactionDate < beforeDate)
+            .SumAsync(bt => bt.Amount, cancellationToken);
+
+        return customer + movement - receiptTotal + chequeTotal;
     }
 
     private async Task<CustomerSaveResult> ValidateSaveRequestAsync(

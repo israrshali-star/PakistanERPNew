@@ -8,8 +8,8 @@
     var typeValue = (int)transactionType;
     var subtitle = transactionType switch
     {
-        BankTransactionType.Withdrawal => "Issue a cheque payment from a bank account in Chart of Accounts.",
-        BankTransactionType.Deposit => "Select undeposited cheques and move them from Undeposited Funds into a bank account.",
+        BankTransactionType.Withdrawal => "Pay customers, vendors, or other accounts using cash, cheque, or bank transfer.",
+        BankTransactionType.Deposit => "Send in-clearing cheques to the bank. After the bank clears them, approve clearance in Customer Receipts to update the customer balance and bank account.",
         BankTransactionType.Transfer => "Move funds between Cash in Hand and bank accounts.",
         _ => string.Empty
     };
@@ -55,12 +55,12 @@
                     <div class="form-text" id="op-to-balance"></div>
                 </div>
             }
-            else
+            else if (transactionType == BankTransactionType.Deposit)
             {
                 <div class="col-md-6">
-                    <label class="form-label" for="op-bank-account-id">Bank Account (COA)</label>
+                    <label class="form-label" for="op-bank-account-id">Deposit To Account (COA)</label>
                     <select class="form-select select2" id="op-bank-account-id" required>
-                        <option value="">— Select bank account —</option>
+                        <option value="">— Select bank or Cash in Hand —</option>
                     </select>
                     <div class="form-text" id="op-bank-balance"></div>
                 </div>
@@ -85,13 +85,14 @@
                                     <th>Customer</th>
                                     <th>Receipt #</th>
                                     <th>Cheque #</th>
+                                    <th>Cheque Date</th>
                                     <th>Receipt Date</th>
                                     <th class="text-end">Amount</th>
                                 </tr>
                             </thead>
                             <tbody id="undeposited-cheques-body">
                                 <tr id="undeposited-cheques-empty">
-                                    <td colspan="6" class="text-center text-muted py-3">Loading undeposited cheques…</td>
+                                    <td colspan="7" class="text-center text-muted py-3">Loading undeposited cheques…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -101,24 +102,47 @@
 
             @if (transactionType == BankTransactionType.Withdrawal)
             {
-                <div class="col-md-6">
-                    <label class="form-label" for="op-party-name">Payee / Party</label>
-                    <input type="text" class="form-control" id="op-party-name" maxlength="200" required />
+                <div class="col-md-4">
+                    <label class="form-label" for="op-payment-method">Payment Method</label>
+                    <select class="form-select" id="op-payment-method" required>
+                        <option value="">— Select method —</option>
+                        <option value="1">Cash</option>
+                        <option value="2">Cheque</option>
+                        <option value="3">Bank Transfer</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="op-pay-from-bank-wrap">
+                    <label class="form-label" for="op-bank-account-id">Pay From — Bank Account (COA)</label>
+                    <select class="form-select select2" id="op-bank-account-id">
+                        <option value="">— Select bank account —</option>
+                    </select>
+                    <div class="form-text" id="op-bank-balance"></div>
+                </div>
+                <div class="col-md-8 d-none" id="op-pay-from-cash-wrap">
+                    <label class="form-label">Pay From — Cash Account</label>
+                    <div class="form-control bg-light" id="op-cash-account-label">Cash in Hand (10015)</div>
+                    <input type="hidden" id="op-cash-account-id" />
+                    <div class="form-text" id="op-cash-balance"></div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="op-counter-account-id">Pay To Account (COA)</label>
+                    <label class="form-label" for="op-counter-account-id">Pay To</label>
                     <select class="form-select select2" id="op-counter-account-id" required>
                         <option value="">— Select account —</option>
                     </select>
+                    <div class="form-text" id="op-party-balance"></div>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="op-cheque-number">Cheque #</label>
-                    <input type="text" class="form-control" id="op-cheque-number" maxlength="50" />
-                    <div class="form-text" id="op-cheque-number-hint">Auto-increments after each posted cheque.</div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="op-cheque-date">Cheque Date</label>
-                    <input type="date" class="form-control" id="op-cheque-date" />
+                <div class="col-md-6" id="op-cheque-fields">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="op-cheque-number">Cheque #</label>
+                            <input type="text" class="form-control" id="op-cheque-number" maxlength="50" />
+                            <div class="form-text" id="op-cheque-number-hint">Auto-increments after each posted cheque.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="op-cheque-date">Cheque Date</label>
+                            <input type="date" class="form-control" id="op-cheque-date" />
+                        </div>
+                    </div>
                 </div>
             }
 
@@ -161,7 +185,9 @@
                     }
                     else if (transactionType == BankTransactionType.Withdrawal)
                     {
-                        <th>Payee</th>
+                        <th>Pay To</th>
+                        <th>Method</th>
+                        <th>Cheque #</th>
                     }
                     <th class="text-end">Amount</th>
                     <th>Description</th>

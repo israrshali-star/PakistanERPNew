@@ -24,9 +24,15 @@ public interface ICustomerGlPostingService
         decimal previousAmount,
         int? previousBankId,
         Domain.Enums.PaymentMethod previousPaymentMethod,
+        Domain.Enums.ChequeBankType? previousChequeBankType,
         CancellationToken cancellationToken = default);
 
     Task<GlPostingResult> RemoveCustomerReceiptAsync(
         int receiptId,
+        CancellationToken cancellationToken = default);
+
+    Task<GlPostingResult> PostChequeClearanceAsync(
+        CustomerReceipt receipt,
+        int bankChartOfAccountId,
         CancellationToken cancellationToken = default);
 }

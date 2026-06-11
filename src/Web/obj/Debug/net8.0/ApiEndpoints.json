@@ -115,6 +115,16 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
+    "Method": "CoaDeposit",
+    "RelativePath": "api/bank-transactions/coa-deposit",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.BankTransactionsApiController",
     "Method": "CoaTransfer",
     "RelativePath": "api/bank-transactions/coa-transfer",
     "HttpMethod": "GET",
@@ -711,6 +721,27 @@
         "Name": "id",
         "Type": "System.Int32",
         "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
+    "Method": "ApproveClearance",
+    "RelativePath": "api/customer-receipts/{id}/approve-clearance",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.CustomerReceiptApproveClearanceRequest",
+        "IsRequired": false
       }
     ],
     "ReturnTypes": []

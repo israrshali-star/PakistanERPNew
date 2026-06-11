@@ -72,6 +72,12 @@ public partial class BankGlPostingService : IBankGlPostingService
         int chartOfAccountId,
         CancellationToken cancellationToken = default)
     {
+        var openingBalance = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.Id == chartOfAccountId && a.CompanyId == companyId)
+            .Select(a => (decimal?)a.OpeningBalance)
+            .FirstOrDefaultAsync(cancellationToken) ?? 0m;
+
         var lines = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.ChartOfAccountId == chartOfAccountId
@@ -83,7 +89,7 @@ public partial class BankGlPostingService : IBankGlPostingService
 
         var debits = lines.Sum(l => l.Debit);
         var credits = lines.Sum(l => l.Credit);
-        return Math.Round(debits - credits, 2);
+        return Math.Round(openingBalance + debits - credits, 2);
     }
 
     public async Task<GlPostingResult> PostBankTransactionAsync(
@@ -127,6 +133,8 @@ public partial class BankGlPostingService : IBankGlPostingService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
+        await ApplyLinkedBankBalanceAsync(companyId, transaction, amount, cancellationToken);
+
         return new GlPostingResult(true, null);
     }
 
@@ -134,6 +142,10 @@ public partial class BankGlPostingService : IBankGlPostingService
         int bankTransactionId,
         CancellationToken cancellationToken = default)
     {
+        var transaction = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .FirstOrDefaultAsync(bt => bt.Id == bankTransactionId, cancellationToken);
+
         var entries = await _unitOfWork.Repository<JournalEntry>()
             .Query(asNoTracking: false)
             .Where(j => j.ReferenceType == ReferenceTypes.BankTransaction
@@ -145,6 +157,19 @@ public partial class BankGlPostingService : IBankGlPostingService
         if (entries.Count == 0)
         {
             return new GlPostingResult(true, null);
+        }
+
+        if (transaction is not null)
+        {
+            var amount = Math.Round(transaction.Amount, 2);
+            if (amount > 0m)
+            {
+                await ApplyLinkedBankBalanceAsync(
+                    transaction.CompanyId,
+                    transaction,
+                    -amount,
+                    cancellationToken);
+            }
         }
 
         var now = DateTime.UtcNow;
@@ -203,23 +228,19 @@ public partial class BankGlPostingService : IBankGlPostingService
                     return (false, "Pay-to account is required for write cheque.", null);
                 }
 
-                var bankBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
-                if (bankBalance < amount)
+                var payFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
+                if (payFromBalance < amount)
                 {
-                    return (false, $"Insufficient bank balance. Available: {bankBalance:N2}", null);
+                    return (false, $"Insufficient balance in pay-from account. Available: {payFromBalance:N2}", null);
                 }
 
-                var party = string.IsNullOrWhiteSpace(transaction.PartyName)
-                    ? "Cheque payment"
-                    : transaction.PartyName.Trim();
-                var chequeRef = string.IsNullOrWhiteSpace(transaction.ChequeNumber)
-                    ? party
-                    : $"{party} — Chq #{transaction.ChequeNumber.Trim()}";
+                var party = await ResolvePartyNameAsync(transaction, cancellationToken);
+                var payFromMemo = BuildWithdrawalPayFromMemo(transaction, party);
 
                 return (true, null,
                 [
-                    CreateLine(transaction.CounterChartOfAccountId.Value, amount, 0m, chequeRef),
-                    CreateLine(transaction.ChartOfAccountId, 0m, amount, chequeRef)
+                    CreateLine(transaction.CounterChartOfAccountId.Value, amount, 0m, party),
+                    CreateLine(transaction.ChartOfAccountId, 0m, amount, payFromMemo)
                 ]);
             }
 
@@ -261,12 +282,80 @@ public partial class BankGlPostingService : IBankGlPostingService
         transaction.TransactionType switch
         {
             BankTransactionType.Deposit => "Bank deposit",
-            BankTransactionType.Withdrawal => string.IsNullOrWhiteSpace(transaction.PartyName)
-                ? "Cheque payment"
-                : $"Cheque — {transaction.PartyName.Trim()}",
+            BankTransactionType.Withdrawal => transaction.PaymentMethod switch
+            {
+                PaymentMethod.Cheque => $"Cheque — {transaction.PartyName?.Trim() ?? "payment"}",
+                PaymentMethod.Cash => $"Cash payment — {transaction.PartyName?.Trim() ?? "payment"}",
+                PaymentMethod.BankTransfer => $"Bank transfer — {transaction.PartyName?.Trim() ?? "payment"}",
+                _ => $"Payment — {transaction.PartyName?.Trim() ?? "payment"}"
+            },
             BankTransactionType.Transfer => "Cash/bank transfer",
             _ => "Bank transaction"
         };
+
+    private static string BuildWithdrawalPayFromMemo(BankTransaction transaction, string party) =>
+        transaction.PaymentMethod switch
+        {
+            PaymentMethod.Cheque when !string.IsNullOrWhiteSpace(transaction.ChequeNumber)
+                => $"{party} — Chq #{transaction.ChequeNumber.Trim()}",
+            PaymentMethod.BankTransfer => $"{party} — Bank transfer",
+            PaymentMethod.Cash => $"{party} — Cash",
+            _ => party
+        };
+
+    private async Task<string> ResolvePartyNameAsync(
+        BankTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.CustomerId.HasValue)
+        {
+            var customerName = await _unitOfWork.Repository<Customer>()
+                .Query()
+                .Where(c => c.Id == transaction.CustomerId.Value)
+                .Select(c => c.BuyerName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(customerName))
+            {
+                return customerName.Trim();
+            }
+        }
+
+        if (transaction.VendorId.HasValue)
+        {
+            var vendorName = await _unitOfWork.Repository<Vendor>()
+                .Query()
+                .Where(v => v.Id == transaction.VendorId.Value)
+                .Select(v => v.VendorName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(vendorName))
+            {
+                return vendorName.Trim();
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(transaction.PartyName))
+        {
+            return transaction.PartyName.Trim();
+        }
+
+        if (transaction.CounterChartOfAccountId.HasValue)
+        {
+            var accountName = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query()
+                .Where(a => a.Id == transaction.CounterChartOfAccountId.Value)
+                .Select(a => a.AccountName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(accountName))
+            {
+                return accountName.Trim();
+            }
+        }
+
+        return "Payment";
+    }
 
     private async Task<string> GetAccountLabelAsync(int chartOfAccountId, CancellationToken cancellationToken)
     {
@@ -370,6 +459,64 @@ public partial class BankGlPostingService : IBankGlPostingService
         }
 
         return $"{prefix}{(max + 1):D4}";
+    }
+
+    private async Task ApplyLinkedBankBalanceAsync(
+        int companyId,
+        BankTransaction transaction,
+        decimal amount,
+        CancellationToken cancellationToken)
+    {
+        switch (transaction.TransactionType)
+        {
+            case BankTransactionType.Deposit:
+                await AdjustBankBalanceByCoaAsync(companyId, transaction.ChartOfAccountId, amount, cancellationToken);
+                break;
+            case BankTransactionType.Withdrawal:
+                await AdjustBankBalanceByCoaAsync(companyId, transaction.ChartOfAccountId, -amount, cancellationToken);
+                break;
+            case BankTransactionType.Transfer:
+                await AdjustBankBalanceByCoaAsync(companyId, transaction.ChartOfAccountId, -amount, cancellationToken);
+                if (transaction.TransferToChartOfAccountId.HasValue)
+                {
+                    await AdjustBankBalanceByCoaAsync(
+                        companyId,
+                        transaction.TransferToChartOfAccountId.Value,
+                        amount,
+                        cancellationToken);
+                }
+
+                break;
+        }
+    }
+
+    private async Task AdjustBankBalanceByCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        decimal delta,
+        CancellationToken cancellationToken)
+    {
+        if (delta == 0m)
+        {
+            return;
+        }
+
+        var bank = await _unitOfWork.Repository<Bank>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                b => b.CompanyId == companyId && b.ChartOfAccountId == chartOfAccountId && !b.IsDeleted,
+                cancellationToken);
+
+        if (bank is null)
+        {
+            return;
+        }
+
+        bank.CurrentBalance = Math.Round(bank.CurrentBalance + delta, 2);
+        bank.UpdatedAt = DateTime.UtcNow;
+        bank.UpdatedBy = _currentUser.UserName;
+        _unitOfWork.Repository<Bank>().Update(bank);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     [GeneratedRegex(@"^JE-(\d+)$", RegexOptions.IgnoreCase)]

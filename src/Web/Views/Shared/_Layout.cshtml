@@ -26,7 +26,7 @@
             <div class="d-flex align-items-center gap-2">
                 <a asp-controller="Home" asp-action="Index" class="app-brand">
                     <i class="fa-solid fa-calculator"></i>
-                    <span>PA ERP</span>
+                    <span id="app-brand-name">PA ERP</span>
                 </a>
                 <button type="button" class="btn btn-link nav-toggle d-xl-none" id="navToggle" aria-label="Toggle navigation">
                     <i class="fa-solid fa-bars"></i>
@@ -34,13 +34,10 @@
             </div>
 
             <div class="app-header-actions d-flex align-items-center gap-2 gap-md-3">
-                <div class="dropdown company-switcher">
-                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="companySwitcherBtn">
-                        <i class="fa-solid fa-building me-1"></i>
-                        <span id="current-company-name">Loading...</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" id="company-list"></ul>
-                </div>
+                <span id="header-company-name" class="header-company-name" title="PA ERP">
+                    <i class="fa-solid fa-building me-1"></i>
+                    <span id="current-company-name">Loading...</span>
+                </span>
 
                 <button type="button" class="btn btn-link top-navbar-icon text-white-50" title="Notifications">
                     <i class="fa-regular fa-bell"></i>

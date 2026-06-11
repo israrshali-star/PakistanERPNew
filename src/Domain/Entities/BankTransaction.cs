@@ -12,6 +12,9 @@ public class BankTransaction : CompanyAuditableEntity
     public int? TransferToBankId { get; set; }
     public int? TransferToChartOfAccountId { get; set; }
     public int? CounterChartOfAccountId { get; set; }
+    public int? CustomerId { get; set; }
+    public int? VendorId { get; set; }
+    public PaymentMethod? PaymentMethod { get; set; }
     public int? JournalEntryId { get; set; }
     public string? PartyName { get; set; }
     public DateTime TransactionDate { get; set; }
@@ -25,6 +28,8 @@ public class BankTransaction : CompanyAuditableEntity
     public ChartOfAccount ChartOfAccount { get; set; } = null!;
     public ChartOfAccount? TransferToChartOfAccount { get; set; }
     public ChartOfAccount? CounterChartOfAccount { get; set; }
+    public Customer? Customer { get; set; }
+    public Vendor? Vendor { get; set; }
     public JournalEntry? JournalEntry { get; set; }
     public Bank? TransferToBank { get; set; }
     public Company Company { get; set; } = null!;

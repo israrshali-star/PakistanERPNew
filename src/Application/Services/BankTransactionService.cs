@@ -22,6 +22,7 @@ public class BankTransactionService : IBankTransactionService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly IBankGlPostingService _bankGlPostingService;
+    private readonly ICustomerGlPostingService _customerGlPostingService;
     private readonly ILogger<BankTransactionService> _logger;
 
     public BankTransactionService(
@@ -30,6 +31,7 @@ public class BankTransactionService : IBankTransactionService
         ICurrentUserService currentUser,
         IAuditService auditService,
         IBankGlPostingService bankGlPostingService,
+        ICustomerGlPostingService customerGlPostingService,
         ILogger<BankTransactionService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -37,6 +39,7 @@ public class BankTransactionService : IBankTransactionService
         _currentUser = currentUser;
         _auditService = auditService;
         _bankGlPostingService = bankGlPostingService;
+        _customerGlPostingService = customerGlPostingService;
         _logger = logger;
     }
 
@@ -96,6 +99,8 @@ public class BankTransactionService : IBankTransactionService
                 t.Amount,
                 t.Description,
                 t.PartyName,
+                t.PaymentMethod,
+                t.ChequeNumber,
                 t.IsReconciled
             })
             .ToListAsync(cancellationToken);
@@ -110,6 +115,8 @@ public class BankTransactionService : IBankTransactionService
                 t.Amount,
                 t.Description,
                 t.PartyName,
+                t.PaymentMethod?.ToString(),
+                t.ChequeNumber,
                 t.IsReconciled))
             .ToList();
 
@@ -138,6 +145,7 @@ public class BankTransactionService : IBankTransactionService
                     : null,
                 t.CounterChartOfAccountId,
                 t.PartyName,
+                t.PaymentMethod,
                 t.TransactionDate,
                 t.ChequeNumber,
                 t.ChequeDate,
@@ -162,44 +170,211 @@ public class BankTransactionService : IBankTransactionService
         return await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<BankCoaLookupDto>> GetCounterCoaLookupsAsync(
+    public async Task<IReadOnlyList<BankCoaLookupDto>> GetDepositCoaLookupsAsync(
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
+        return await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<WriteChequePartyLookupDto>> GetWriteChequePartyLookupsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        const int arSubTypeId = 2;
+        const int apSubTypeId = 8;
 
         var accounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
-            .Where(a => a.CompanyId == companyId && a.IsActive && !a.IsDeleted && !a.ChildAccounts.Any())
-            .OrderBy(a => a.AccountNumber)
-            .Select(a => new { a.Id, a.AccountNumber, a.AccountName })
+            .Where(a => a.CompanyId == companyId && a.IsActive && !a.IsDeleted)
+            .Select(a => new
+            {
+                a.Id,
+                a.AccountNumber,
+                a.AccountName,
+                a.SubTypeId,
+                a.ParentAccountId,
+                ParentNumber = a.ParentAccount != null ? a.ParentAccount.AccountNumber : null
+            })
             .ToListAsync(cancellationToken);
 
-        var result = new List<BankCoaLookupDto>();
-        foreach (var account in accounts)
+        var arAccountIds = accounts
+            .Where(a => a.SubTypeId == arSubTypeId
+                        || a.AccountNumber is AccountsReceivable or "11000"
+                        || a.ParentNumber is AccountsReceivable or "11000")
+            .Select(a => a.Id)
+            .ToHashSet();
+
+        var apAccountIds = accounts
+            .Where(a => a.SubTypeId == apSubTypeId
+                        || a.AccountNumber == AccountsPayable
+                        || a.ParentNumber == AccountsPayable)
+            .Select(a => a.Id)
+            .ToHashSet();
+
+        var defaultArId = accounts
+            .Where(a => a.AccountNumber == AccountsReceivable)
+            .Select(a => (int?)a.Id)
+            .FirstOrDefault()
+            ?? accounts.Where(a => arAccountIds.Contains(a.Id)).Select(a => (int?)a.Id).FirstOrDefault();
+
+        var defaultApId = accounts
+            .Where(a => a.AccountNumber == AccountsPayable)
+            .Select(a => (int?)a.Id)
+            .FirstOrDefault()
+            ?? accounts.Where(a => apAccountIds.Contains(a.Id)).Select(a => (int?)a.Id).FirstOrDefault();
+
+        var result = new List<WriteChequePartyLookupDto>();
+        var usedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddParty(
+            int chartOfAccountId,
+            string partyType,
+            int? customerId,
+            int? vendorId,
+            string partyName,
+            string accountNumber)
         {
-            if (account.AccountNumber is CashInHand or UndepositedFunds or BankAccountsParent)
+            var key = $"{chartOfAccountId}:{customerId}:{vendorId}";
+            if (!usedKeys.Add(key))
             {
-                continue;
+                return;
             }
 
-            if (account.AccountNumber.StartsWith("100", StringComparison.Ordinal)
-                && account.AccountNumber != CashInHand
-                && account.AccountNumber != UndepositedFunds
-                && account.AccountNumber.Length > 4)
-            {
-                continue;
-            }
-
-            var balance = await _bankGlPostingService.GetAccountBalanceAsync(companyId, account.Id, cancellationToken);
-            result.Add(new BankCoaLookupDto(
-                account.Id,
-                account.AccountNumber,
-                account.AccountName,
-                balance));
+            result.Add(new WriteChequePartyLookupDto(
+                chartOfAccountId,
+                partyType,
+                customerId,
+                vendorId,
+                partyName,
+                accountNumber,
+                0m));
         }
 
-        return result;
+        foreach (var account in accounts.Where(a => arAccountIds.Contains(a.Id)))
+        {
+            if (IsGenericArApName(account.AccountName))
+            {
+                continue;
+            }
+
+            AddParty(account.Id, "AR", null, null, account.AccountName, account.AccountNumber);
+        }
+
+        foreach (var account in accounts.Where(a => apAccountIds.Contains(a.Id)))
+        {
+            if (IsGenericArApName(account.AccountName))
+            {
+                continue;
+            }
+
+            AddParty(account.Id, "AP", null, null, account.AccountName, account.AccountNumber);
+        }
+
+        var customers = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.CompanyId == companyId && c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.BuyerName)
+            .Select(c => new { c.Id, c.BuyerName, c.BuyerId })
+            .ToListAsync(cancellationToken);
+
+        foreach (var customer in customers)
+        {
+            var matched = accounts.FirstOrDefault(a =>
+                arAccountIds.Contains(a.Id)
+                && !IsGenericArApName(a.AccountName)
+                && string.Equals(a.AccountName.Trim(), customer.BuyerName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (matched is not null)
+            {
+                AddParty(matched.Id, "AR", customer.Id, null, customer.BuyerName, matched.AccountNumber);
+                continue;
+            }
+
+            if (!defaultArId.HasValue)
+            {
+                continue;
+            }
+
+            var arNumber = accounts.First(a => a.Id == defaultArId.Value).AccountNumber;
+            AddParty(defaultArId.Value, "AR", customer.Id, null, customer.BuyerName, arNumber);
+        }
+
+        var vendors = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => v.CompanyId == companyId && v.IsActive && !v.IsDeleted)
+            .OrderBy(v => v.VendorName)
+            .Select(v => new { v.Id, v.VendorName, v.VendorCode })
+            .ToListAsync(cancellationToken);
+
+        foreach (var vendor in vendors)
+        {
+            var matched = accounts.FirstOrDefault(a =>
+                apAccountIds.Contains(a.Id)
+                && !IsGenericArApName(a.AccountName)
+                && string.Equals(a.AccountName.Trim(), vendor.VendorName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (matched is not null)
+            {
+                AddParty(matched.Id, "AP", null, vendor.Id, vendor.VendorName, matched.AccountNumber);
+                continue;
+            }
+
+            if (!defaultApId.HasValue)
+            {
+                continue;
+            }
+
+            var apNumber = accounts.First(a => a.Id == defaultApId.Value).AccountNumber;
+            AddParty(defaultApId.Value, "AP", null, vendor.Id, vendor.VendorName, apNumber);
+        }
+
+        var payFromIds = (await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken))
+            .Select(a => a.Id)
+            .ToHashSet();
+
+        var standaloneCoaIds = result
+            .Where(r => r.CustomerId is null && r.VendorId is null)
+            .Select(r => r.ChartOfAccountId)
+            .ToHashSet();
+
+        var otherLeafAccounts = accounts
+            .Where(a => !payFromIds.Contains(a.Id) && !standaloneCoaIds.Contains(a.Id))
+            .OrderBy(a => a.AccountNumber)
+            .ToList();
+
+        foreach (var account in otherLeafAccounts)
+        {
+            var isLeaf = !accounts.Any(child => child.ParentAccountId == account.Id);
+            if (!isLeaf)
+            {
+                continue;
+            }
+
+            AddParty(account.Id, "COA", null, null, account.AccountName, account.AccountNumber);
+        }
+
+        var withBalances = new List<WriteChequePartyLookupDto>();
+        foreach (var item in result)
+        {
+            var balance = item.CustomerId.HasValue
+                ? await GetCustomerOutstandingAsync(companyId, item.CustomerId.Value, cancellationToken)
+                : item.VendorId.HasValue
+                    ? await GetVendorOutstandingAsync(companyId, item.VendorId.Value, cancellationToken)
+                    : await _bankGlPostingService.GetAccountBalanceAsync(companyId, item.ChartOfAccountId, cancellationToken);
+            withBalances.Add(item with { Balance = balance });
+        }
+
+        return withBalances
+            .OrderBy(r => r.PartyType)
+            .ThenBy(r => r.PartyName)
+            .ToList();
     }
+
+    private static bool IsGenericArApName(string accountName) =>
+        accountName.Contains("Accounts Receivable", StringComparison.OrdinalIgnoreCase)
+        || accountName.Contains("Accounts Payable", StringComparison.OrdinalIgnoreCase)
+        || accountName.Equals("Account Payable", StringComparison.OrdinalIgnoreCase);
 
     public async Task<BankUndepositedSummaryDto> GetUndepositedSummaryAsync(
         CancellationToken cancellationToken = default)
@@ -220,12 +395,16 @@ public class BankTransactionService : IBankTransactionService
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
+        var today = DateTime.UtcNow.Date;
+
         return await _unitOfWork.Repository<CustomerReceipt>()
             .Query()
             .Where(r =>
                 r.CompanyId == companyId
                 && !r.IsDeleted
                 && r.PaymentMethod == PaymentMethod.Cheque
+                && r.ChequeBankType != ChequeBankType.SameBank
+                && r.ClearedAt == null
                 && !r.IsDeposited
                 && r.Amount > 0m)
             .OrderBy(r => r.ReceiptDate)
@@ -237,7 +416,8 @@ public class BankTransactionService : IBankTransactionService
                 r.ChequeNumber,
                 r.Amount,
                 r.ReceiptDate,
-                r.ChequeDate))
+                r.ChequeDate,
+                r.ChequeDate.HasValue && r.ChequeDate.Value.Date > today))
             .ToListAsync(cancellationToken);
     }
 
@@ -259,14 +439,20 @@ public class BankTransactionService : IBankTransactionService
         IReadOnlyList<CustomerReceipt>? depositReceipts = null;
         if (request.TransactionType == BankTransactionType.Deposit)
         {
-            depositReceipts = await LoadUndepositedChequeReceiptsAsync(
+            var depositLoad = await LoadUndepositedChequeReceiptsAsync(
                 companyId,
                 request.CustomerReceiptIds,
+                request.TransactionDate,
                 cancellationToken);
-            if (depositReceipts is null)
+            if (depositLoad.Receipts is null)
             {
-                return new BankTransactionSaveResult(false, "One or more selected cheques are invalid or already deposited.", null);
+                return new BankTransactionSaveResult(
+                    false,
+                    depositLoad.ErrorMessage ?? "One or more selected cheques are invalid or already deposited.",
+                    null);
             }
+
+            depositReceipts = depositLoad.Receipts;
 
             request.Amount = depositReceipts.Sum(r => r.Amount);
         }
@@ -287,6 +473,59 @@ public class BankTransactionService : IBankTransactionService
         }
 
         var now = DateTime.UtcNow;
+        var partyName = request.PartyName?.Trim();
+        string? chequeNumber = null;
+        DateTime? chequeDate = null;
+
+        if (request.TransactionType == BankTransactionType.Withdrawal)
+        {
+            partyName = await ResolvePartyNameForSaveAsync(
+                companyId,
+                request.CustomerId,
+                request.VendorId,
+                request.CounterChartOfAccountId,
+                partyName,
+                cancellationToken);
+
+            if (request.PaymentMethod == PaymentMethod.Cheque)
+            {
+                chequeNumber = await ResolveChequeNumberForWithdrawalAsync(
+                    companyId,
+                    bankId.Value,
+                    request.ChartOfAccountId,
+                    request.ChequeNumber?.Trim(),
+                    cancellationToken);
+
+                if (string.IsNullOrWhiteSpace(chequeNumber))
+                {
+                    return new BankTransactionSaveResult(
+                        false,
+                        "Cheque number is required. Enter a cheque # or save a starting sequence for this bank.",
+                        null);
+                }
+
+                var duplicateCheque = await _unitOfWork.Repository<BankTransaction>()
+                    .Query()
+                    .AnyAsync(bt =>
+                        bt.CompanyId == companyId
+                        && bt.ChartOfAccountId == request.ChartOfAccountId
+                        && bt.TransactionType == BankTransactionType.Withdrawal
+                        && !bt.IsDeleted
+                        && bt.ChequeNumber == chequeNumber,
+                        cancellationToken);
+
+                if (duplicateCheque)
+                {
+                    return new BankTransactionSaveResult(
+                        false,
+                        "This cheque number is already used for the selected bank account.",
+                        null);
+                }
+
+                chequeDate = request.ChequeDate?.Date;
+            }
+        }
+
         var entity = new BankTransaction
         {
             CompanyId = companyId,
@@ -296,10 +535,15 @@ public class BankTransactionService : IBankTransactionService
             TransferToBankId = transferBankId,
             TransferToChartOfAccountId = request.TransferToChartOfAccountId,
             CounterChartOfAccountId = request.CounterChartOfAccountId,
-            PartyName = request.PartyName?.Trim(),
+            CustomerId = request.CustomerId,
+            VendorId = request.VendorId,
+            PaymentMethod = request.TransactionType == BankTransactionType.Withdrawal
+                ? request.PaymentMethod
+                : null,
+            PartyName = partyName,
             TransactionDate = request.TransactionDate.Date,
-            ChequeNumber = request.ChequeNumber?.Trim(),
-            ChequeDate = request.ChequeDate?.Date,
+            ChequeNumber = chequeNumber,
+            ChequeDate = chequeDate,
             Amount = request.Amount,
             Description = request.Description?.Trim(),
             IsReconciled = false,
@@ -317,6 +561,33 @@ public class BankTransactionService : IBankTransactionService
 
             await _unitOfWork.Repository<BankTransaction>().AddAsync(entity, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (depositReceipts is { Count: > 0 })
+            {
+                foreach (var receipt in depositReceipts)
+                {
+                    if (!await HasPostedReceiptJournalAsync(companyId, receipt.Id, cancellationToken))
+                    {
+                        var receiveGl = await _customerGlPostingService.PostCustomerReceiptAsync(
+                            receipt,
+                            cancellationToken);
+                        if (!receiveGl.Success)
+                        {
+                            if (useTransaction)
+                            {
+                                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                            }
+                            else
+                            {
+                                _unitOfWork.Repository<BankTransaction>().Remove(entity);
+                                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                            }
+
+                            return new BankTransactionSaveResult(false, receiveGl.Message, null);
+                        }
+                    }
+                }
+            }
 
             var glResult = await _bankGlPostingService.PostBankTransactionAsync(entity, cancellationToken);
             if (!glResult.Success)
@@ -358,6 +629,7 @@ public class BankTransactionService : IBankTransactionService
         await TryAuditAsync("Create", entity.Id.ToString(), null, JsonSerializer.Serialize(request), cancellationToken);
 
         if (request.TransactionType == BankTransactionType.Withdrawal
+            && request.PaymentMethod == PaymentMethod.Cheque
             && !string.IsNullOrWhiteSpace(entity.ChequeNumber))
         {
             await AdvanceNextChequeNumberAsync(
@@ -398,6 +670,14 @@ public class BankTransactionService : IBankTransactionService
             .Where(b => b.Id == bankId.Value && b.CompanyId == companyId)
             .Select(b => b.NextChequeNumber)
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(nextChequeNumber))
+        {
+            nextChequeNumber = await DeriveNextChequeNumberFromHistoryAsync(
+                companyId,
+                chartOfAccountId,
+                cancellationToken);
+        }
 
         return new BankNextChequeNumberDto(
             nextChequeNumber,
@@ -532,17 +812,43 @@ public class BankTransactionService : IBankTransactionService
                     return new BankTransactionSaveResult(false, "Select at least one cheque to deposit.", null);
                 }
 
-                if (!await IsValidBankCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                if (!await IsValidDepositCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
                 {
-                    return new BankTransactionSaveResult(false, "Select a valid bank account from Chart of Accounts.", null);
+                    return new BankTransactionSaveResult(
+                        false,
+                        "Select a valid bank or Cash in Hand account from Chart of Accounts.",
+                        null);
                 }
 
                 break;
 
             case BankTransactionType.Withdrawal:
-                if (!await IsValidBankCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                if (!request.PaymentMethod.HasValue)
                 {
-                    return new BankTransactionSaveResult(false, "Select a valid bank account from Chart of Accounts.", null);
+                    return new BankTransactionSaveResult(false, "Payment method is required.", null);
+                }
+
+                switch (request.PaymentMethod.Value)
+                {
+                    case PaymentMethod.Cash:
+                        if (!await IsValidCashPayFromCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                        {
+                            return new BankTransactionSaveResult(false, "Select Cash in Hand as the pay-from account.", null);
+                        }
+
+                        break;
+
+                    case PaymentMethod.Cheque:
+                    case PaymentMethod.BankTransfer:
+                        if (!await IsValidBankCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                        {
+                            return new BankTransactionSaveResult(false, "Select a valid bank account from Chart of Accounts.", null);
+                        }
+
+                        break;
+
+                    default:
+                        return new BankTransactionSaveResult(false, "Unsupported payment method.", null);
                 }
 
                 if (!request.CounterChartOfAccountId.HasValue || request.CounterChartOfAccountId <= 0)
@@ -550,9 +856,14 @@ public class BankTransactionService : IBankTransactionService
                     return new BankTransactionSaveResult(false, "Pay-to account is required.", null);
                 }
 
-                if (string.IsNullOrWhiteSpace(request.PartyName))
+                if (!await IsValidPayToCoaAsync(
+                        companyId,
+                        request.CounterChartOfAccountId.Value,
+                        request.CustomerId,
+                        request.VendorId,
+                        cancellationToken))
                 {
-                    return new BankTransactionSaveResult(false, "Payee / party name is required.", null);
+                    return new BankTransactionSaveResult(false, "Select a valid pay-to account from Chart of Accounts.", null);
                 }
 
                 break;
@@ -586,14 +897,15 @@ public class BankTransactionService : IBankTransactionService
         return new BankTransactionSaveResult(true, null, null);
     }
 
-    private async Task<IReadOnlyList<CustomerReceipt>?> LoadUndepositedChequeReceiptsAsync(
+    private async Task<(IReadOnlyList<CustomerReceipt>? Receipts, string? ErrorMessage)> LoadUndepositedChequeReceiptsAsync(
         int companyId,
         IReadOnlyList<int> receiptIds,
+        DateTime transactionDate,
         CancellationToken cancellationToken)
     {
         if (receiptIds is null || receiptIds.Count == 0)
         {
-            return null;
+            return (null, "Select at least one cheque to deposit.");
         }
 
         var distinctIds = receiptIds.Distinct().ToList();
@@ -604,12 +916,47 @@ public class BankTransactionService : IBankTransactionService
                 && !r.IsDeleted
                 && distinctIds.Contains(r.Id)
                 && r.PaymentMethod == PaymentMethod.Cheque
+                && r.ChequeBankType != ChequeBankType.SameBank
+                && r.ClearedAt == null
                 && !r.IsDeposited
                 && r.Amount > 0m)
             .ToListAsync(cancellationToken);
 
-        return receipts.Count == distinctIds.Count ? receipts : null;
+        if (receipts.Count != distinctIds.Count)
+        {
+            return (null, "One or more selected cheques are invalid or already deposited.");
+        }
+
+        var depositDate = transactionDate.Date;
+        foreach (var receipt in receipts)
+        {
+            if (receipt.ChequeDate.HasValue && receipt.ChequeDate.Value.Date > depositDate)
+            {
+                var chequeLabel = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
+                    ? receipt.ChequeNumber.Trim()
+                    : receipt.ReceiptNumber;
+                return (
+                    null,
+                    $"Cheque #{chequeLabel} cannot be deposited before its cheque date ({receipt.ChequeDate.Value:dd MMM yyyy}).");
+            }
+        }
+
+        return (receipts, null);
     }
+
+    private async Task<bool> HasPostedReceiptJournalAsync(
+        int companyId,
+        int receiptId,
+        CancellationToken cancellationToken) =>
+        await _unitOfWork.Repository<JournalEntry>()
+            .Query()
+            .AnyAsync(
+                j => j.CompanyId == companyId
+                     && j.ReferenceType == ReferenceTypes.CustomerReceipt
+                     && j.ReferenceId == receiptId
+                     && j.Status == JournalStatus.Posted
+                     && !j.IsDeleted,
+                cancellationToken);
 
     private async Task MarkChequesDepositedAsync(
         IReadOnlyList<CustomerReceipt> receipts,
@@ -640,6 +987,15 @@ public class BankTransactionService : IBankTransactionService
         return lookups.Any(a => a.Id == chartOfAccountId);
     }
 
+    private async Task<bool> IsValidDepositCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        var lookups = await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken);
+        return lookups.Any(a => a.Id == chartOfAccountId);
+    }
+
     private async Task<bool> IsValidTransferCoaAsync(
         int companyId,
         int chartOfAccountId,
@@ -647,6 +1003,36 @@ public class BankTransactionService : IBankTransactionService
     {
         var lookups = await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken);
         return lookups.Any(a => a.Id == chartOfAccountId);
+    }
+
+    private async Task<bool> IsValidCashPayFromCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .AnyAsync(a =>
+                a.Id == chartOfAccountId
+                && a.CompanyId == companyId
+                && a.IsActive
+                && !a.IsDeleted
+                && a.AccountNumber == CashInHand,
+                cancellationToken);
+    }
+
+    private async Task<bool> IsValidPayToCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        int? customerId,
+        int? vendorId,
+        CancellationToken cancellationToken)
+    {
+        var parties = await GetWriteChequePartyLookupsAsync(cancellationToken);
+        return parties.Any(p =>
+            p.ChartOfAccountId == chartOfAccountId
+            && p.CustomerId == customerId
+            && p.VendorId == vendorId);
     }
 
     private async Task<IReadOnlyList<BankCoaLookupDto>> QueryBankCoaAccountsAsync(
@@ -808,6 +1194,156 @@ public class BankTransactionService : IBankTransactionService
         {
             _logger.LogWarning(ex, "Audit log failed for bank transaction {EntityId}", entityId);
         }
+    }
+
+    private async Task<decimal> GetCustomerOutstandingAsync(
+        int companyId,
+        int customerId,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.Id == customerId && c.CompanyId == companyId)
+            .Select(c =>
+                c.OpeningBalance
+                + c.SalesInvoices
+                    .Where(si => si.Status == InvoiceStatus.Posted)
+                    .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal)
+                - c.CustomerReceipts
+                    .Where(r => r.PaymentMethod != PaymentMethod.Cheque
+                                || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null))
+                    .Sum(r => r.Amount)
+                + c.WriteChequePayments
+                    .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                    .Sum(bt => bt.Amount))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<decimal> GetVendorOutstandingAsync(
+        int companyId,
+        int vendorId,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => v.Id == vendorId && v.CompanyId == companyId)
+            .Select(v =>
+                v.OpeningBalance
+                + v.VendorBills
+                    .Where(b => b.Status == BillStatus.Approved)
+                    .Sum(b => b.NetAmount)
+                - v.VendorPayments.Sum(p => p.Amount)
+                - v.WriteChequePayments
+                    .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                    .Sum(bt => bt.Amount))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<string?> ResolveChequeNumberForWithdrawalAsync(
+        int companyId,
+        int bankId,
+        int chartOfAccountId,
+        string? requestedChequeNumber,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedChequeNumber))
+        {
+            return requestedChequeNumber.Trim();
+        }
+
+        var savedNext = await _unitOfWork.Repository<Bank>()
+            .Query()
+            .Where(b => b.Id == bankId && b.CompanyId == companyId)
+            .Select(b => b.NextChequeNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(savedNext))
+        {
+            return savedNext.Trim();
+        }
+
+        return await DeriveNextChequeNumberFromHistoryAsync(companyId, chartOfAccountId, cancellationToken);
+    }
+
+    private async Task<string?> DeriveNextChequeNumberFromHistoryAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        var lastUsed = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CompanyId == companyId
+                && bt.ChartOfAccountId == chartOfAccountId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.ChequeNumber != null
+                && bt.ChequeNumber != "")
+            .OrderByDescending(bt => bt.Id)
+            .Select(bt => bt.ChequeNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(lastUsed)
+            ? null
+            : ChequeNumberHelper.Increment(lastUsed.Trim());
+    }
+
+    private async Task<string?> ResolvePartyNameForSaveAsync(
+        int companyId,
+        int? customerId,
+        int? vendorId,
+        int? counterChartOfAccountId,
+        string? partyName,
+        CancellationToken cancellationToken)
+    {
+        if (customerId.HasValue)
+        {
+            var name = await _unitOfWork.Repository<Customer>()
+                .Query()
+                .Where(c => c.Id == customerId.Value && c.CompanyId == companyId)
+                .Select(c => c.BuyerName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name.Trim();
+            }
+        }
+
+        if (vendorId.HasValue)
+        {
+            var name = await _unitOfWork.Repository<Vendor>()
+                .Query()
+                .Where(v => v.Id == vendorId.Value && v.CompanyId == companyId)
+                .Select(v => v.VendorName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name.Trim();
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(partyName))
+        {
+            return partyName.Trim();
+        }
+
+        if (counterChartOfAccountId.HasValue)
+        {
+            var accountName = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query()
+                .Where(a => a.Id == counterChartOfAccountId.Value && a.CompanyId == companyId)
+                .Select(a => a.AccountName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(accountName))
+            {
+                return accountName.Trim();
+            }
+        }
+
+        return partyName;
     }
 
     private static string GetTransactionTypeLabel(BankTransactionType type) =>

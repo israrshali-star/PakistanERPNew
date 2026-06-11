@@ -40,11 +40,26 @@
     }
 
     function showFormError(message) {
+        $('#receipt-form-success').addClass('d-none').text('');
         $('#receipt-form-error').removeClass('d-none').text(message);
     }
 
     function clearFormError() {
         $('#receipt-form-error').addClass('d-none').text('');
+    }
+
+    function showFormSuccess(message) {
+        $('#receipt-form-error').addClass('d-none').text('');
+        $('#receipt-form-success').removeClass('d-none').text(message);
+    }
+
+    function clearFormSuccess() {
+        $('#receipt-form-success').addClass('d-none').text('');
+    }
+
+    function clearFormMessages() {
+        clearFormError();
+        clearFormSuccess();
     }
 
     function getApiErrorMessage(xhr, fallback) {
@@ -69,19 +84,102 @@
         return $.getJSON('/api/company/current');
     }
 
+    var DRAWN_ON_PREFIX = 'Drawn on: ';
+
+    function parseNotesFields(notes) {
+        if (!notes) {
+            return { drawnOnBank: '', userNotes: '' };
+        }
+        var lines = notes.split('\n');
+        if (lines[0].indexOf(DRAWN_ON_PREFIX) === 0) {
+            return {
+                drawnOnBank: lines[0].substring(DRAWN_ON_PREFIX.length).trim(),
+                userNotes: lines.slice(1).join('\n').trim()
+            };
+        }
+        return { drawnOnBank: '', userNotes: notes.trim() };
+    }
+
+    function buildNotesPayload(drawnOnBank, userNotes) {
+        var parts = [];
+        if (drawnOnBank && drawnOnBank.trim()) {
+            parts.push(DRAWN_ON_PREFIX + drawnOnBank.trim());
+        }
+        if (userNotes && userNotes.trim()) {
+            parts.push(userNotes.trim());
+        }
+        return parts.length ? parts.join('\n') : null;
+    }
+
+    function getChequeBankType() {
+        if ($('#cheque-type-same-bank').is(':checked')) {
+            return 1;
+        }
+        if ($('#cheque-type-other-bank').is(':checked')) {
+            return 2;
+        }
+        return null;
+    }
+
+    function setChequeBankType(value) {
+        $('#cheque-type-same-bank').prop('checked', value === 1);
+        $('#cheque-type-other-bank').prop('checked', value === 2);
+        toggleChequeTypeFields();
+    }
+
+    function toggleChequeTypeFields() {
+        var chequeType = getChequeBankType();
+        var isSameBank = chequeType === 1;
+        var isOtherBank = chequeType === 2;
+
+        $('.same-bank-cheque-fields').toggleClass('d-none', !isSameBank);
+        $('.other-bank-cheque-fields').toggleClass('d-none', !isOtherBank);
+
+        $('#same-bank-id, #same-bank-cheque-number, #same-bank-cheque-date').prop('required', isSameBank);
+        $('#cheque-number, #cheque-date').prop('required', isOtherBank);
+
+        if (!isSameBank) {
+            $('#same-bank-id').val('').trigger('change');
+            $('#same-bank-cheque-number, #same-bank-cheque-date').val('');
+        }
+        if (!isOtherBank) {
+            $('#cheque-number, #cheque-date, #cheque-drawn-bank').val('');
+        }
+    }
+
     function togglePaymentFields() {
         var method = parseInt($('#payment-method').val(), 10) || 1;
-        var showBank = method === 2 || method === 3;
-        var showCheque = method === 2;
+        var isCheque = method === 2;
+        var isBankTransfer = method === 3;
 
-        $('.bank-fields').toggleClass('d-none', !showBank);
-        $('.cheque-fields').toggleClass('d-none', !showCheque);
+        $('.cheque-panel').toggleClass('d-none', !isCheque);
+        $('.bank-transfer-fields').toggleClass('d-none', !isBankTransfer);
 
-        if (!showCheque) {
-            $('#cheque-number, #cheque-date').val('');
+        $('#receipt-bank-id').prop('required', isBankTransfer);
+
+        if (!isCheque) {
+            setChequeBankType(null);
+        } else if (!getChequeBankType()) {
+            setChequeBankType(2);
+        } else {
+            toggleChequeTypeFields();
         }
-        if (!showBank) {
+
+        if (!isBankTransfer) {
             $('#receipt-bank-id').val('').trigger('change');
+        }
+    }
+
+    function setFormReadOnly(isReadOnly) {
+        $('#receipt-form')
+            .find('input, select, textarea, button[type="submit"]')
+            .not('[data-bs-dismiss="modal"]')
+            .prop('disabled', isReadOnly);
+        $('#btn-generate-receipt-number').prop('disabled', isReadOnly);
+        if (isReadOnly) {
+            $('#receipt-deposited-warning').removeClass('d-none');
+        } else {
+            $('#receipt-deposited-warning').addClass('d-none');
         }
     }
 
@@ -103,8 +201,10 @@
         $('#receipt-amount').val('');
         $('#receipt-customer-id').val('').trigger('change');
         $('#payment-method').val('1');
-        $('#receipt-bank-id').val('').trigger('change');
-        $('#cheque-number, #cheque-date, #receipt-notes').val('');
+        $('#receipt-bank-id, #same-bank-id').val('').trigger('change');
+        setChequeBankType(null);
+        $('#same-bank-cheque-number, #same-bank-cheque-date, #cheque-number, #cheque-date, #cheque-drawn-bank, #receipt-notes').val('');
+        setFormReadOnly(false);
         togglePaymentFields();
         updateCustomerBalanceHint();
     }
@@ -147,19 +247,23 @@
 
     function populateBankSelect(banksList) {
         var $bank = $('#receipt-bank-id');
+        var $sameBank = $('#same-bank-id');
         var selectedBank = $bank.val();
+        var selectedSameBank = $sameBank.val();
 
-        if ($bank.data('select2')) {
-            $bank.select2('destroy');
-        }
+        [$bank, $sameBank].forEach(function ($el) {
+            if ($el.data('select2')) {
+                $el.select2('destroy');
+            }
 
-        $bank.find('option:not(:first)').remove();
-        (banksList || []).forEach(function (b) {
-            $bank.append(
-                $('<option></option>')
-                    .val(b.id)
-                    .text(b.bankName + ' (' + b.accountNumber + ')')
-            );
+            $el.find('option:not(:first)').remove();
+            (banksList || []).forEach(function (b) {
+                $el.append(
+                    $('<option></option>')
+                        .val(b.id)
+                        .text(b.bankName + ' (' + b.accountNumber + ')')
+                );
+            });
         });
 
         if (selectedBank && $bank.find('option[value="' + selectedBank + '"]').length) {
@@ -168,7 +272,14 @@
             $bank.val('');
         }
 
+        if (selectedSameBank && $sameBank.find('option[value="' + selectedSameBank + '"]').length) {
+            $sameBank.val(selectedSameBank);
+        } else {
+            $sameBank.val('');
+        }
+
         initSelect2($bank);
+        initSelect2($sameBank);
     }
 
     function loadLookups() {
@@ -209,13 +320,33 @@
                 },
                 {
                     data: 'amount',
-                    className: 'text-end',
+                    className: 'text-end text-currency',
                     render: function (data) { return formatMoney(data); }
                 },
                 { data: 'paymentMethod' },
                 {
-                    data: 'bankName',
+                    data: 'chequeNumber',
                     render: function (data) { return data ? escapeHtml(data) : '—'; }
+                },
+                {
+                    data: 'chequeDate',
+                    render: function (data) { return data ? formatDate(data) : '—'; }
+                },
+                {
+                    data: 'depositStatus',
+                    render: function (data) {
+                        if (!data || data === '—') return '—';
+                        if (data.indexOf('Awaiting Approval') >= 0) {
+                            return '<span class="badge bg-primary">' + escapeHtml(data) + '</span>';
+                        }
+                        if (data.indexOf('In Clearing') >= 0 || data.indexOf('Post-dated') >= 0) {
+                            return '<span class="badge bg-warning text-dark">' + escapeHtml(data) + '</span>';
+                        }
+                        if (data === 'Cleared') {
+                            return '<span class="badge bg-success">' + escapeHtml(data) + '</span>';
+                        }
+                        return escapeHtml(data);
+                    }
                 },
                 {
                     data: null,
@@ -223,6 +354,18 @@
                     className: 'text-end',
                     render: function (data, type, row) {
                         var buttons = [];
+                        if (canEdit && row.depositStatus === 'Deposited (Awaiting Approval)') {
+                            buttons.push(
+                                '<button type="button" class="btn btn-sm btn-success btn-approve-clearance" data-id="' + row.id + '" title="Approve clearance">' +
+                                '<i class="fa-solid fa-check"></i></button>'
+                            );
+                        }
+                        if (row.depositStatus === 'Cleared' || row.depositStatus === 'Deposited (Awaiting Approval)') {
+                            if (!buttons.length) {
+                                return '<span class="text-muted small">Locked</span>';
+                            }
+                            return buttons.join('');
+                        }
                         if (canEdit) {
                             buttons.push(
                                 '<button type="button" class="btn btn-sm btn-outline-primary btn-edit-receipt" data-id="' + row.id + '" title="Edit">' +
@@ -243,6 +386,7 @@
     }
 
     function openCreateModal() {
+        clearFormMessages();
         $('#receiptModalLabel').text('New Customer Receipt');
         clearFormError();
 
@@ -267,22 +411,34 @@
 
     function openEditModal(id) {
         clearFormError();
+        clearFormMessages();
         $('#receiptModalLabel').text('Edit Customer Receipt');
 
         $.when(loadLookups(), $.getJSON('/api/customer-receipts/' + id))
             .done(function (_, receiptRes) {
                 var receipt = receiptRes[0];
+                var noteFields = parseNotesFields(receipt.notes || '');
+
                 $('#receipt-id').val(receipt.id);
                 $('#receipt-number').val(receipt.receiptNumber);
                 $('#receipt-date').val(toInputDate(receipt.receiptDate));
                 $('#receipt-amount').val(receipt.amount);
                 $('#receipt-customer-id').val(receipt.customerId).trigger('change');
                 $('#payment-method').val(receipt.paymentMethod).trigger('change');
+                setChequeBankType(receipt.chequeBankType || 2);
                 $('#receipt-bank-id').val(receipt.bankId || '').trigger('change');
-                $('#cheque-number').val(receipt.chequeNumber || '');
-                $('#cheque-date').val(toInputDate(receipt.chequeDate));
-                $('#receipt-notes').val(receipt.notes || '');
+                $('#same-bank-id').val(receipt.chequeBankType === 1 ? (receipt.bankId || '') : '').trigger('change');
+                if (receipt.chequeBankType === 1) {
+                    $('#same-bank-cheque-number').val(receipt.chequeNumber || '');
+                    $('#same-bank-cheque-date').val(toInputDate(receipt.chequeDate));
+                } else {
+                    $('#cheque-number').val(receipt.chequeNumber || '');
+                    $('#cheque-date').val(toInputDate(receipt.chequeDate));
+                    $('#cheque-drawn-bank').val(noteFields.drawnOnBank);
+                }
+                $('#receipt-notes').val(noteFields.userNotes);
                 togglePaymentFields();
+                setFormReadOnly(receipt.isDeposited === true || !!receipt.clearedAt);
                 updateCustomerBalanceHint();
                 receiptModal.show();
             })
@@ -291,9 +447,68 @@
             });
     }
 
+    function validateReceiptForm() {
+        var method = parseInt($('#payment-method').val(), 10) || 1;
+
+        if (method === 2) {
+            var chequeType = getChequeBankType();
+            if (!chequeType) {
+                showFormError('Select Same Bank or Other Bank for cheque payments.');
+                return false;
+            }
+
+            if (chequeType === 1) {
+                if (!$('#same-bank-id').val()) {
+                    showFormError('Select the bank account for same-bank cheques.');
+                    return false;
+                }
+                if (!$('#same-bank-cheque-number').val().trim()) {
+                    showFormError('Enter the cheque number.');
+                    return false;
+                }
+                if (!$('#same-bank-cheque-date').val()) {
+                    showFormError('Enter the cheque date.');
+                    return false;
+                }
+            }
+
+            if (chequeType === 2) {
+                if (!$('#cheque-number').val().trim()) {
+                    showFormError('Enter the cheque number in the other bank cheque details.');
+                    return false;
+                }
+                if (!$('#cheque-date').val()) {
+                    showFormError('Enter the cheque date in the other bank cheque details.');
+                    return false;
+                }
+            }
+        }
+
+        if (method === 3 && !$('#receipt-bank-id').val()) {
+            showFormError('Select the bank account for bank transfer.');
+            return false;
+        }
+
+        return true;
+    }
+
     function buildPayload() {
+        var method = parseInt($('#payment-method').val(), 10) || 1;
         var bankId = parseInt($('#receipt-bank-id').val(), 10) || 0;
-        var chequeDate = $('#cheque-date').val();
+        var sameBankId = parseInt($('#same-bank-id').val(), 10) || 0;
+        var chequeType = getChequeBankType();
+        var chequeNumber = null;
+        var chequeDate = null;
+        var notes = $('#receipt-notes').val().trim() || null;
+
+        if (method === 2 && chequeType === 1) {
+            chequeNumber = $('#same-bank-cheque-number').val().trim();
+            chequeDate = $('#same-bank-cheque-date').val() || null;
+        } else if (method === 2 && chequeType === 2) {
+            chequeNumber = $('#cheque-number').val().trim();
+            chequeDate = $('#cheque-date').val() || null;
+            notes = buildNotesPayload($('#cheque-drawn-bank').val(), $('#receipt-notes').val());
+        }
 
         return {
             id: parseInt($('#receipt-id').val(), 10) || null,
@@ -301,17 +516,24 @@
             customerId: parseInt($('#receipt-customer-id').val(), 10) || 0,
             receiptDate: $('#receipt-date').val(),
             amount: parseFloat($('#receipt-amount').val()) || 0,
-            paymentMethod: parseInt($('#payment-method').val(), 10) || 1,
-            bankId: bankId > 0 ? bankId : null,
-            chequeNumber: $('#cheque-number').val().trim() || null,
-            chequeDate: chequeDate || null,
-            notes: $('#receipt-notes').val().trim() || null
+            paymentMethod: method,
+            chequeBankType: method === 2 ? chequeType : null,
+            bankId: method === 3 && bankId > 0
+                ? bankId
+                : (method === 2 && chequeType === 1 && sameBankId > 0 ? sameBankId : null),
+            chequeNumber: method === 2 ? chequeNumber : null,
+            chequeDate: method === 2 && chequeDate ? chequeDate : null,
+            notes: notes
         };
     }
 
     function saveReceipt(e) {
         e.preventDefault();
-        clearFormError();
+        clearFormMessages();
+
+        if (!validateReceiptForm()) {
+            return;
+        }
 
         var payload = buildPayload();
         var id = payload.id;
@@ -324,9 +546,23 @@
             contentType: 'application/json',
             data: JSON.stringify(payload)
         })
-            .done(function () {
-                receiptModal.hide();
+            .done(function (res) {
                 dataTable.ajax.reload(null, false);
+                var savedMsg = payload.paymentMethod === 2
+                    ? (payload.chequeBankType === 1
+                        ? (id ? 'Same-bank cheque updated and cleared.' : 'Same-bank cheque saved and cleared. Close when finished.')
+                        : (id
+                            ? 'Other-bank cheque updated. It remains on the undeposited list until deposited via Make Deposit.'
+                            : 'Other-bank cheque saved. It will appear on Banking → Make Deposit. Close when finished.'))
+                    : (id ? 'Receipt updated. Close when finished.' : 'Receipt saved. Close when finished.');
+                showFormSuccess(savedMsg);
+
+                if (!id && res && res.receipt) {
+                    $('#receipt-id').val(res.receipt.id);
+                    $('#receiptModalLabel').text('Edit Customer Receipt');
+                }
+
+                loadLookups().always(updateCustomerBalanceHint);
             })
             .fail(function (xhr) {
                 var body = xhr.responseJSON;
@@ -387,6 +623,13 @@
         });
 
         $('#payment-method').on('change', togglePaymentFields);
+        $('.cheque-type-option').on('change', function () {
+            var $target = $(this);
+            if ($target.is(':checked')) {
+                $('.cheque-type-option').not($target).prop('checked', false);
+            }
+            toggleChequeTypeFields();
+        });
         $('#receipt-customer-id').on('change', updateCustomerBalanceHint);
         $('#receipt-form').on('submit', saveReceipt);
 
@@ -397,5 +640,28 @@
         $('#customer-receipts-table').on('click', '.btn-delete-receipt', function () {
             deleteReceipt($(this).data('id'));
         });
+
+        $('#customer-receipts-table').on('click', '.btn-approve-clearance', function () {
+            approveClearance($(this).data('id'));
+        });
     });
+
+    function approveClearance(id) {
+        if (!confirm('Bank has cleared this cheque? Customer balance and bank account will be updated.')) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/customer-receipts/' + id + '/approve-clearance',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({})
+        })
+            .done(function () {
+                dataTable.ajax.reload(null, false);
+            })
+            .fail(function (xhr) {
+                alert(getApiErrorMessage(xhr, 'Could not approve cheque clearance.'));
+            });
+    }
 })();

@@ -49,24 +49,26 @@
                     <th>Description</th>
                     <th class="text-end">Debit</th>
                     <th class="text-end">Credit</th>
+                    <th class="text-end">Pending</th>
                     <th class="text-end">Balance</th>
                 </tr>
             </thead>
             <tbody>
                 @if (Model.Entries.Count == 0)
                 {
-                    <tr><td colspan="6" class="text-muted text-center">No ledger entries yet.</td></tr>
+                    <tr><td colspan="7" class="text-muted text-center">No ledger entries yet.</td></tr>
                 }
                 else
                 {
                     foreach (var entry in Model.Entries)
                     {
-                        <tr>
+                        <tr class="@(entry.PendingCredit > 0 ? "table-warning" : null)">
                             <td>@(entry.Date == DateTime.MinValue ? "—" : entry.Date.ToString("dd/MM/yyyy"))</td>
                             <td><code>@entry.Reference</code></td>
                             <td>@entry.Description</td>
                             <td class="text-end text-currency">@(entry.Debit > 0 ? entry.Debit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency">@(entry.Credit > 0 ? entry.Credit.ToString("N2") : "—")</td>
+                            <td class="text-end text-currency text-muted">@(entry.PendingCredit > 0 ? entry.PendingCredit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency fw-semibold">@entry.Balance.ToString("N2")</td>
                         </tr>
                     }
@@ -76,7 +78,7 @@
             {
                 <tfoot>
                     <tr class="table-light">
-                        <th colspan="5" class="text-end">Closing Balance</th>
+                        <th colspan="6" class="text-end">Closing Balance</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
                     </tr>
                 </tfoot>

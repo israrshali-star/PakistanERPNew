@@ -27,4 +27,5 @@ public class Customer : CompanyAuditableEntity
     public Company Company { get; set; } = null!;
     public ICollection<SalesInvoice> SalesInvoices { get; set; } = new List<SalesInvoice>();
     public ICollection<CustomerReceipt> CustomerReceipts { get; set; } = new List<CustomerReceipt>();
+    public ICollection<BankTransaction> WriteChequePayments { get; set; } = new List<BankTransaction>();
 }
