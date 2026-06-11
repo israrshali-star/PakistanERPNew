@@ -17,5 +17,12 @@ public class LoginViewModel
     [Display(Name = "Remember me")]
     public bool RememberMe { get; set; }
 
+    [Required(ErrorMessage = "Please select a company.")]
+    [Range(1, int.MaxValue, ErrorMessage = "Please select a company.")]
+    [Display(Name = "Company")]
+    public int CompanyId { get; set; }
+
     public string? ReturnUrl { get; set; }
+
+    public List<CompanyOptionViewModel> Companies { get; set; } = [];
 }

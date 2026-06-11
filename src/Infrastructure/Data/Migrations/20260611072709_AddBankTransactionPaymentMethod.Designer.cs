@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PakistanAccountingERP.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PakistanAccountingERP.Infrastructure.Data;
 namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611072709_AddBankTransactionPaymentMethod")]
+    partial class AddBankTransactionPaymentMethod
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -753,21 +756,12 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<int?>("BankId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("ChequeBankType")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("ChequeDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("ChequeNumber")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime?>("ClearedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ClearedBy")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
@@ -810,9 +804,6 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");

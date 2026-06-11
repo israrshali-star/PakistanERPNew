@@ -47,7 +47,7 @@
         $tbody.empty();
 
         if (!data.entries || data.entries.length === 0) {
-            $tbody.append('<tr><td colspan="6" class="text-muted text-center">No transactions in this period.</td></tr>');
+            $tbody.append('<tr><td colspan="7" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#statement-footer').addClass('d-none');
             return;
         }
@@ -57,13 +57,17 @@
                 ? formatDate(entry.date)
                 : '—';
 
+            var pending = entry.pendingCredit > 0 ? formatAmount(entry.pendingCredit) : '—';
+            var rowClass = entry.pendingCredit > 0 ? ' class="table-warning"' : '';
+
             $tbody.append(
-                '<tr>' +
+                '<tr' + rowClass + '>' +
                 '<td>' + dateText + '</td>' +
                 '<td><code>' + $('<div>').text(entry.reference).html() + '</code></td>' +
                 '<td>' + $('<div>').text(entry.description).html() + '</td>' +
                 '<td class="text-end">' + (entry.debit > 0 ? formatAmount(entry.debit) : '—') + '</td>' +
                 '<td class="text-end">' + (entry.credit > 0 ? formatAmount(entry.credit) : '—') + '</td>' +
+                '<td class="text-end text-muted">' + pending + '</td>' +
                 '<td class="text-end fw-semibold">' + formatAmount(entry.balance) + '</td>' +
                 '</tr>'
             );

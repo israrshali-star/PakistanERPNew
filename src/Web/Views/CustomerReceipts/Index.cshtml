@@ -22,7 +22,10 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="text-primary mb-0">Customer Receipts</h4>
-        <p class="text-muted small mb-0">Record payments received from customers against outstanding balances</p>
+        <p class="text-muted small mb-0">
+            Record cash, bank transfers, or cheques. <strong>Same Bank</strong> cheques post immediately to your bank account;
+            <strong>Other Bank</strong> cheques stay in clearing until deposited and approved.
+        </p>
     </div>
     <button type="button" class="btn btn-primary btn-sm" id="btn-add-receipt" permission="Sales.Create">
         <i class="fa-solid fa-money-bill-wave me-1"></i>New Receipt
@@ -39,7 +42,9 @@
                     <th>Date</th>
                     <th class="text-end">Amount</th>
                     <th>Payment Mode</th>
-                    <th>Bank</th>
+                    <th>Cheque #</th>
+                    <th>Cheque Date</th>
+                    <th>Deposit Status</th>
                     <th class="text-end">Actions</th>
                 </tr>
             </thead>
@@ -48,7 +53,8 @@
     </div>
 </div>
 
-<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true"
+     data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -91,25 +97,83 @@
                                 <option value="3">Bank Transfer</option>
                             </select>
                         </div>
-                        <div class="col-md-6 bank-fields d-none">
-                            <label class="form-label" for="receipt-bank-id">Bank Account</label>
+                        <div class="col-md-8 bank-transfer-fields d-none">
+                            <label class="form-label" for="receipt-bank-id">Deposit To Bank Account</label>
                             <select class="form-select select2" id="receipt-bank-id">
                                 <option value="">— Select bank —</option>
                             </select>
+                            <div class="form-text">Direct bank transfer posts immediately to this bank account.</div>
                         </div>
-                        <div class="col-md-3 cheque-fields d-none">
-                            <label class="form-label" for="cheque-number">Cheque #</label>
-                            <input type="text" class="form-control" id="cheque-number" maxlength="50" />
-                        </div>
-                        <div class="col-md-3 cheque-fields d-none">
-                            <label class="form-label" for="cheque-date">Cheque Date</label>
-                            <input type="date" class="form-control" id="cheque-date" />
+                        <div class="col-12 cheque-panel d-none">
+                            <div class="border rounded p-3 bg-light">
+                                <h6 class="text-primary mb-2">Cheque Type</h6>
+                                <div class="d-flex flex-wrap gap-3 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input cheque-type-option" type="checkbox" id="cheque-type-same-bank" value="1" />
+                                        <label class="form-check-label" for="cheque-type-same-bank">Same Bank</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input cheque-type-option" type="checkbox" id="cheque-type-other-bank" value="2" />
+                                        <label class="form-check-label" for="cheque-type-other-bank">Other Bank</label>
+                                    </div>
+                                </div>
+                                <div class="same-bank-cheque-fields d-none">
+                                    <p class="small text-muted mb-3">
+                                        Cheque drawn on your own bank account. Posts immediately to the selected bank (Dr Bank / Cr AR).
+                                    </p>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="same-bank-id">Deposit To Bank Account <span class="text-danger">*</span></label>
+                                            <select class="form-select select2" id="same-bank-id">
+                                                <option value="">— Select bank —</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label" for="same-bank-cheque-number">Cheque # <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" id="same-bank-cheque-number" maxlength="50" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label" for="same-bank-cheque-date">Cheque Date <span class="text-danger">*</span></label>
+                                            <input type="date" class="form-control" id="same-bank-cheque-date" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="other-bank-cheque-fields d-none">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                        <h6 class="text-primary mb-0">Other Bank Cheque Details</h6>
+                                        <span class="badge bg-info text-dark">Undeposited Funds</span>
+                                    </div>
+                                    <p class="small text-muted mb-3">
+                                        Cheque from another bank. Saved to the undeposited list and deposited via
+                                        <strong>Banking → Make Deposit</strong> before approval clears the customer balance.
+                                    </p>
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label" for="cheque-number">Cheque # <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" id="cheque-number" maxlength="50" placeholder="e.g. 50052468" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label" for="cheque-date">Cheque Date (post-dated OK) <span class="text-danger">*</span></label>
+                                            <input type="date" class="form-control" id="cheque-date" />
+                                            <div class="form-text">Held in Undeposited Funds until deposited.</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label" for="cheque-drawn-bank">Drawn on Bank</label>
+                                            <input type="text" class="form-control" id="cheque-drawn-bank" maxlength="100" placeholder="e.g. HBL, Meezan" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="receipt-notes">Notes</label>
                             <textarea class="form-control" id="receipt-notes" rows="2" maxlength="500"></textarea>
                         </div>
                     </div>
+                    <div class="alert alert-warning d-none mt-3" id="receipt-deposited-warning">
+                        This cheque has already been deposited and cannot be edited.
+                    </div>
+                    <div class="alert alert-success d-none mt-3" id="receipt-form-success"></div>
                     <div class="alert alert-danger d-none mt-3" id="receipt-form-error"></div>
                 </div>
                 <div class="modal-footer">

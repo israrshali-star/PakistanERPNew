@@ -164,6 +164,29 @@ public class CustomerReceiptsApiController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/approve-clearance")]
+    [RequirePermission("Sales.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> ApproveClearance(
+        int id,
+        [FromBody] CustomerReceiptApproveClearanceRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _customerReceiptService.ApproveClearanceAsync(id, request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new CustomerReceiptSaveResult(false, ex.Message, null));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new CustomerReceiptSaveResult(false, ex.Message, null));
+        }
+    }
+
     [HttpDelete("{id:int}")]
     [RequirePermission("Sales.Delete")]
     [IgnoreAntiforgeryToken]

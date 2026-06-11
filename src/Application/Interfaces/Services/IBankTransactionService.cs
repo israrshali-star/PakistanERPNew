@@ -19,7 +19,10 @@ public interface IBankTransactionService
     Task<IReadOnlyList<BankCoaLookupDto>> GetTransferCoaLookupsAsync(
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<BankCoaLookupDto>> GetCounterCoaLookupsAsync(
+    Task<IReadOnlyList<BankCoaLookupDto>> GetDepositCoaLookupsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<WriteChequePartyLookupDto>> GetWriteChequePartyLookupsAsync(
         CancellationToken cancellationToken = default);
 
     Task<BankUndepositedSummaryDto> GetUndepositedSummaryAsync(

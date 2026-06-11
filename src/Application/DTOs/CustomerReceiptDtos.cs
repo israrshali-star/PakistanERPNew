@@ -11,11 +11,15 @@ public record CustomerReceiptDto(
     DateTime ReceiptDate,
     decimal Amount,
     PaymentMethod PaymentMethod,
+    ChequeBankType? ChequeBankType,
     int? BankId,
     string? BankName,
     string? ChequeNumber,
     DateTime? ChequeDate,
-    string? Notes);
+    string? Notes,
+    CustomerReceiptStatus Status,
+    bool IsDeposited,
+    DateTime? ClearedAt);
 
 public record CustomerReceiptListItemDto(
     int Id,
@@ -24,7 +28,10 @@ public record CustomerReceiptListItemDto(
     DateTime ReceiptDate,
     decimal Amount,
     string PaymentMethod,
-    string? BankName);
+    string? BankName,
+    string? ChequeNumber,
+    DateTime? ChequeDate,
+    string? DepositStatus);
 
 public class CustomerReceiptSaveRequest
 {
@@ -34,6 +41,7 @@ public class CustomerReceiptSaveRequest
     public DateTime ReceiptDate { get; set; }
     public decimal Amount { get; set; }
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+    public ChequeBankType? ChequeBankType { get; set; }
     public int? BankId { get; set; }
     public string? ChequeNumber { get; set; }
     public DateTime? ChequeDate { get; set; }
@@ -41,6 +49,11 @@ public class CustomerReceiptSaveRequest
 }
 
 public record CustomerReceiptSaveResult(bool Success, string? Message, CustomerReceiptDto? Receipt);
+
+public class CustomerReceiptApproveClearanceRequest
+{
+    public int? BankChartOfAccountId { get; set; }
+}
 
 public record NextReceiptNumberDto(string ReceiptNumber);
 

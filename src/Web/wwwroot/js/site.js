@@ -1,7 +1,7 @@
-﻿// Global ERP helpers — currency formatting (PKR)
+﻿// Global ERP helpers — amount only; pair with .text-currency for PKR prefix
 window.formatCurrency = function (value) {
     const num = parseFloat(value) || 0;
-    return 'PKR ' + num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 // Initialize Select2 on elements with .select2 class

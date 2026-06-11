@@ -63,6 +63,16 @@ body.app-body {
     color: #fff;
 }
 
+.header-company-name {
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.05rem;
+    max-width: min(28vw, 320px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .nav-toggle {
     color: #fff;
     text-decoration: none;

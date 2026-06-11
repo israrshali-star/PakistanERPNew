@@ -9,8 +9,7 @@ public class RequireCompanyMiddleware
         "/account/selectcompany",
         "/account/logout",
         "/account/accessdenied",
-        "/api/company/list",
-        "/api/company/switch",
+        "/api/company/current",
         "/health",
         "/health/live",
         "/health/ready"

@@ -107,14 +107,10 @@ public class CompanyController : ControllerBase
 
     [HttpPost("switch/{companyId:int}")]
     [IgnoreAntiforgeryToken]
-    public async Task<IActionResult> Switch(int companyId, CancellationToken cancellationToken)
+    public IActionResult Switch(int companyId)
     {
-        var success = await _companyService.SetCurrentCompanyAsync(companyId, cancellationToken);
-        if (!success)
-        {
-            return BadRequest(new { message = "You do not have access to this company." });
-        }
-
-        return Ok(new { companyId });
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            new { message = "Company cannot be changed during an active session. Sign out and log in again to switch companies." });
     }
 }

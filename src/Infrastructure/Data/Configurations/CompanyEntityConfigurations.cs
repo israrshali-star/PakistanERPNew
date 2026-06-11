@@ -309,6 +309,14 @@ public class BankTransactionConfiguration : IEntityTypeConfiguration<BankTransac
             .WithMany()
             .HasForeignKey(x => x.CounterChartOfAccountId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Customer)
+            .WithMany(c => c.WriteChequePayments)
+            .HasForeignKey(x => x.CustomerId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Vendor)
+            .WithMany(v => v.WriteChequePayments)
+            .HasForeignKey(x => x.VendorId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.JournalEntry)
             .WithMany()
             .HasForeignKey(x => x.JournalEntryId)

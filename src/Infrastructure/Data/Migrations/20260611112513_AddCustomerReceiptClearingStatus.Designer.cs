@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PakistanAccountingERP.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PakistanAccountingERP.Infrastructure.Data;
 namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611112513_AddCustomerReceiptClearingStatus")]
+    partial class AddCustomerReceiptClearingStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -751,9 +754,6 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int?>("BankId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ChequeBankType")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("ChequeDate")

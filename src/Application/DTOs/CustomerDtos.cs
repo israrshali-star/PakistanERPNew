@@ -66,7 +66,8 @@ public record CustomerLedgerEntryDto(
     string Description,
     decimal Debit,
     decimal Credit,
-    decimal Balance);
+    decimal Balance,
+    decimal PendingCredit = 0m);
 
 public record CustomerLedgerDto(
     CustomerDto Customer,
