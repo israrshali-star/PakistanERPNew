@@ -32,6 +32,9 @@ public class CompanyService : ICompanyService
         _logger = logger;
     }
 
+    public Task<IReadOnlyList<CompanyDto>> GetLoginCompaniesAsync(CancellationToken cancellationToken = default) =>
+        GetAllActiveCompaniesAsync(cancellationToken);
+
     public async Task<IReadOnlyList<CompanyDto>> GetUserCompaniesAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(_currentUser.UserId))
