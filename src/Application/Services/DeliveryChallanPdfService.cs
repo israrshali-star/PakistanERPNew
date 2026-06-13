@@ -12,6 +12,7 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
 {
     private static readonly Color GreenDark = Color.FromHex("#1F6B45");
     private static readonly Color BorderGray = Color.FromHex("#D0D0D0");
+    private static readonly Color TradeBorder = Color.FromHex("#333333");
     private static readonly CultureInfo NumberCulture = CultureInfo.GetCultureInfo("en-PK");
 
     static DeliveryChallanPdfService()
@@ -20,6 +21,30 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
     }
 
     public byte[] GeneratePdf(DeliveryChallanPrintDto model) =>
+        model.CompanyId == TradeInvoiceLayout.TradeInvoiceCompanyId
+            ? GenerateTradeChallanPdf(model)
+            : GenerateStandardChallanPdf(model);
+
+    private static byte[] GenerateTradeChallanPdf(DeliveryChallanPrintDto model) =>
+        Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(24);
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("Arial"));
+
+                page.Content().Column(column =>
+                {
+                    column.Item().AlignCenter().Text("Delivery Challan").Bold().FontSize(14);
+                    column.Item().PaddingTop(10).Element(c => ComposeTradeHeader(c, model));
+                    column.Item().PaddingTop(10).Element(c => ComposeTradeLinesTable(c, model));
+                    column.Item().PaddingTop(16).Element(ComposeTradeSignature);
+                });
+            });
+        }).GeneratePdf();
+
+    private static byte[] GenerateStandardChallanPdf(DeliveryChallanPrintDto model) =>
         Document.Create(container =>
         {
             container.Page(page =>
@@ -40,6 +65,71 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
                 });
             });
         }).GeneratePdf();
+
+    private static void ComposeTradeHeader(IContainer container, DeliveryChallanPrintDto model)
+    {
+        container.Row(row =>
+        {
+            row.RelativeItem().Border(1).BorderColor(TradeBorder).Padding(8).Column(left =>
+            {
+                left.Item().Text("Shipping Address.").Bold();
+                left.Item().PaddingTop(4).Text(model.BuyerAddress ?? model.BuyerName);
+            });
+
+            row.ConstantItem(130).Border(1).BorderColor(TradeBorder).Padding(8).Column(right =>
+            {
+                right.Item().Row(r =>
+                {
+                    r.ConstantItem(48).Text("Date:").SemiBold();
+                    r.RelativeItem().Text(model.InvoiceDate.ToString("dd/MM/yyyy"));
+                });
+                right.Item().PaddingTop(4).Row(r =>
+                {
+                    r.ConstantItem(48).Text("Invoice #:").SemiBold();
+                    r.RelativeItem().Text(model.InvoiceNumber);
+                });
+            });
+        });
+    }
+
+    private static void ComposeTradeLinesTable(IContainer container, DeliveryChallanPrintDto model)
+    {
+        container.Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(3);
+                columns.RelativeColumn(2);
+                columns.ConstantColumn(58);
+                columns.ConstantColumn(58);
+            });
+
+            table.Header(header =>
+            {
+                header.Cell().Element(TradeHeaderCell).Text("Description");
+                header.Cell().Element(TradeHeaderCell).Text("CTN Description");
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text("No of CTN");
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text("QTY");
+            });
+
+            foreach (var line in model.Lines)
+            {
+                table.Cell().Element(TradeBodyCell).Text(line.ItemDescription);
+                table.Cell().Element(TradeBodyCell).Text(line.CartonDescription ?? string.Empty);
+                table.Cell().Element(TradeBodyCell).AlignRight().Text(FormatQty(line.Cartons, true));
+                table.Cell().Element(TradeBodyCell).AlignRight().Text(FormatQty(line.Quantity, false));
+            }
+        });
+    }
+
+    private static void ComposeTradeSignature(IContainer container)
+    {
+        container.AlignRight().Width(180).Column(col =>
+        {
+            col.Item().PaddingTop(24).BorderTop(1).BorderColor(TradeBorder).PaddingTop(4)
+                .AlignCenter().Text("Customer Signature").FontSize(9);
+        });
+    }
 
     private static void ComposeHeader(IContainer container, DeliveryChallanPrintDto model)
     {
@@ -155,6 +245,13 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             });
         });
     }
+
+    private static IContainer TradeHeaderCell(IContainer container) =>
+        container.Border(1).BorderColor(TradeBorder).Background(Colors.Grey.Lighten4).Padding(4)
+            .DefaultTextStyle(x => x.SemiBold().FontSize(9));
+
+    private static IContainer TradeBodyCell(IContainer container) =>
+        container.Border(1).BorderColor(TradeBorder).Padding(4).DefaultTextStyle(x => x.FontSize(9));
 
     private static IContainer HeaderCell(IContainer container) =>
         container.Background(Colors.Grey.Lighten3).Border(0.5f).BorderColor(BorderGray)

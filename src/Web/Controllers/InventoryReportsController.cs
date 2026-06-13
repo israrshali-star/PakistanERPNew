@@ -23,6 +23,13 @@ public class InventoryReportsController : Controller
         return View();
     }
 
+    public IActionResult StackWiseStock()
+    {
+        ViewData["BreadcrumbParent"] = "Inventory Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
+
     public IActionResult LowStock()
     {
         ViewData["BreadcrumbParent"] = "Inventory Reports";
@@ -62,6 +69,34 @@ public class InventoryReportsApiController : ControllerBase
         try
         {
             var report = await _inventoryReportService.GetStockSummaryAsync(
+                new StockSummaryReportRequest
+                {
+                    CategoryId = categoryId,
+                    ActiveOnly = activeOnly,
+                    HideZeroQoh = hideZeroQoh,
+                    AsOfDate = asOfDate
+                },
+                cancellationToken);
+            return Ok(report);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("stack-wise-stock")]
+    [RequirePermission("Inventory.View")]
+    public async Task<IActionResult> StackWiseStock(
+        [FromQuery] int? categoryId,
+        [FromQuery] bool activeOnly = true,
+        [FromQuery] bool hideZeroQoh = false,
+        [FromQuery] DateTime? asOfDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _inventoryReportService.GetStackWiseStockAsync(
                 new StockSummaryReportRequest
                 {
                     CategoryId = categoryId,

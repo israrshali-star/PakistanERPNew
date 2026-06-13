@@ -135,7 +135,7 @@
             '<td><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-hs" readonly /></td>' +
+            '<td><input type="text" class="form-control form-control-xs line-carton-desc" maxlength="50" placeholder="Carton desc" /></td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td class="text-muted line-unit">—</td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="0" required /></td>' +
@@ -153,7 +153,10 @@
 
         var lotSelectValue = prefill && (prefill.lotNo || prefill.lotValue);
         if (lotSelectValue) {
-            $lotSelect.val(lotSelectValue).trigger('change');
+            $lotSelect.val(lotSelectValue);
+            if (!prefill.skipLotTrigger) {
+                $lotSelect.trigger('change');
+            }
             if (prefill.price != null) {
                 $row.find('.line-price').val(prefill.price);
             }
@@ -196,6 +199,9 @@
     function updateBuyerDetails(customer) {
         if (!customer) {
             $('#buyer-address').val('');
+            if (!$('#shipping-address').data('userEdited')) {
+                $('#shipping-address').val('');
+            }
             $('#province-id').val('');
             $('#buyer-ntn').val('');
             $('#buyer-cnic').val('');
@@ -203,6 +209,9 @@
         }
 
         $('#buyer-address').val(pickCustomerField(customer, 'address', 'Address'));
+        if (!$('#shipping-address').val().trim() && !$('#shipping-address').data('userEdited')) {
+            $('#shipping-address').val(pickCustomerField(customer, 'address', 'Address'));
+        }
         $('#province-id').val(pickCustomerField(customer, 'provinceId', 'ProvinceId'));
         $('#buyer-ntn').val(pickCustomerField(customer, 'ntn', 'NTN'));
         $('#buyer-cnic').val(pickCustomerField(customer, 'cnic', 'CNIC'));
@@ -266,6 +275,10 @@
         if (invoice.buyerAddress || invoice.BuyerAddress) {
             $('#buyer-address').val(invoice.buyerAddress || invoice.BuyerAddress);
         }
+        if (invoice.shippingAddress || invoice.ShippingAddress) {
+            $('#shipping-address').val(invoice.shippingAddress || invoice.ShippingAddress);
+            $('#shipping-address').data('userEdited', true);
+        }
         if (invoice.buyerNTN || invoice.BuyerNTN) {
             $('#buyer-ntn').val(invoice.buyerNTN || invoice.BuyerNTN);
         }
@@ -287,7 +300,9 @@
                 price: line.price != null ? line.price : line.Price,
                 tax: line.taxRate != null ? line.taxRate : line.TaxRate,
                 stackNo: line.stackNo || line.StackNo,
-                description: line.productDescription || line.ProductDescription
+                description: line.productDescription || line.ProductDescription,
+                cartonDescription: line.cartonDescription || line.CartonDescription,
+                skipLotTrigger: true
             });
             var $row = $('#invoice-lines-body tr').last();
             if (line.stackNo || line.StackNo) {
@@ -296,6 +311,21 @@
             if (line.productDescription || line.ProductDescription) {
                 $row.find('.line-desc').val(line.productDescription || line.ProductDescription);
             }
+            if (line.cartonDescription || line.CartonDescription) {
+                $row.find('.line-carton-desc').val(line.cartonDescription || line.CartonDescription);
+            }
+            if (line.price != null || line.Price != null) {
+                $row.find('.line-price').val(line.price != null ? line.price : line.Price);
+            }
+            if (line.taxRate != null || line.TaxRate != null) {
+                $row.find('.line-tax').val(line.taxRate != null ? line.taxRate : line.TaxRate);
+            }
+            if (line.quantity != null || line.Quantity != null) {
+                $row.find('.line-qty').val(line.quantity != null ? line.quantity : line.Quantity);
+            }
+            if (line.cartons != null || line.Cartons != null) {
+                $row.find('.line-cartons').val(line.cartons != null ? line.cartons : line.Cartons);
+            }
             if (line.discount != null || line.Discount != null) {
                 $row.find('.line-discount').val(line.discount != null ? line.discount : line.Discount);
             }
@@ -303,6 +333,7 @@
                 $row.data('requires-stock', false);
                 $row.data('is-taxable', false);
             }
+            window.LotStackLine.onLotChange($row, $.extend({}, lineOptions(), { preserveLineFields: true }));
         });
         recalcTotals();
     }
@@ -353,7 +384,11 @@
             });
 
             if ($.fn.select2) {
-                $('#customer-id, #scenario-id').select2({ theme: 'bootstrap-5', width: '100%' });
+                $('#customer-id, #scenario-id').select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    minimumResultsForSearch: 0
+                });
             }
 
             if (items.length === 0) {
@@ -495,6 +530,12 @@
             return;
         }
 
+        var shippingAddress = $('#shipping-address').val().trim();
+        if (!shippingAddress) {
+            showError('Shipping address is required.');
+            return;
+        }
+
         if (dateParts.length !== 3) {
             showError('Please enter a valid invoice date.');
             return;
@@ -523,6 +564,7 @@
             lines.push({
                 itemId: itemId,
                 productDescription: $row.find('.line-desc').val().trim() || null,
+                cartonDescription: $row.find('.line-carton-desc').val().trim() || null,
                 stackNo: requiresStock ? ($row.find('.line-stack').val().trim() || null) : null,
                 lotNo: lotNo && String(lotNo).trim() ? String(lotNo).trim() : null,
                 cartons: parseFloat($row.find('.line-cartons').val()) || 0,
@@ -551,6 +593,7 @@
             scenarioId: scenarioId,
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,
             buyerAddress: $('#buyer-address').val().trim() || null,
+            shippingAddress: shippingAddress,
             buyerNTN: $('#buyer-ntn').val().trim() || null,
             buyerCNIC: $('#buyer-cnic').val().trim() || null,
             lines: lines
@@ -653,6 +696,9 @@
         });
 
         $('#sales-invoice-form').on('submit', saveInvoice);
+        $('#shipping-address').on('input', function () {
+            $(this).data('userEdited', true);
+        });
         $('#invoice-attachments').on('change', onAttachmentsSelected);
         $('#attachment-preview-list').on('click', '.btn-remove-attachment', function () {
             var index = parseInt($(this).data('index'), 10);

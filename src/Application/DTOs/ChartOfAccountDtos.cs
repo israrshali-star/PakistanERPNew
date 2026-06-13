@@ -75,5 +75,8 @@ public record ChartOfAccountLedgerEntryDto(
 
 public record ChartOfAccountLedgerDto(
     ChartOfAccountDto Account,
+    DateTime? FromDate,
+    DateTime? ToDate,
+    decimal OpeningBalance,
     IReadOnlyList<ChartOfAccountLedgerEntryDto> Entries,
     decimal ClosingBalance);

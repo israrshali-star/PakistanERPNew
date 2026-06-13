@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
+using PakistanAccountingERP.Application.Common.Constants;
+
 using PakistanAccountingERP.Application.DTOs;
 
 using PakistanAccountingERP.Application.Interfaces;
@@ -22,7 +24,7 @@ public class InventoryReportService : IInventoryReportService
 
     private const string OpeningStockRefNo = "OPENING-31MAY2026";
 
-    private const string OpeningStockBillNumber = "OPEN-STOCK-31052026";
+    private const string OpeningStockBillNumber = AppConstants.OpeningStockBillNumber;
 
     private static readonly DateTime OpeningStockBillDate = new(2026, 5, 31);
 
@@ -112,6 +114,10 @@ public class InventoryReportService : IInventoryReportService
 
                 i.CurrentStock,
 
+                i.Cartons,
+
+                i.LotNo,
+
                 i.MinimumStock,
 
                 i.ReorderLevel,
@@ -164,11 +170,11 @@ public class InventoryReportService : IInventoryReportService
 
                 asOfEnd,
 
+                items.Select(i => (i.Id, i.LotNo)).ToList(),
+
                 cancellationToken);
 
         }
-
-        var cartonBalances = await BuildItemCartonBalancesAsync(companyId, cancellationToken);
 
 
 
@@ -188,7 +194,7 @@ public class InventoryReportService : IInventoryReportService
 
                 }
 
-                var cartonsOnHand = cartonBalances.GetValueOrDefault(i.Id);
+                var cartonsOnHand = i.Cartons;
 
                 if (postAsOfCartonDeltas != null && postAsOfCartonDeltas.TryGetValue(i.Id, out var cartonDelta))
 
@@ -240,9 +246,263 @@ public class InventoryReportService : IInventoryReportService
 
             lines.Count,
 
-            lines.Sum(l => l.StockValue),
+            lines.Sum(l => l.CurrentStock),
 
             lines.Sum(l => l.CurrentCartons),
+
+            lines.Sum(l => l.StockValue),
+
+            lines);
+
+    }
+
+
+
+    public async Task<StackWiseStockReportDto> GetStackWiseStockAsync(
+
+        StockSummaryReportRequest request,
+
+        CancellationToken cancellationToken = default)
+
+    {
+
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var asOfDate = (request.AsOfDate ?? DateTime.UtcNow).Date;
+
+        var asOfEnd = asOfDate.AddDays(1).AddTicks(-1);
+
+
+
+        var itemQuery = _unitOfWork.Repository<Item>()
+
+            .Query()
+
+            .Where(i => i.CompanyId == companyId);
+
+
+
+        if (request.ActiveOnly)
+
+        {
+
+            itemQuery = itemQuery.Where(i => i.IsActive);
+
+        }
+
+
+
+        if (request.CategoryId.HasValue)
+
+        {
+
+            itemQuery = itemQuery.Where(i => i.ItemCategoryId == request.CategoryId.Value);
+
+        }
+
+
+
+        var items = await itemQuery
+
+            .Select(i => new
+
+            {
+
+                i.Id,
+
+                i.ItemCode,
+
+                i.ItemName,
+
+                CategoryName = i.ItemCategory != null ? i.ItemCategory.Name : null,
+
+                i.PurchaseRate
+
+            })
+
+            .ToListAsync(cancellationToken);
+
+
+
+        var itemIds = items.Select(i => i.Id).ToList();
+
+        if (itemIds.Count == 0)
+
+        {
+
+            return new StackWiseStockReportDto(
+
+                DateTime.UtcNow,
+
+                asOfDate,
+
+                0,
+
+                0m,
+
+                0m,
+
+                0m,
+
+                []);
+
+        }
+
+
+
+        var stackBalances = await _unitOfWork.Repository<InventoryTransaction>()
+
+            .Query()
+
+            .Where(t =>
+
+                t.CompanyId == companyId
+
+                && itemIds.Contains(t.ItemId)
+
+                && t.TransactionDate <= asOfEnd)
+
+            .GroupBy(t => new
+
+            {
+
+                t.ItemId,
+
+                StackNo = t.StackNo ?? string.Empty,
+
+                LotNo = t.LotNo ?? string.Empty
+
+            })
+
+            .Select(g => new
+
+            {
+
+                g.Key.ItemId,
+
+                g.Key.StackNo,
+
+                g.Key.LotNo,
+
+                Quantity = g.Sum(t =>
+
+                    t.TransactionType == InventoryTransactionType.StockOut
+
+                        ? -t.Quantity
+
+                        : t.Quantity)
+
+            })
+
+            .ToListAsync(cancellationToken);
+
+
+
+        var purchaseCartonsByStack = await BuildStackPurchaseCartonsAsync(
+
+            companyId,
+
+            itemIds,
+
+            asOfEnd,
+
+            cancellationToken);
+
+        var salesCartonsByStack = await BuildStackSalesCartonsAsync(
+
+            companyId,
+
+            itemIds,
+
+            asOfEnd,
+
+            cancellationToken);
+
+
+
+        var itemById = items.ToDictionary(i => i.Id);
+
+        var lines = stackBalances
+
+            .Where(s => Math.Abs(s.Quantity) > 0.01m)
+
+            .Select(s =>
+
+            {
+
+                var item = itemById[s.ItemId];
+
+                var stackKey = StackCartonKey(s.ItemId, s.StackNo);
+
+                var cartons = Math.Round(
+
+                    purchaseCartonsByStack.GetValueOrDefault(stackKey)
+
+                    - salesCartonsByStack.GetValueOrDefault(stackKey),
+
+                    2);
+
+                if (cartons < 0m)
+
+                {
+
+                    cartons = 0m;
+
+                }
+
+
+
+                var quantity = Math.Round(s.Quantity, 2);
+
+                return new StackWiseStockLineDto(
+
+                    s.ItemId,
+
+                    item.ItemCode,
+
+                    item.ItemName,
+
+                    item.CategoryName,
+
+                    string.IsNullOrWhiteSpace(s.LotNo) ? null : s.LotNo,
+
+                    string.IsNullOrWhiteSpace(s.StackNo) ? null : s.StackNo,
+
+                    cartons,
+
+                    quantity,
+
+                    item.PurchaseRate,
+
+                    quantity * item.PurchaseRate);
+
+            })
+
+            .Where(l => !request.HideZeroQoh || l.Quantity != 0 || l.Cartons != 0)
+
+            .OrderBy(l => l.LotNo, StringComparer.OrdinalIgnoreCase)
+
+            .ThenBy(l => l.ItemCode, StringComparer.OrdinalIgnoreCase)
+
+            .ThenBy(l => l.StackNo, StringComparer.OrdinalIgnoreCase)
+
+            .ToList();
+
+
+
+        return new StackWiseStockReportDto(
+
+            DateTime.UtcNow,
+
+            asOfDate,
+
+            lines.Count,
+
+            lines.Sum(l => l.Quantity),
+
+            lines.Sum(l => l.Cartons),
+
+            lines.Sum(l => l.StockValue),
 
             lines);
 
@@ -868,145 +1128,135 @@ public class InventoryReportService : IInventoryReportService
 
 
 
-    private async Task<Dictionary<int, decimal>> BuildItemCartonBalancesAsync(
-
-        int companyId,
-
-        CancellationToken cancellationToken)
-
-    {
-
-        var purchaseCartons = await _unitOfWork.Repository<VendorBillLine>()
-
-            .Query()
-
-            .Where(l => l.ItemId != null
-
-                        && l.VendorBill.CompanyId == companyId
-
-                        && l.VendorBill.Status == BillStatus.Approved)
-
-            .GroupBy(l => l.ItemId!.Value)
-
-            .Select(g => new { ItemId = g.Key, Total = g.Sum(l => l.Cartons) })
-
-            .ToDictionaryAsync(x => x.ItemId, x => x.Total, cancellationToken);
-
-
-
-        var salesCartons = await _unitOfWork.Repository<SalesInvoiceLine>()
-
-            .Query()
-
-            .Where(l => l.SalesInvoice.CompanyId == companyId
-
-                        && l.SalesInvoice.Status == InvoiceStatus.Posted)
-
-            .GroupBy(l => l.ItemId)
-
-            .Select(g => new
-
-            {
-
-                ItemId = g.Key,
-
-                Total = g.Sum(l =>
-
-                    l.SalesInvoice.InvoiceType == InvoiceType.CreditNote ? -l.Cartons : l.Cartons)
-
-            })
-
-            .ToDictionaryAsync(x => x.ItemId, x => x.Total, cancellationToken);
-
-
-
-        var itemIds = purchaseCartons.Keys.Union(salesCartons.Keys);
-
-        return itemIds.ToDictionary(
-
-            id => id,
-
-            id => Math.Round(
-
-                purchaseCartons.GetValueOrDefault(id) - salesCartons.GetValueOrDefault(id),
-
-                2));
-
-    }
-
-
-
     private async Task<Dictionary<int, decimal>> BuildPostAsOfCartonDeltasAsync(
 
         int companyId,
 
         DateTime asOfEnd,
 
+        IReadOnlyList<(int ItemId, string? LotNo)> items,
+
         CancellationToken cancellationToken)
 
     {
 
-        var futurePurchaseCartons = await _unitOfWork.Repository<VendorBillLine>()
+        if (items.Count == 0)
+
+        {
+
+            return new Dictionary<int, decimal>();
+
+        }
+
+
+
+        var itemIds = items.Select(i => i.ItemId).Distinct().ToList();
+
+        var itemLots = items.ToDictionary(i => i.ItemId, i => NormalizeCartonLot(i.LotNo));
+
+
+
+        var purchaseLines = await _unitOfWork.Repository<VendorBillLine>()
 
             .Query()
 
             .Where(l => l.ItemId != null
 
+                        && itemIds.Contains(l.ItemId.Value)
+
                         && l.VendorBill.CompanyId == companyId
 
-                        && l.VendorBill.Status == BillStatus.Approved
+                        && l.VendorBill.BillDate > asOfEnd
 
-                        && l.VendorBill.BillDate > asOfEnd)
+                        && (l.VendorBill.Status == BillStatus.Approved
 
-            .GroupBy(l => l.ItemId!.Value)
+                            || l.VendorBill.BillNumber == OpeningStockBillNumber))
 
-            .Select(g => new { ItemId = g.Key, Total = g.Sum(l => l.Cartons) })
+            .Select(l => new
 
-            .ToDictionaryAsync(x => x.ItemId, x => x.Total, cancellationToken);
+            {
+
+                ItemId = l.ItemId!.Value,
+
+                l.LotNo,
+
+                l.Cartons
+
+            })
+
+            .ToListAsync(cancellationToken);
 
 
 
-        var futureSalesCartons = await _unitOfWork.Repository<SalesInvoiceLine>()
+        var salesLines = await _unitOfWork.Repository<SalesInvoiceLine>()
 
             .Query()
 
-            .Where(l => l.SalesInvoice.CompanyId == companyId
+            .Where(l => itemIds.Contains(l.ItemId)
+
+                        && l.SalesInvoice.CompanyId == companyId
 
                         && l.SalesInvoice.Status == InvoiceStatus.Posted
 
                         && l.SalesInvoice.InvoiceDate > asOfEnd)
 
-            .GroupBy(l => l.ItemId)
-
-            .Select(g => new
+            .Select(l => new
 
             {
 
-                ItemId = g.Key,
+                l.ItemId,
 
-                Total = g.Sum(l =>
+                l.LotNo,
 
-                    l.SalesInvoice.InvoiceType == InvoiceType.CreditNote ? -l.Cartons : l.Cartons)
+                l.Cartons,
+
+                l.SalesInvoice.InvoiceType
 
             })
 
-            .ToDictionaryAsync(x => x.ItemId, x => x.Total, cancellationToken);
+            .ToListAsync(cancellationToken);
 
 
 
-        var itemIds = futurePurchaseCartons.Keys.Union(futureSalesCartons.Keys);
+        var deltas = new Dictionary<int, decimal>();
 
-        return itemIds.ToDictionary(
+        foreach (var item in items)
 
-            id => id,
+        {
 
-            id => Math.Round(
+            var itemLot = itemLots[item.ItemId];
 
-                futurePurchaseCartons.GetValueOrDefault(id) - futureSalesCartons.GetValueOrDefault(id),
+            var futurePurchases = purchaseLines
 
-                2));
+                .Where(l => l.ItemId == item.ItemId && NormalizeCartonLot(l.LotNo) == itemLot)
+
+                .Sum(l => Math.Round(l.Cartons, 2));
+
+            var futureSales = salesLines
+
+                .Where(l => l.ItemId == item.ItemId && NormalizeCartonLot(l.LotNo) == itemLot)
+
+                .Sum(l => Math.Round(
+
+                    l.InvoiceType == InvoiceType.CreditNote ? -l.Cartons : l.Cartons,
+
+                    2));
+
+            deltas[item.ItemId] = Math.Round(futurePurchases - futureSales, 2);
+
+        }
+
+
+
+        return deltas;
 
     }
+
+
+
+    private static string NormalizeCartonLot(string? lotNo) =>
+
+        (lotNo ?? string.Empty).Trim();
 
 
 
@@ -1637,6 +1887,124 @@ public class InventoryReportService : IInventoryReportService
             .ToList();
 
     }
+
+
+
+    private async Task<Dictionary<string, decimal>> BuildStackPurchaseCartonsAsync(
+
+        int companyId,
+
+        IReadOnlyList<int> itemIds,
+
+        DateTime asOfEnd,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        var lines = await _unitOfWork.Repository<VendorBillLine>()
+
+            .Query()
+
+            .Where(l => l.ItemId.HasValue
+
+                        && itemIds.Contains(l.ItemId.Value)
+
+                        && l.VendorBill.CompanyId == companyId
+
+                        && l.VendorBill.BillDate <= asOfEnd
+
+                        && (l.VendorBill.Status == BillStatus.Approved
+
+                            || l.VendorBill.BillNumber == OpeningStockBillNumber))
+
+            .Select(l => new
+
+            {
+
+                ItemId = l.ItemId!.Value,
+
+                StackNo = l.StackNo ?? string.Empty,
+
+                l.Cartons
+
+            })
+
+            .ToListAsync(cancellationToken);
+
+
+
+        return lines
+
+            .GroupBy(l => StackCartonKey(l.ItemId, l.StackNo))
+
+            .ToDictionary(g => g.Key, g => Math.Round(g.Sum(x => x.Cartons), 2));
+
+    }
+
+
+
+    private async Task<Dictionary<string, decimal>> BuildStackSalesCartonsAsync(
+
+        int companyId,
+
+        IReadOnlyList<int> itemIds,
+
+        DateTime asOfEnd,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        var lines = await _unitOfWork.Repository<SalesInvoiceLine>()
+
+            .Query()
+
+            .Where(l => itemIds.Contains(l.ItemId)
+
+                        && l.SalesInvoice.CompanyId == companyId
+
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted
+
+                        && l.SalesInvoice.InvoiceDate <= asOfEnd)
+
+            .Select(l => new
+
+            {
+
+                l.ItemId,
+
+                StackNo = l.StackNo ?? string.Empty,
+
+                l.Cartons,
+
+                l.SalesInvoice.InvoiceType
+
+            })
+
+            .ToListAsync(cancellationToken);
+
+
+
+        return lines
+
+            .GroupBy(l => StackCartonKey(l.ItemId, l.StackNo))
+
+            .ToDictionary(
+
+                g => g.Key,
+
+                g => Math.Round(g.Sum(x =>
+
+                    x.InvoiceType == InvoiceType.CreditNote ? -x.Cartons : x.Cartons), 2));
+
+    }
+
+
+
+    private static string StackCartonKey(int itemId, string? stackNo) =>
+
+        $"{itemId}|{(stackNo ?? string.Empty).Trim()}";
 
 }
 

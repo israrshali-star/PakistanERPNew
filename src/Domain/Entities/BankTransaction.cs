@@ -21,6 +21,7 @@ public class BankTransaction : CompanyAuditableEntity
     public string? ChequeNumber { get; set; }
     public DateTime? ChequeDate { get; set; }
     public decimal Amount { get; set; }
+    public decimal CustomerBalanceEffect { get; set; }
     public string? Description { get; set; }
     public bool IsReconciled { get; set; }
 

@@ -9,6 +9,7 @@ public class SalesInvoiceLineConfiguration : IEntityTypeConfiguration<SalesInvoi
     public void Configure(EntityTypeBuilder<SalesInvoiceLine> builder)
     {
         builder.ToTable("SalesInvoiceLines");
+        builder.Property(x => x.CartonDescription).HasMaxLength(50);
         builder.Property(x => x.Quantity).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
         builder.Property(x => x.Cartons).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
         builder.Property(x => x.Price).HasColumnType("decimal(18,2)").HasDefaultValue(0m);

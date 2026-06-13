@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerGlPostingService, CustomerGlPostingService>();
         services.AddScoped<IStackLotInventoryService, StackLotInventoryService>();
         services.AddScoped<ISalesInvoicePdfService, SalesInvoicePdfService>();
+        services.AddScoped<ITradeInvoicePdfService, TradeInvoicePdfService>();
         services.AddScoped<IDeliveryChallanPdfService, DeliveryChallanPdfService>();
         services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
         services.AddScoped<ISalesInvoiceAttachmentService, SalesInvoiceAttachmentService>();
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IVendorService, VendorService>();
         services.AddScoped<IQuickBooksIifImportService, QuickBooksIifImportService>();
         services.AddScoped<ICustomReportService, CustomReportService>();
+        services.AddScoped<IGlRepairService, GlRepairService>();
 
         return services;
     }

@@ -883,15 +883,19 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             (itemsStockUpdated, itemsStockSkipped) = await ImportInventoryValuationCsvAsync(
                 options.InventoryValuationCsvPath,
                 companyId,
+                options,
                 now,
                 cancellationToken);
         }
+
+        var openingEntryDate = (options.CutoverDate ?? now).Date;
 
         if (!string.IsNullOrWhiteSpace(options.CustomerBalancesCsvPath))
         {
             customerBalancesUpdated = await ImportCustomerBalancesCsvAsync(
                 options.CustomerBalancesCsvPath,
                 companyId,
+                openingEntryDate,
                 now,
                 cancellationToken);
         }
@@ -901,6 +905,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             vendorBalancesUpdated = await ImportVendorBalancesCsvAsync(
                 options.VendorBalancesCsvPath,
                 companyId,
+                openingEntryDate,
                 now,
                 cancellationToken);
         }
@@ -937,6 +942,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private async Task<(int Updated, int Skipped)> ImportInventoryValuationCsvAsync(
         string filePath,
         int companyId,
+        QuickBooksIifImportOptions options,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -947,7 +953,12 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
         if (QuickBooksReportCsvParser.IsOpeningStockStackLotFormat(filePath))
         {
-            return await ImportOpeningStockStackLotCsvAsync(filePath, companyId, now, cancellationToken);
+            return await ImportOpeningStockStackLotCsvAsync(
+                filePath,
+                companyId,
+                options,
+                now,
+                cancellationToken);
         }
 
         var rows = QuickBooksReportCsvParser.ParseInventoryValuationReport(filePath);
@@ -1026,9 +1037,11 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private async Task<(int Updated, int Skipped)> ImportOpeningStockStackLotCsvAsync(
         string filePath,
         int companyId,
+        QuickBooksIifImportOptions options,
         DateTime now,
         CancellationToken cancellationToken)
     {
+        var quantityOnly = options.OpeningStockQuantityOnly;
         var rows = QuickBooksReportCsvParser.ParseOpeningStockStackLotReport(filePath);
         if (rows.Count == 0)
         {
@@ -1125,8 +1138,8 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             }
 
             var quantity = Math.Round(row.Weight, 2);
-            var rate = item.PurchaseRate > 0m ? item.PurchaseRate : 1m;
-            var amount = Math.Round(quantity * rate, 2);
+            var rate = quantityOnly ? 0m : (item.PurchaseRate > 0m ? item.PurchaseRate : 1m);
+            var amount = quantityOnly ? 0m : Math.Round(quantity * rate, 2);
             pendingLines.Add((row, item, rate, amount));
             stockByItemCode[itemCode] = stockByItemCode.GetValueOrDefault(itemCode) + quantity;
 
@@ -1148,8 +1161,8 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             TotalQuantity = pendingLines.Sum(x => Math.Round(x.Row.Weight, 2)),
             TotalCartons = pendingLines.Sum(x => Math.Round(x.Row.Cartons, 2)),
             TaxAmount = 0m,
-            NetAmount = pendingLines.Sum(x => x.Amount),
-            Status = BillStatus.Approved,
+            NetAmount = quantityOnly ? 0m : pendingLines.Sum(x => x.Amount),
+            Status = quantityOnly ? BillStatus.Draft : BillStatus.Approved,
             CreatedAt = now,
             CreatedBy = ImportUser
         };
@@ -1204,13 +1217,25 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             }
         }
 
+        if (quantityOnly)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
         var updatedItemIds = new HashSet<int>();
         foreach (var item in items.Where(i =>
                      stockByItemCode.ContainsKey(i.ItemCode)
                      || cartonsByItemCodeAndLot.Keys.Any(k =>
                          string.Equals(k.ItemCode, i.ItemCode, StringComparison.OrdinalIgnoreCase))))
         {
-            if (stockByItemCode.TryGetValue(item.ItemCode, out var stock))
+            if (quantityOnly)
+            {
+                item.CurrentStock = await RecalculateCurrentStockFromTransactionsAsync(
+                    companyId,
+                    item.Id,
+                    cancellationToken);
+            }
+            else if (stockByItemCode.TryGetValue(item.ItemCode, out var stock))
             {
                 item.CurrentStock = Math.Round(stock, 2);
             }
@@ -1229,13 +1254,18 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await _itemCartonSyncService.SyncItemsAsync(companyId, updatedItemIds, cancellationToken);
+
+        if (!quantityOnly)
+        {
+            await _itemCartonSyncService.SyncItemsAsync(companyId, updatedItemIds, cancellationToken);
+        }
 
         _logger.LogInformation(
-            "Imported opening stock for company {CompanyId}: {LineCount} stack/lot lines, {ItemCount} items updated.",
+            "Imported opening stock for company {CompanyId}: {LineCount} stack/lot lines, {ItemCount} items updated (quantityOnly={QuantityOnly}).",
             companyId,
             billLines.Count,
-            updatedItemIds.Count);
+            updatedItemIds.Count,
+            quantityOnly);
 
         return (billLines.Count, 0);
     }
@@ -1252,6 +1282,8 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             .Select(b => b.Id)
             .ToListAsync(cancellationToken);
 
+        var affectedItemIds = new HashSet<int>();
+
         if (openingBillIds.Count > 0)
         {
             var billLines = await _unitOfWork.Repository<VendorBillLine>()
@@ -1261,6 +1293,11 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
             foreach (var line in billLines)
             {
+                if (line.ItemId.HasValue)
+                {
+                    affectedItemIds.Add(line.ItemId.Value);
+                }
+
                 _unitOfWork.Repository<VendorBillLine>().Remove(line);
             }
 
@@ -1284,35 +1321,257 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
         foreach (var transaction in openingTransactions)
         {
+            affectedItemIds.Add(transaction.ItemId);
             _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
         }
 
-        var resetItems = await _unitOfWork.Repository<Item>()
-            .Query(asNoTracking: false)
-            .Where(i => i.CompanyId == companyId
-                        && (i.ItemCode.StartsWith("W") || i.ItemCode.StartsWith("C")))
-            .ToListAsync(cancellationToken);
-
-        foreach (var item in resetItems)
-        {
-            item.CurrentStock = 0m;
-            item.Cartons = 0m;
-            item.UpdatedAt = now;
-            item.UpdatedBy = ImportUser;
-            _unitOfWork.Repository<Item>().Update(item);
-        }
-
-        if (openingBillIds.Count > 0 || openingTransactions.Count > 0 || resetItems.Count > 0)
+        if (openingBillIds.Count > 0 || openingTransactions.Count > 0)
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (affectedItemIds.Count > 0)
+            {
+                await RecalculateItemsCurrentStockFromTransactionsAsync(
+                    companyId,
+                    affectedItemIds,
+                    now,
+                    cancellationToken);
+                await _itemCartonSyncService.SyncItemsAsync(companyId, affectedItemIds, cancellationToken);
+            }
+
             _logger.LogInformation(
-                "Rolled back previous opening stock for company {CompanyId}: {BillCount} bills, {TxnCount} transactions, {ItemCount} items reset.",
+                "Rolled back previous opening stock for company {CompanyId}: {BillCount} bills, {TxnCount} transactions, {ItemCount} items recalculated.",
                 companyId,
                 openingBillIds.Count,
                 openingTransactions.Count,
-                resetItems.Count);
+                affectedItemIds.Count);
         }
     }
+
+    public async Task<OpeningStockRepairResult> ReapplyOpeningStockQuantityOnlyAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
+        var companyExists = await _unitOfWork.Repository<Company>()
+            .Query()
+            .AnyAsync(c => c.Id == companyId, cancellationToken);
+
+        if (!companyExists)
+        {
+            return new OpeningStockRepairResult
+            {
+                Success = false,
+                Message = $"Company id {companyId} was not found."
+            };
+        }
+
+        var now = DateTime.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var bill = await _unitOfWork.Repository<VendorBill>()
+                .Query(asNoTracking: false)
+                .Include(b => b.Lines)
+                .FirstOrDefaultAsync(
+                    b => b.CompanyId == companyId
+                         && (b.RefNo == OpeningStockRefNo || b.BillNumber == OpeningStockBillNumber),
+                    cancellationToken);
+
+            if (bill is null)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new OpeningStockRepairResult
+                {
+                    Success = false,
+                    Message = $"Opening stock bill ({OpeningStockBillNumber}) not found for company {companyId}."
+                };
+            }
+
+            var billLinesUpdated = 0;
+            var affectedItemIds = new HashSet<int>();
+
+            foreach (var line in bill.Lines)
+            {
+                if (line.Rate != 0m || line.Amount != 0m)
+                {
+                    line.Rate = 0m;
+                    line.Amount = 0m;
+                    _unitOfWork.Repository<VendorBillLine>().Update(line);
+                    billLinesUpdated++;
+                }
+
+                if (line.ItemId.HasValue)
+                {
+                    affectedItemIds.Add(line.ItemId.Value);
+                }
+            }
+
+            bill.NetAmount = 0m;
+            bill.Status = BillStatus.Draft;
+            bill.JournalEntryId = null;
+            bill.UpdatedAt = now;
+            bill.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<VendorBill>().Update(bill);
+
+            var openingTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+                .Query(asNoTracking: false)
+                .Where(t => t.CompanyId == companyId
+                            && (t.ReferenceNo == OpeningStockBillNumber
+                                || (t.Notes != null && t.Notes.Contains(OpeningStockBillNumber))))
+                .ToListAsync(cancellationToken);
+
+            var transactionsUpdated = 0;
+            foreach (var transaction in openingTransactions)
+            {
+                affectedItemIds.Add(transaction.ItemId);
+
+                if (transaction.UnitCost != 0m || transaction.TotalCost != 0m)
+                {
+                    transaction.UnitCost = 0m;
+                    transaction.TotalCost = 0m;
+                    _unitOfWork.Repository<InventoryTransaction>().Update(transaction);
+                    transactionsUpdated++;
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var itemsRecalculated = await RecalculateItemsCurrentStockFromTransactionsAsync(
+                companyId,
+                affectedItemIds,
+                now,
+                cancellationToken);
+
+            foreach (var itemId in affectedItemIds)
+            {
+                var item = await _unitOfWork.Repository<Item>()
+                    .Query(asNoTracking: false)
+                    .FirstOrDefaultAsync(i => i.Id == itemId && i.CompanyId == companyId, cancellationToken);
+
+                if (item is null)
+                {
+                    continue;
+                }
+
+                var itemLot = item.LotNo?.Trim() ?? string.Empty;
+                var cartons = bill.Lines
+                    .Where(l => l.ItemId == itemId
+                                && string.Equals(l.LotNo?.Trim() ?? string.Empty, itemLot, StringComparison.OrdinalIgnoreCase))
+                    .Sum(l => Math.Round(l.Cartons, 2));
+
+                if (item.Cartons != cartons)
+                {
+                    item.Cartons = cartons;
+                    item.UpdatedAt = now;
+                    item.UpdatedBy = ImportUser;
+                    _unitOfWork.Repository<Item>().Update(item);
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Reapplied opening stock quantity-only for company {CompanyId}: bill {BillId}, {LineCount} lines, {TxnCount} transactions, {ItemCount} items recalculated.",
+                companyId,
+                bill.Id,
+                billLinesUpdated,
+                transactionsUpdated,
+                itemsRecalculated);
+
+            return new OpeningStockRepairResult
+            {
+                Success = true,
+                Message =
+                    $"Opening stock bill {bill.BillNumber} set to Draft with zero amounts; {itemsRecalculated} items recalculated from inventory transactions.",
+                BillLinesUpdated = billLinesUpdated,
+                TransactionsUpdated = transactionsUpdated,
+                ItemsRecalculated = itemsRecalculated
+            };
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to reapply opening stock quantity-only for company {CompanyId}.", companyId);
+            return new OpeningStockRepairResult
+            {
+                Success = false,
+                Message = $"Repair failed: {ex.Message}"
+            };
+        }
+    }
+
+    private async Task<int> RecalculateItemsCurrentStockFromTransactionsAsync(
+        int companyId,
+        IEnumerable<int> itemIds,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var itemIdList = itemIds.Distinct().ToList();
+        if (itemIdList.Count == 0)
+        {
+            return 0;
+        }
+
+        var items = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId && itemIdList.Contains(i.Id))
+            .ToListAsync(cancellationToken);
+
+        var recalculated = 0;
+        foreach (var item in items)
+        {
+            var stock = await RecalculateCurrentStockFromTransactionsAsync(
+                companyId,
+                item.Id,
+                cancellationToken);
+
+            if (item.CurrentStock == stock)
+            {
+                continue;
+            }
+
+            item.CurrentStock = stock;
+            item.UpdatedAt = now;
+            item.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<Item>().Update(item);
+            recalculated++;
+        }
+
+        if (recalculated > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return recalculated;
+    }
+
+    private async Task<decimal> RecalculateCurrentStockFromTransactionsAsync(
+        int companyId,
+        int itemId,
+        CancellationToken cancellationToken)
+    {
+        var transactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId && t.ItemId == itemId)
+            .Select(t => new { t.TransactionType, t.Quantity })
+            .ToListAsync(cancellationToken);
+
+        var stock = transactions.Sum(t => GetStockDelta(t.TransactionType, t.Quantity));
+        return Math.Round(stock, 2);
+    }
+
+    private static decimal GetStockDelta(InventoryTransactionType type, decimal quantity) =>
+        type switch
+        {
+            InventoryTransactionType.StockIn => quantity,
+            InventoryTransactionType.Opening => quantity,
+            InventoryTransactionType.StockOut => -quantity,
+            InventoryTransactionType.Adjustment => quantity,
+            _ => 0m
+        };
 
     private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
         await _unitOfWork.Repository<Warehouse>()
@@ -1368,6 +1627,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private async Task<int> ImportCustomerBalancesCsvAsync(
         string filePath,
         int companyId,
+        DateTime entryDate,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -1403,6 +1663,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 customerId,
                 customer.BuyerName,
                 row.Balance,
+                entryDate,
                 now,
                 cancellationToken);
 
@@ -1421,6 +1682,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private async Task<int> ImportVendorBalancesCsvAsync(
         string filePath,
         int companyId,
+        DateTime entryDate,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -1456,6 +1718,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 vendorId,
                 vendor.VendorName,
                 row.Balance,
+                entryDate,
                 now,
                 cancellationToken);
 

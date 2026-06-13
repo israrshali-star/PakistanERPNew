@@ -19,6 +19,8 @@ public class CustomerReceipt : CompanyAuditableEntity
     public CustomerReceiptStatus Status { get; set; } = CustomerReceiptStatus.InClearing;
     public DateTime? ClearedAt { get; set; }
     public string? ClearedBy { get; set; }
+    public DateTime? ReturnedAt { get; set; }
+    public string? ReturnedBy { get; set; }
     public bool IsDeposited { get; set; }
     public int? DepositedBankTransactionId { get; set; }
 

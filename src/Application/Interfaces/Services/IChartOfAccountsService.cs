@@ -49,5 +49,9 @@ public interface IChartOfAccountsService
     Task<byte[]> ExportToExcelAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Returns posted GL ledger entries with running balance for a leaf account.</summary>
-    Task<ChartOfAccountLedgerDto?> GetLedgerAsync(int id, CancellationToken cancellationToken = default);
+    Task<ChartOfAccountLedgerDto?> GetLedgerAsync(
+        int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default);
 }

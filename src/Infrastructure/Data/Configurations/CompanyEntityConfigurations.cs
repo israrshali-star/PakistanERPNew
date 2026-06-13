@@ -322,6 +322,7 @@ public class BankTransactionConfiguration : IEntityTypeConfiguration<BankTransac
             .HasForeignKey(x => x.JournalEntryId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.PartyName).HasMaxLength(200);
+        builder.Property(x => x.CustomerBalanceEffect).HasPrecision(18, 2);
         builder.HasOne(x => x.Company)
             .WithMany()
             .HasForeignKey(x => x.CompanyId)

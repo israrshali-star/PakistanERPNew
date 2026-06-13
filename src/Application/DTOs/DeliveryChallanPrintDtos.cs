@@ -12,7 +12,8 @@ public record DeliveryChallanPrintDto(
     string? BuyerNtn,
     string? BuyerCnic,
     DateTime PrintedAt,
-    IReadOnlyList<DeliveryChallanPrintLineDto> Lines);
+    IReadOnlyList<DeliveryChallanPrintLineDto> Lines,
+    int CompanyId = 0);
 
 public record DeliveryChallanPrintLineDto(
     int LineNo,
@@ -21,4 +22,5 @@ public record DeliveryChallanPrintLineDto(
     string? StackNo,
     decimal Cartons,
     decimal Quantity,
-    string? Unit);
+    string? Unit,
+    string? CartonDescription = null);

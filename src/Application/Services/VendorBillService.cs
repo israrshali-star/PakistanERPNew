@@ -38,6 +38,8 @@ public partial class VendorBillService : IVendorBillService
 
     public async Task<DataTableResponse<VendorBillListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -47,6 +49,18 @@ public partial class VendorBillService : IVendorBillService
             .Where(b => b.CompanyId == companyId);
 
         var recordsTotal = await query.CountAsync(cancellationToken);
+
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.Date;
+            query = query.Where(b => b.BillDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value.Date.AddDays(1);
+            query = query.Where(b => b.BillDate < to);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
         {
@@ -103,6 +117,9 @@ public partial class VendorBillService : IVendorBillService
                 b.Vendor.VendorCode,
                 b.Vendor.VendorName,
                 b.BillDate,
+                b.WarehouseId,
+                WarehouseCode = b.Warehouse != null ? b.Warehouse.Code : null,
+                WarehouseName = b.Warehouse != null ? b.Warehouse.Name : null,
                 b.TaxAmount,
                 b.NetAmount,
                 b.TotalQuantity,
@@ -147,6 +164,9 @@ public partial class VendorBillService : IVendorBillService
             bill.VendorCode,
             bill.VendorName,
             bill.BillDate,
+            bill.WarehouseId,
+            bill.WarehouseCode,
+            bill.WarehouseName,
             subTotal,
             bill.TaxAmount,
             bill.NetAmount,
@@ -221,6 +241,19 @@ public partial class VendorBillService : IVendorBillService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<VendorBillWarehouseLookupDto>> GetWarehouseLookupsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        return await _unitOfWork.Repository<Warehouse>()
+            .Query()
+            .Where(w => w.CompanyId == companyId && w.IsActive)
+            .OrderBy(w => w.Name)
+            .Select(w => new VendorBillWarehouseLookupDto(w.Id, w.Code, w.Name))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<VendorBillSaveResult> CreateAsync(
         VendorBillSaveRequest request,
         CancellationToken cancellationToken = default)
@@ -268,6 +301,16 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillSaveResult(false, lineBuild.Message, null);
         }
 
+        var warehouseValidation = await ValidateWarehouseAsync(
+            request.WarehouseId,
+            HasInventoryItemLines(request.Lines),
+            companyId,
+            cancellationToken);
+        if (!warehouseValidation.Success)
+        {
+            return new VendorBillSaveResult(false, warehouseValidation.Message, null);
+        }
+
         var subTotal = Math.Round(lineBuild.Lines.Sum(l => l.Amount), 2);
         var taxRate = ResolveBillTaxRate(request.TaxRate, vendor.DefaultSalesTaxRate);
         var taxAmount = Math.Round(lineBuild.TaxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
@@ -278,6 +321,7 @@ public partial class VendorBillService : IVendorBillService
         {
             CompanyId = companyId,
             VendorId = vendor.Id,
+            WarehouseId = request.WarehouseId,
             BillNumber = billNumber,
             RefNo = request.RefNo?.Trim(),
             BillDate = request.BillDate.Date,
@@ -389,6 +433,16 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillSaveResult(false, lineBuild.Message, null);
         }
 
+        var warehouseValidation = await ValidateWarehouseAsync(
+            request.WarehouseId,
+            HasInventoryItemLines(request.Lines),
+            companyId,
+            cancellationToken);
+        if (!warehouseValidation.Success)
+        {
+            return new VendorBillSaveResult(false, warehouseValidation.Message, null);
+        }
+
         var existingLines = await _unitOfWork.Repository<VendorBillLine>()
             .Query(asNoTracking: false)
             .Where(l => l.VendorBillId == entity.Id)
@@ -406,6 +460,7 @@ public partial class VendorBillService : IVendorBillService
         var now = DateTime.UtcNow;
 
         entity.VendorId = vendor.Id;
+        entity.WarehouseId = request.WarehouseId;
         entity.BillNumber = billNumber;
         entity.RefNo = request.RefNo?.Trim();
         entity.BillDate = request.BillDate.Date;
@@ -504,12 +559,25 @@ public partial class VendorBillService : IVendorBillService
 
         if (itemLineIds.Count > 0)
         {
-            warehouseId = await GetDefaultWarehouseIdAsync(companyId, cancellationToken);
-            if (!warehouseId.HasValue)
+            if (!bill.WarehouseId.HasValue)
             {
                 return new VendorBillActionResult(
                     false,
-                    "No active warehouse found. Add a warehouse before approving inventory bills.",
+                    "Warehouse is required before approving bills with inventory items.",
+                    null);
+            }
+
+            warehouseId = bill.WarehouseId;
+            var warehouseValid = await _unitOfWork.Repository<Warehouse>()
+                .Query()
+                .AnyAsync(
+                    w => w.Id == warehouseId.Value && w.CompanyId == companyId && w.IsActive,
+                    cancellationToken);
+            if (!warehouseValid)
+            {
+                return new VendorBillActionResult(
+                    false,
+                    "Selected warehouse is invalid or inactive.",
                     null);
             }
 
@@ -560,47 +628,56 @@ public partial class VendorBillService : IVendorBillService
 
             if (warehouseId.HasValue)
             {
-                var inventoryTransactions = new List<InventoryTransaction>();
-                foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
+                var hasExistingInventory = await _unitOfWork.Repository<InventoryTransaction>()
+                    .Query()
+                    .AnyAsync(
+                        t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber,
+                        cancellationToken);
+
+                if (!hasExistingInventory)
                 {
-                    var item = items[line.ItemId!.Value];
-                    var quantity = Math.Round(line.Quantity, 2);
-                    if (quantity <= 0m)
+                    var inventoryTransactions = new List<InventoryTransaction>();
+                    foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
                     {
-                        continue;
+                        var item = items[line.ItemId!.Value];
+                        var quantity = Math.Round(line.Quantity, 2);
+                        if (quantity <= 0m)
+                        {
+                            continue;
+                        }
+
+                        var unitCost = Math.Round(line.Rate, 2);
+                        inventoryTransactions.Add(new InventoryTransaction
+                        {
+                            CompanyId = companyId,
+                            ItemId = item.Id,
+                            WarehouseId = warehouseId.Value,
+                            TransactionType = InventoryTransactionType.StockIn,
+                            StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
+                            LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
+                            Quantity = quantity,
+                            UnitCost = unitCost,
+                            TotalCost = Math.Round(quantity * unitCost, 2),
+                            TransactionDate = bill.BillDate,
+                            ReferenceNo = bill.BillNumber,
+                            Notes = $"Vendor bill {bill.BillNumber}",
+                            CreatedAt = now,
+                            CreatedBy = userName
+                        });
+
+                        item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
+                        item.PurchaseRate = unitCost;
+                        item.UpdatedAt = now;
+                        item.UpdatedBy = userName;
+                        _unitOfWork.Repository<Item>().Update(item);
                     }
 
-                    var unitCost = Math.Round(line.Rate, 2);
-                    inventoryTransactions.Add(new InventoryTransaction
+                    if (inventoryTransactions.Count > 0)
                     {
-                        CompanyId = companyId,
-                        ItemId = item.Id,
-                        WarehouseId = warehouseId.Value,
-                        TransactionType = InventoryTransactionType.StockIn,
-                        StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
-                        LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
-                        Quantity = quantity,
-                        UnitCost = unitCost,
-                        TotalCost = Math.Round(quantity * unitCost, 2),
-                        TransactionDate = bill.BillDate,
-                        ReferenceNo = bill.BillNumber,
-                        Notes = $"Vendor bill {bill.BillNumber}",
-                        CreatedAt = now,
-                        CreatedBy = userName
-                    });
-
-                    item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
-                    item.PurchaseRate = unitCost;
-                    item.UpdatedAt = now;
-                    item.UpdatedBy = userName;
-                    _unitOfWork.Repository<Item>().Update(item);
-                }
-
-                if (inventoryTransactions.Count > 0)
-                {
-                    await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
-                        inventoryTransactions,
-                        cancellationToken);
+                        await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                            inventoryTransactions,
+                            cancellationToken);
+                    }
                 }
             }
 
@@ -825,6 +902,36 @@ public partial class VendorBillService : IVendorBillService
         return (true, null, entities, Math.Round(taxableSubTotal, 2));
     }
 
+    private static bool HasInventoryItemLines(IReadOnlyList<VendorBillLineSaveRequest> lines) =>
+        lines.Any(l => l.ItemId.HasValue && l.ItemId > 0);
+
+    private async Task<(bool Success, string? Message)> ValidateWarehouseAsync(
+        int? warehouseId,
+        bool hasInventoryItemLines,
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        if (!hasInventoryItemLines)
+        {
+            return (true, null);
+        }
+
+        if (!warehouseId.HasValue || warehouseId.Value <= 0)
+        {
+            return (false, "Warehouse is required for bills with inventory items.");
+        }
+
+        var exists = await _unitOfWork.Repository<Warehouse>()
+            .Query()
+            .AnyAsync(
+                w => w.Id == warehouseId.Value && w.CompanyId == companyId && w.IsActive,
+                cancellationToken);
+
+        return exists
+            ? (true, null)
+            : (false, "Selected warehouse is invalid or inactive.");
+    }
+
     private async Task<(bool Success, string? Message, int PayableAccountId, int InputTaxAccountId, int InventoryAccountId)>
         ResolvePostingAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
@@ -849,14 +956,6 @@ public partial class VendorBillService : IVendorBillService
 
         return (true, null, payable.Value, inputTax.Value, inventory.Value);
     }
-
-    private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
-        await _unitOfWork.Repository<Warehouse>()
-            .Query()
-            .Where(w => w.CompanyId == companyId && w.IsActive)
-            .OrderBy(w => w.Code)
-            .Select(w => (int?)w.Id)
-            .FirstOrDefaultAsync(cancellationToken);
 
     private static void AddJournalLine(
         ICollection<JournalEntryLine> lines,

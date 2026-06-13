@@ -528,6 +528,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
     public async Task<ChartOfAccountLedgerDto?> GetLedgerAsync(
         int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var account = await GetByIdAsync(id, cancellationToken);
@@ -537,25 +539,59 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         var companyId = _currentCompany.GetRequiredCompanyId();
-        var balance = account.OpeningBalance;
+        var from = fromDate?.Date;
+        var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
 
-        if (account.OpeningBalance != 0m)
+        decimal periodOpening;
+        if (from.HasValue)
         {
-            entries.Add(new ChartOfAccountLedgerEntryDto(
-                DateTime.MinValue,
-                "OPENING",
-                "Opening Balance",
-                account.OpeningBalance > 0 ? account.OpeningBalance : 0m,
-                account.OpeningBalance < 0 ? Math.Abs(account.OpeningBalance) : 0m,
-                account.OpeningBalance));
+            periodOpening = await GetBalanceBeforeDateAsync(id, companyId, from.Value, cancellationToken);
+            if (periodOpening != 0m)
+            {
+                entries.Add(new ChartOfAccountLedgerEntryDto(
+                    from.Value.AddDays(-1),
+                    "B/F",
+                    "Balance Brought Forward",
+                    periodOpening > 0 ? periodOpening : 0m,
+                    periodOpening < 0 ? Math.Abs(periodOpening) : 0m,
+                    periodOpening));
+            }
+        }
+        else
+        {
+            periodOpening = account.OpeningBalance;
+            if (account.OpeningBalance != 0m)
+            {
+                entries.Add(new ChartOfAccountLedgerEntryDto(
+                    DateTime.MinValue,
+                    "OPENING",
+                    "Opening Balance",
+                    account.OpeningBalance > 0 ? account.OpeningBalance : 0m,
+                    account.OpeningBalance < 0 ? Math.Abs(account.OpeningBalance) : 0m,
+                    account.OpeningBalance));
+            }
         }
 
-        var lines = await _unitOfWork.Repository<JournalEntryLine>()
+        var balance = periodOpening;
+        var lineQuery = _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.ChartOfAccountId == id
                         && l.JournalEntry.CompanyId == companyId
-                        && l.JournalEntry.Status == JournalStatus.Posted)
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted);
+
+        if (from.HasValue)
+        {
+            lineQuery = lineQuery.Where(l => l.JournalEntry.EntryDate >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            lineQuery = lineQuery.Where(l => l.JournalEntry.EntryDate <= to.Value);
+        }
+
+        var lines = await lineQuery
             .OrderBy(l => l.JournalEntry.EntryDate)
             .ThenBy(l => l.JournalEntry.Id)
             .ThenBy(l => l.Id)
@@ -587,7 +623,15 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 balance));
         }
 
-        return new ChartOfAccountLedgerDto(account, entries, balance);
+        var closingBalance = entries.Count > 0 ? entries[^1].Balance : periodOpening;
+
+        return new ChartOfAccountLedgerDto(
+            account,
+            from,
+            to,
+            periodOpening,
+            entries,
+            closingBalance);
     }
 
     public async Task<byte[]> ExportToExcelAsync(CancellationToken cancellationToken = default)
@@ -683,7 +727,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.JournalEntry.CompanyId == companyId
-                        && l.JournalEntry.Status == JournalStatus.Posted)
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
             .GroupBy(l => l.ChartOfAccountId)
             .Select(g => new
             {
@@ -697,6 +742,31 @@ public class ChartOfAccountsService : IChartOfAccountsService
         return openingBalances.ToDictionary(
             x => x.Id,
             x => x.OpeningBalance + journalLookup.GetValueOrDefault(x.Id, 0m));
+    }
+
+    private async Task<decimal> GetBalanceBeforeDateAsync(
+        int accountId,
+        int companyId,
+        DateTime fromDate,
+        CancellationToken cancellationToken)
+    {
+        var openingBalance = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.Id == accountId && a.CompanyId == companyId)
+            .Select(a => a.OpeningBalance)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.ChartOfAccountId == accountId
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted
+                        && l.JournalEntry.EntryDate < fromDate)
+            .Select(l => l.Debit - l.Credit)
+            .SumAsync(cancellationToken);
+
+        return Math.Round(openingBalance + journalNet, 2);
     }
 
     private async Task<bool> HasJournalLinesAsync(int accountId, CancellationToken cancellationToken) =>

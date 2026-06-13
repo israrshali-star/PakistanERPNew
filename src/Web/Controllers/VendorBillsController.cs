@@ -115,7 +115,14 @@ public class VendorBillsApiController : ControllerBase
                 OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 2,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
-            var result = await _vendorBillService.GetDataTableAsync(request, cancellationToken);
+            DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
+            DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+
+            var result = await _vendorBillService.GetDataTableAsync(
+                request,
+                fromDate,
+                toDate,
+                cancellationToken);
             return Ok(new
             {
                 draw = result.Draw,
@@ -180,6 +187,20 @@ public class VendorBillsApiController : ControllerBase
         try
         {
             return Ok(await _vendorBillService.GetItemLookupsAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("warehouses")]
+    [RequirePermission("Purchase.Create")]
+    public async Task<IActionResult> Warehouses(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _vendorBillService.GetWarehouseLookupsAsync(cancellationToken));
         }
         catch (InvalidOperationException ex)
         {

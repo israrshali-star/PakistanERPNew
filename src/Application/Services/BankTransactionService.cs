@@ -354,6 +354,18 @@ public class BankTransactionService : IBankTransactionService
             AddParty(account.Id, "COA", null, null, account.AccountName, account.AccountNumber);
         }
 
+        var cashInHandAccount = accounts.FirstOrDefault(a => a.AccountNumber == CashInHand);
+        if (cashInHandAccount is not null)
+        {
+            AddParty(
+                cashInHandAccount.Id,
+                "CASH",
+                null,
+                null,
+                cashInHandAccount.AccountName,
+                cashInHandAccount.AccountNumber);
+        }
+
         var withBalances = new List<WriteChequePartyLookupDto>();
         foreach (var item in result)
         {
@@ -487,7 +499,7 @@ public class BankTransactionService : IBankTransactionService
                 partyName,
                 cancellationToken);
 
-            if (request.PaymentMethod == PaymentMethod.Cheque)
+            if (request.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.CashWithdrawal)
             {
                 chequeNumber = await ResolveChequeNumberForWithdrawalAsync(
                     companyId,
@@ -570,6 +582,7 @@ public class BankTransactionService : IBankTransactionService
                     {
                         var receiveGl = await _customerGlPostingService.PostCustomerReceiptAsync(
                             receipt,
+                            postUnclearedOtherBankCheque: true,
                             cancellationToken);
                         if (!receiveGl.Success)
                         {
@@ -629,7 +642,7 @@ public class BankTransactionService : IBankTransactionService
         await TryAuditAsync("Create", entity.Id.ToString(), null, JsonSerializer.Serialize(request), cancellationToken);
 
         if (request.TransactionType == BankTransactionType.Withdrawal
-            && request.PaymentMethod == PaymentMethod.Cheque
+            && request.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.CashWithdrawal
             && !string.IsNullOrWhiteSpace(entity.ChequeNumber))
         {
             await AdvanceNextChequeNumberAsync(
@@ -833,7 +846,10 @@ public class BankTransactionService : IBankTransactionService
                     case PaymentMethod.Cash:
                         if (!await IsValidCashPayFromCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
                         {
-                            return new BankTransactionSaveResult(false, "Select Cash in Hand as the pay-from account.", null);
+                            return new BankTransactionSaveResult(
+                                false,
+                                "Select Cash in Hand or a bank account as the pay-from account.",
+                                null);
                         }
 
                         break;
@@ -847,6 +863,25 @@ public class BankTransactionService : IBankTransactionService
 
                         break;
 
+                    case PaymentMethod.CashWithdrawal:
+                        if (!await IsValidBankCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                        {
+                            return new BankTransactionSaveResult(false, "Select a valid bank account from Chart of Accounts.", null);
+                        }
+
+                        if (!request.CounterChartOfAccountId.HasValue
+                            || !await IsCashInHandCoaAsync(companyId, request.CounterChartOfAccountId.Value, cancellationToken))
+                        {
+                            return new BankTransactionSaveResult(false, "Cash withdrawal must credit Cash in Hand.", null);
+                        }
+
+                        if (request.CustomerId.HasValue || request.VendorId.HasValue)
+                        {
+                            return new BankTransactionSaveResult(false, "Cash withdrawal cannot be linked to a customer or vendor.", null);
+                        }
+
+                        break;
+
                     default:
                         return new BankTransactionSaveResult(false, "Unsupported payment method.", null);
                 }
@@ -856,7 +891,8 @@ public class BankTransactionService : IBankTransactionService
                     return new BankTransactionSaveResult(false, "Pay-to account is required.", null);
                 }
 
-                if (!await IsValidPayToCoaAsync(
+                if (request.PaymentMethod != PaymentMethod.CashWithdrawal
+                    && !await IsValidPayToCoaAsync(
                         companyId,
                         request.CounterChartOfAccountId.Value,
                         request.CustomerId,
@@ -864,6 +900,40 @@ public class BankTransactionService : IBankTransactionService
                         cancellationToken))
                 {
                     return new BankTransactionSaveResult(false, "Select a valid pay-to account from Chart of Accounts.", null);
+                }
+
+                if (request.PaymentMethod == PaymentMethod.Cheque
+                    && await IsCashInHandCoaAsync(companyId, request.CounterChartOfAccountId.Value, cancellationToken)
+                    && !await IsValidBankCoaAsync(companyId, request.ChartOfAccountId, cancellationToken))
+                {
+                    return new BankTransactionSaveResult(
+                        false,
+                        "Cash withdrawal by cheque requires a bank pay-from account.",
+                        null);
+                }
+
+                if (request.ChartOfAccountId == request.CounterChartOfAccountId)
+                {
+                    return new BankTransactionSaveResult(false, "Pay-from and pay-to accounts must be different.", null);
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.PartyName)
+                    && (request.PartyName.Contains("Sales Tax", StringComparison.OrdinalIgnoreCase)
+                        || request.PartyName.Contains("Used Tax", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var counterAccount = await _unitOfWork.Repository<ChartOfAccount>()
+                        .Query()
+                        .Where(a => a.Id == request.CounterChartOfAccountId!.Value && a.CompanyId == companyId)
+                        .Select(a => a.AccountNumber)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (string.Equals(counterAccount, AccountsPayable, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new BankTransactionSaveResult(
+                            false,
+                            "Sales tax payments must use Sales Tax Payable (25500), not Accounts Payable.",
+                            null);
+                    }
                 }
 
                 break;
@@ -1006,6 +1076,19 @@ public class BankTransactionService : IBankTransactionService
     }
 
     private async Task<bool> IsValidCashPayFromCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        if (await IsValidBankCoaAsync(companyId, chartOfAccountId, cancellationToken))
+        {
+            return true;
+        }
+
+        return await IsCashInHandCoaAsync(companyId, chartOfAccountId, cancellationToken);
+    }
+
+    private async Task<bool> IsCashInHandCoaAsync(
         int companyId,
         int chartOfAccountId,
         CancellationToken cancellationToken)
@@ -1215,7 +1298,7 @@ public class BankTransactionService : IBankTransactionService
                     .Sum(r => r.Amount)
                 + c.WriteChequePayments
                     .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                    .Sum(bt => bt.Amount))
+                    .Sum(bt => bt.CustomerBalanceEffect))
             .FirstOrDefaultAsync(cancellationToken);
     }
 

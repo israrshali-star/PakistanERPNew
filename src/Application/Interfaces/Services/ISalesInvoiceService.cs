@@ -6,6 +6,8 @@ public interface ISalesInvoiceService
 {
     Task<DataTableResponse<SalesInvoiceListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 
     Task<NextInvoiceNumberDto> GenerateNextInvoiceNumberAsync(CancellationToken cancellationToken = default);
@@ -41,6 +43,10 @@ public interface ISalesInvoiceService
     Task<SalesInvoicePrintDto?> GetPrintDataAsync(int id, CancellationToken cancellationToken = default);
 
     Task<DeliveryChallanPrintDto?> GetDeliveryChallanDataAsync(
+        int id,
+        CancellationToken cancellationToken = default);
+
+    Task<TradeInvoicePrintDto?> GetTradeInvoicePrintDataAsync(
         int id,
         CancellationToken cancellationToken = default);
 }

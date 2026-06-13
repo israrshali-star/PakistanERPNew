@@ -209,6 +209,20 @@
         updateCustomerBalanceHint();
     }
 
+    function prepareFormForNextReceipt() {
+        resetReceiptForm();
+        clearFormMessages();
+        $('#receiptModalLabel').text('New Customer Receipt');
+
+        $.getJSON('/api/customer-receipts/next-receipt-number')
+            .done(function (res) {
+                $('#receipt-number').val(res.receiptNumber);
+            })
+            .fail(function (xhr) {
+                showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
+            });
+    }
+
     function initSelect2($element) {
         if ($element.data('select2')) {
             $element.select2('destroy');
@@ -217,7 +231,8 @@
         $element.select2({
             theme: 'bootstrap-5',
             width: '100%',
-            dropdownParent: $('#receiptModal')
+            dropdownParent: $('#receiptModal'),
+            minimumResultsForSearch: 0
         });
     }
 
@@ -293,6 +308,19 @@
         });
     }
 
+    function initDefaultDateFilters() {
+        var today = new Date();
+        var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        $('#filter-from').val(toInputDate(monthStart));
+        $('#filter-to').val(toInputDate(today));
+    }
+
+    function reloadDataTable() {
+        if (dataTable) {
+            dataTable.ajax.reload();
+        }
+    }
+
     function initDataTable() {
         if (dataTable) {
             dataTable.ajax.reload();
@@ -304,13 +332,17 @@
             serverSide: true,
             ajax: {
                 url: '/api/customer-receipts/datatable',
+                data: function (d) {
+                    d.fromDate = $('#filter-from').val();
+                    d.toDate = $('#filter-to').val();
+                },
                 error: function (xhr) {
                     if (xhr.status === 400) {
                         showCompanyWarning(getApiErrorMessage(xhr, 'Select a company first.'));
                     }
                 }
             },
-            order: [[2, 'desc']],
+            order: [[2, 'asc']],
             columns: [
                 { data: 'receiptNumber' },
                 { data: 'customerName' },
@@ -345,6 +377,9 @@
                         if (data === 'Cleared') {
                             return '<span class="badge bg-success">' + escapeHtml(data) + '</span>';
                         }
+                        if (data.indexOf('Returned') >= 0) {
+                            return '<span class="badge bg-danger">' + escapeHtml(data) + '</span>';
+                        }
                         return escapeHtml(data);
                     }
                 },
@@ -359,6 +394,15 @@
                                 '<button type="button" class="btn btn-sm btn-success btn-approve-clearance" data-id="' + row.id + '" title="Approve clearance">' +
                                 '<i class="fa-solid fa-check"></i></button>'
                             );
+                        }
+                        if (canEdit && row.canMarkReturned) {
+                            buttons.push(
+                                '<button type="button" class="btn btn-sm btn-outline-danger btn-mark-returned ms-1" data-id="' + row.id + '" title="Mark cheque returned / not cleared">' +
+                                '<i class="fa-solid fa-rotate-left"></i></button>'
+                            );
+                        }
+                        if (row.depositStatus === 'Returned (Not Cleared)') {
+                            return buttons.join('') || '<span class="text-muted small">Returned</span>';
                         }
                         if (row.depositStatus === 'Cleared' || row.depositStatus === 'Deposited (Awaiting Approval)') {
                             if (!buttons.length) {
@@ -388,12 +432,10 @@
     function openCreateModal() {
         clearFormMessages();
         $('#receiptModalLabel').text('New Customer Receipt');
-        clearFormError();
+        resetReceiptForm();
 
         loadLookups()
             .done(function () {
-                resetReceiptForm();
-
                 $.getJSON('/api/customer-receipts/next-receipt-number')
                     .done(function (res) {
                         $('#receipt-number').val(res.receiptNumber);
@@ -550,19 +592,21 @@
                 dataTable.ajax.reload(null, false);
                 var savedMsg = payload.paymentMethod === 2
                     ? (payload.chequeBankType === 1
-                        ? (id ? 'Same-bank cheque updated and cleared.' : 'Same-bank cheque saved and cleared. Close when finished.')
+                        ? (id ? 'Same-bank cheque updated and cleared.' : 'Same-bank cheque saved and cleared. Enter another receipt or close when finished.')
                         : (id
                             ? 'Other-bank cheque updated. It remains on the undeposited list until deposited via Make Deposit.'
-                            : 'Other-bank cheque saved. It will appear on Banking → Make Deposit. Close when finished.'))
-                    : (id ? 'Receipt updated. Close when finished.' : 'Receipt saved. Close when finished.');
-                showFormSuccess(savedMsg);
+                            : 'Other-bank cheque saved. It will appear on Banking → Make Deposit. Enter another receipt or close when finished.'))
+                    : (id ? 'Receipt updated. Close when finished.' : 'Receipt saved. Enter another receipt or close when finished.');
 
-                if (!id && res && res.receipt) {
-                    $('#receipt-id').val(res.receipt.id);
-                    $('#receiptModalLabel').text('Edit Customer Receipt');
-                }
-
-                loadLookups().always(updateCustomerBalanceHint);
+                loadLookups().always(function () {
+                    if (id) {
+                        showFormSuccess(savedMsg);
+                        updateCustomerBalanceHint();
+                    } else {
+                        prepareFormForNextReceipt();
+                        showFormSuccess(savedMsg);
+                    }
+                });
             })
             .fail(function (xhr) {
                 var body = xhr.responseJSON;
@@ -601,6 +645,25 @@
         }
 
         receiptModal = new bootstrap.Modal(document.getElementById('receiptModal'));
+
+        initDefaultDateFilters();
+        $('#btn-apply-filter').on('click', reloadDataTable);
+        $('#filter-from, #filter-to').on('change', reloadDataTable);
+
+        if ($.fn.select2) {
+            $('#payment-method').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('#receiptModal'),
+                minimumResultsForSearch: 0
+            });
+        }
+
+        document.getElementById('receiptModal').addEventListener('hidden.bs.modal', function () {
+            resetReceiptForm();
+            clearFormMessages();
+            $('#receiptModalLabel').text('New Customer Receipt');
+        });
 
         ensureCompanySelected()
             .done(function () {
@@ -644,7 +707,35 @@
         $('#customer-receipts-table').on('click', '.btn-approve-clearance', function () {
             approveClearance($(this).data('id'));
         });
+
+        $('#customer-receipts-table').on('click', '.btn-mark-returned', function () {
+            markChequeReturned($(this).data('id'));
+        });
     });
+
+    function markChequeReturned(id) {
+        var reason = prompt('Reason for return / market not clear (optional):');
+        if (reason === null) {
+            return;
+        }
+
+        if (!confirm('Mark this cheque as returned? A reverse GL entry will be posted and customer balance restored.')) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/customer-receipts/' + id + '/mark-returned',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ reason: reason.trim() || null })
+        })
+            .done(function () {
+                dataTable.ajax.reload(null, false);
+            })
+            .fail(function (xhr) {
+                alert(getApiErrorMessage(xhr, 'Could not mark cheque as returned.'));
+            });
+    }
 
     function approveClearance(id) {
         if (!confirm('Bank has cleared this cheque? Customer balance and bank account will be updated.')) {

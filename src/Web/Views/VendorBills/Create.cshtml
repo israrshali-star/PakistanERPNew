@@ -46,14 +46,17 @@
                 </select>
             </div>
             <div class="col-md-3 col-6">
+                <label class="form-label form-label-sm" for="warehouse-id">Warehouse</label>
+                <select class="form-select form-select-sm select2" id="warehouse-id">
+                    <option value="">— Select —</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
                 <label class="form-label form-label-sm" for="ref-no">Supplier Ref #</label>
                 <input type="text" class="form-control form-control-sm" id="ref-no" maxlength="100" />
             </div>
-            <div class="col-md-2 col-6">
-                <label class="form-label form-label-sm" for="tax-rate">Tax Rate %</label>
-                <input type="number" class="form-control form-control-sm" id="tax-rate" step="0.01" min="0" value="18" />
-            </div>
         </div>
+        <input type="hidden" id="tax-rate" value="18" />
     </div>
 
     <div class="card p-2 mb-2" id="bill-lower-section">
@@ -100,7 +103,7 @@
                     <span class="text-currency" id="total-subtotal">0.00</span>
                 </div>
                 <div class="d-flex justify-content-between mb-2">
-                    <span>Sales Tax <span class="text-muted" id="tax-rate-label">(18%)</span></span>
+                    <span>Sales Tax</span>
                     <span class="text-currency" id="total-tax">0.00</span>
                 </div>
                 <hr class="my-2" />

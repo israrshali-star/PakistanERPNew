@@ -7,7 +7,6 @@ namespace PakistanAccountingERP.Application.Interfaces.Services;
 /// </summary>
 public interface ICompanyService
 {
-    Task<IReadOnlyList<CompanyDto>> GetLoginCompaniesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CompanyDto>> GetUserCompaniesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CompanyListItemDto>> GetManageableCompaniesAsync(CancellationToken cancellationToken = default);
     Task<CompanyDto?> GetCurrentCompanyAsync(CancellationToken cancellationToken = default);

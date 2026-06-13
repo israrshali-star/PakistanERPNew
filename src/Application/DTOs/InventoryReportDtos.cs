@@ -17,9 +17,31 @@ public record StockSummaryReportDto(
     DateTime GeneratedAt,
     DateTime AsOfDate,
     int ItemCount,
-    decimal TotalStockValue,
+    decimal TotalStock,
     decimal TotalCartons,
+    decimal TotalStockValue,
     IReadOnlyList<StockSummaryLineDto> Lines);
+
+public record StackWiseStockLineDto(
+    int ItemId,
+    string ItemCode,
+    string ItemName,
+    string? CategoryName,
+    string? LotNo,
+    string? StackNo,
+    decimal Cartons,
+    decimal Quantity,
+    decimal PurchaseRate,
+    decimal StockValue);
+
+public record StackWiseStockReportDto(
+    DateTime GeneratedAt,
+    DateTime AsOfDate,
+    int LineCount,
+    decimal TotalStock,
+    decimal TotalCartons,
+    decimal TotalStockValue,
+    IReadOnlyList<StackWiseStockLineDto> Lines);
 
 public record LowStockLineDto(
     int ItemId,

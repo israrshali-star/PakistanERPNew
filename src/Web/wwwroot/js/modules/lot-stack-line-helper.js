@@ -63,6 +63,16 @@
         return isNaN(n) ? '0.00' : n.toFixed(2);
     }
 
+    function hasFieldValue($input, numeric) {
+        var value = $input.val();
+        if (numeric) {
+            var n = parseFloat(value);
+            return !isNaN(n) && n !== 0;
+        }
+
+        return value != null && String(value).trim() !== '';
+    }
+
     function getApiErrorMessage(xhr, fallback) {
         var body = xhr && xhr.responseJSON;
         if (!body) {
@@ -273,7 +283,7 @@
             $row.find('.line-stack').val('');
             updateStackDatalist($row, []);
             if (options.mode === 'sales') {
-                $row.find('.line-hs').val('');
+                $row.find('.line-carton-desc').val('');
                 $row.find('.line-unit').text('—');
                 $row.find('.line-price').val('0');
                 $row.find('.line-tax').val(resolveTaxRate(options).toFixed(2));
@@ -290,22 +300,33 @@
                 return;
             }
 
+            var preserve = options && options.preserveLineFields;
             var requiresStock = !isServiceItemType(detail.itemType) && !isCartageItemCode(detail.itemCode);
             var isTaxable = !isNonTaxableDetail(detail);
             $row.data('requires-stock', requiresStock);
             $row.data('is-taxable', isTaxable);
             $row.find('.line-item-id').val(detail.itemId);
             $row.find('.line-item-name').val(detail.itemName);
-            $row.find('.line-desc').val(detail.description || detail.itemName || '');
-            $row.find('.line-stack').val(requiresStock ? (detail.defaultStackNo || '') : '');
+
+            if (!preserve || !hasFieldValue($row.find('.line-desc'), false)) {
+                $row.find('.line-desc').val(detail.description || detail.itemName || '');
+            }
+
+            if (!preserve || !hasFieldValue($row.find('.line-stack'), false)) {
+                $row.find('.line-stack').val(requiresStock ? (detail.defaultStackNo || '') : '');
+            }
+
             updateStackDatalist($row, requiresStock ? detail.stackNos : []);
 
             if (options.mode === 'sales') {
-                $row.find('.line-hs').val(detail.hsCode || '');
                 $row.find('.line-unit').text(detail.unitSymbol || 'PCS');
-                $row.find('.line-price').val((detail.saleRate || 0).toFixed(2));
-                $row.find('.line-tax').val(resolveLineTaxRate(options, detail).toFixed(2));
-            } else {
+                if (!preserve || !hasFieldValue($row.find('.line-price'), true)) {
+                    $row.find('.line-price').val((detail.saleRate || 0).toFixed(2));
+                }
+                if (!preserve || !hasFieldValue($row.find('.line-tax'), true)) {
+                    $row.find('.line-tax').val(resolveLineTaxRate(options, detail).toFixed(2));
+                }
+            } else if (!preserve || !hasFieldValue($row.find('.line-rate'), true)) {
                 $row.find('.line-rate').val((detail.purchaseRate || 0).toFixed(2));
             }
 

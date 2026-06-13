@@ -6,6 +6,8 @@ public interface IVendorBillService
 {
     Task<DataTableResponse<VendorBillListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 
     Task<VendorBillDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default);
@@ -16,6 +18,9 @@ public interface IVendorBillService
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<VendorBillItemLookupDto>> GetItemLookupsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VendorBillWarehouseLookupDto>> GetWarehouseLookupsAsync(
         CancellationToken cancellationToken = default);
 
     Task<VendorBillSaveResult> CreateAsync(

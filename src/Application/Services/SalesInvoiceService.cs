@@ -45,6 +45,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
     public async Task<DataTableResponse<SalesInvoiceListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -54,6 +56,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             .Where(i => i.CompanyId == companyId);
 
         var recordsTotal = await query.CountAsync(cancellationToken);
+
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.Date;
+            query = query.Where(i => i.InvoiceDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value.Date.AddDays(1);
+            query = query.Where(i => i.InvoiceDate < to);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
         {
@@ -213,6 +227,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "Add at least one invoice line.", null);
         }
 
+        if (string.IsNullOrWhiteSpace(request.ShippingAddress))
+        {
+            return new SalesInvoiceSaveResult(false, "Shipping address is required.", null);
+        }
+
         var customer = await _unitOfWork.Repository<Customer>()
             .Query()
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId && c.CompanyId == companyId, cancellationToken);
@@ -297,6 +316,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             InvoiceNumber = invoiceNumber,
             CustomerId = customer.Id,
             BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address,
+            ShippingAddress = request.ShippingAddress.Trim(),
             ProvinceId = request.ProvinceId ?? customer.ProvinceId,
             BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN,
             BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC,
@@ -365,6 +385,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         if (request.Lines.Count == 0)
         {
             return new SalesInvoiceSaveResult(false, "Add at least one invoice line.", null);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ShippingAddress))
+        {
+            return new SalesInvoiceSaveResult(false, "Shipping address is required.", null);
         }
 
         var entity = await _unitOfWork.Repository<SalesInvoice>()
@@ -474,6 +499,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         entity.InvoiceNumber = invoiceNumber;
         entity.CustomerId = customer.Id;
         entity.BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address;
+        entity.ShippingAddress = request.ShippingAddress.Trim();
         entity.ProvinceId = request.ProvinceId ?? customer.ProvinceId;
         entity.BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN;
         entity.BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC;
@@ -565,6 +591,9 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             {
                 ItemId = line.ItemId,
                 HSCode = item.HSCode,
+                CartonDescription = string.IsNullOrWhiteSpace(line.CartonDescription)
+                    ? null
+                    : line.CartonDescription.Trim(),
                 ProductDescription = productDescription,
                 Unit = InventoryUnitDisplay.Format(item.ItemCode, item.UnitSymbol),
                 StackNo = string.IsNullOrWhiteSpace(stackNo) ? null : stackNo,
@@ -623,33 +652,35 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
-        return await _unitOfWork.Repository<SalesInvoice>()
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
             .Query()
             .Where(i => i.Id == id && i.CompanyId == companyId)
-            .Select(i => new SalesInvoiceDetailDto(
+            .Select(i => new
+            {
                 i.Id,
                 i.InvoiceNumber,
                 i.CustomerId,
-                i.Customer.BuyerName,
-                i.Customer.BuyerId,
+                CustomerName = i.Customer.BuyerName,
+                CustomerCode = i.Customer.BuyerId,
                 i.InvoiceDate,
                 i.InvoiceType,
                 i.ScenarioId,
-                i.ScenarioType != null ? i.ScenarioType.Code : null,
+                ScenarioCode = i.ScenarioType != null ? i.ScenarioType.Code : null,
                 i.BuyerAddress,
-                i.Province != null
+                i.ShippingAddress,
+                BuyerProvince = i.Province != null
                     ? i.Province.Name
                     : i.Customer.Province != null
                         ? i.Customer.Province.Name
                         : null,
                 i.BuyerNTN,
                 i.BuyerCNIC,
-                i.Company.CompanyName,
-                i.Company.NTN,
-                i.Company.Address,
-                i.Company.Province != null ? i.Company.Province.Name : null,
-                i.Company.Phone,
-                i.Company.Email,
+                SellerCompanyName = i.Company.CompanyName,
+                SellerNtn = i.Company.NTN,
+                SellerAddress = i.Company.Address,
+                SellerProvince = i.Company.Province != null ? i.Company.Province.Name : null,
+                SellerPhone = i.Company.Phone,
+                SellerEmail = i.Company.Email,
                 i.SubTotal,
                 i.DiscountAmount,
                 i.TaxAmount,
@@ -658,15 +689,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.FbrInvoiceNumber,
                 i.FbrSubmittedAt,
                 i.JournalEntryId,
-                i.JournalEntry != null ? i.JournalEntry.EntryNumber : null,
-                i.FbrSubmittedAt != null,
-                i.Lines.Select(l => new SalesInvoiceLineDto(
+                JournalEntryNumber = i.JournalEntry != null ? i.JournalEntry.EntryNumber : null,
+                Lines = i.Lines.Select(l => new SalesInvoiceLineDto(
                     l.Id,
                     l.ItemId,
                     l.Item.ItemCode,
                     l.Item.ItemName,
                     l.Item.Description,
                     l.HSCode,
+                    l.CartonDescription,
                     l.ProductDescription,
                     l.Unit,
                     l.StackNo,
@@ -678,14 +709,66 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     l.TaxAmount,
                     l.Discount,
                     l.LineTotal)).ToList(),
-                i.Attachments.Select(a => new SalesInvoiceAttachmentDto(
+                Attachments = i.Attachments.Select(a => new SalesInvoiceAttachmentDto(
                     a.Id,
                     a.FileName,
                     a.ContentType,
                     a.FileSizeBytes,
                     a.CreatedAt,
-                    a.CreatedBy)).ToList()))
+                    a.CreatedBy)).ToList()
+            })
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        var customerBalance = await GetCustomerBalanceAsOfAsync(
+            invoice.CustomerId,
+            invoice.InvoiceDate,
+            cancellationToken);
+        var hasFbrPdf = invoice.FbrSubmittedAt != null;
+        var canDownloadInvoicePdf = hasFbrPdf
+            || (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId
+                && invoice.Status == InvoiceStatus.Posted);
+
+        return new SalesInvoiceDetailDto(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            invoice.CustomerId,
+            invoice.CustomerName,
+            invoice.CustomerCode,
+            invoice.InvoiceDate,
+            invoice.InvoiceType,
+            invoice.ScenarioId,
+            invoice.ScenarioCode,
+            invoice.BuyerAddress,
+            invoice.ShippingAddress,
+            invoice.BuyerProvince,
+            invoice.BuyerNTN,
+            invoice.BuyerCNIC,
+            invoice.SellerCompanyName,
+            invoice.SellerNtn,
+            invoice.SellerAddress,
+            invoice.SellerProvince,
+            invoice.SellerPhone,
+            invoice.SellerEmail,
+            invoice.SubTotal,
+            invoice.DiscountAmount,
+            invoice.TaxAmount,
+            invoice.NetTotal,
+            invoice.Status,
+            invoice.FbrInvoiceNumber,
+            invoice.FbrSubmittedAt,
+            invoice.JournalEntryId,
+            invoice.JournalEntryNumber,
+            hasFbrPdf,
+            invoice.Lines,
+            invoice.Attachments,
+            companyId,
+            customerBalance,
+            canDownloadInvoicePdf);
     }
 
     public async Task<SalesInvoiceActionResult> PostAsync(int id, CancellationToken cancellationToken = default)
@@ -765,15 +848,75 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 null);
         }
 
+        var inventoryItemIds = invoice.Lines
+            .Where(l => !cartageItemIdSet.Contains(l.ItemId))
+            .Select(l => l.ItemId)
+            .Distinct()
+            .ToList();
+
+        var inventoryItems = inventoryItemIds.Count > 0
+            ? await _unitOfWork.Repository<Item>()
+                .Query(asNoTracking: false)
+                .Where(i => i.CompanyId == companyId && inventoryItemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken)
+            : new Dictionary<int, Item>();
+
+        decimal cogsAmount = 0m;
+        foreach (var line in invoice.Lines)
+        {
+            if (cartageItemIdSet.Contains(line.ItemId))
+            {
+                continue;
+            }
+
+            if (!inventoryItems.TryGetValue(line.ItemId, out var item)
+                || item.ItemType == ItemType.Service)
+            {
+                continue;
+            }
+
+            var quantity = Math.Round(line.Quantity, 2);
+            if (quantity <= 0m)
+            {
+                continue;
+            }
+
+            cogsAmount += Math.Round(quantity * Math.Round(item.PurchaseRate, 2), 2);
+        }
+
+        cogsAmount = Math.Round(cogsAmount, 2);
+
+        if (cogsAmount > 0m)
+        {
+            if (accounts.CogsAccountId is null)
+            {
+                return new SalesInvoiceActionResult(
+                    false,
+                    $"Chart of account {CostOfGoodsSold} (Cost of Goods Sold) not found.",
+                    null);
+            }
+
+            if (accounts.InventoryAccountId is null)
+            {
+                return new SalesInvoiceActionResult(
+                    false,
+                    $"Chart of account {InventoryAsset} (Inventory Asset) not found.",
+                    null);
+            }
+        }
+
         var journalLines = BuildJournalLines(
             invoice.InvoiceType,
             accounts.ArAccountId,
             accounts.RevenueAccountId,
             accounts.TaxAccountId,
             accounts.CartageAccountId,
+            accounts.CogsAccountId,
+            accounts.InventoryAccountId,
             goodsSalesAmount,
             goodsTaxAmount,
             cartageAmount,
+            cogsAmount,
             netTotal);
 
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
@@ -805,19 +948,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             await _unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(journalLines, cancellationToken);
 
-            var inventoryItemIds = invoice.Lines
-                .Where(l => !cartageItemIdSet.Contains(l.ItemId))
-                .Select(l => l.ItemId)
-                .Distinct()
-                .ToList();
-
-            if (inventoryItemIds.Count > 0)
+            if (inventoryItems.Count > 0)
             {
-                var inventoryItems = await _unitOfWork.Repository<Item>()
-                    .Query(asNoTracking: false)
-                    .Where(i => i.CompanyId == companyId && inventoryItemIds.Contains(i.Id))
-                    .ToDictionaryAsync(i => i.Id, cancellationToken);
-
                 var goodsLines = invoice.Lines
                     .Where(l => !cartageItemIdSet.Contains(l.ItemId)
                                 && inventoryItems.TryGetValue(l.ItemId, out var item)
@@ -1290,7 +1422,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 BuyerName = i.Customer.BuyerName,
                 BuyerNtn = i.BuyerNTN ?? i.Customer.NTN,
                 BuyerCnic = i.BuyerCNIC ?? i.Customer.CNIC,
-                BuyerAddress = i.BuyerAddress ?? i.Customer.Address,
+                BuyerAddress = i.ShippingAddress,
                 BuyerProvince = i.Province != null
                     ? i.Province.Name
                     : (i.Customer.Province != null ? i.Customer.Province.Name : null),
@@ -1298,6 +1430,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 {
                     l.ProductDescription,
                     ItemDescription = l.Item.Description,
+                    l.CartonDescription,
                     l.LotNo,
                     l.StackNo,
                     l.Cartons,
@@ -1314,9 +1447,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var lines = invoice.Lines.Select((l, index) =>
         {
-            var description = !string.IsNullOrWhiteSpace(l.ProductDescription)
-                ? l.ProductDescription
-                : (l.ItemDescription ?? "—");
+            var description = companyId == TradeInvoiceLayout.TradeInvoiceCompanyId
+                ? TradeInvoiceLayout.BuildDescription(
+                    l.ProductDescription,
+                    l.ItemDescription,
+                    l.LotNo,
+                    l.StackNo)
+                : !string.IsNullOrWhiteSpace(l.ProductDescription)
+                    ? l.ProductDescription
+                    : (l.ItemDescription ?? "—");
 
             return new DeliveryChallanPrintLineDto(
                 index + 1,
@@ -1325,7 +1464,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 l.StackNo,
                 Math.Round(l.Cartons, 2),
                 Math.Round(l.Quantity, 2),
-                l.Unit);
+                l.Unit,
+                l.CartonDescription);
         }).ToList();
 
         return new DeliveryChallanPrintDto(
@@ -1340,7 +1480,145 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.BuyerNtn,
             invoice.BuyerCnic,
             DateTime.Now,
+            lines,
+            companyId);
+    }
+
+    public async Task<TradeInvoicePrintDto?> GetTradeInvoicePrintDataAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out _))
+        {
+            return null;
+        }
+
+        if (companyId != TradeInvoiceLayout.TradeInvoiceCompanyId)
+        {
+            return null;
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.Id == id
+                        && i.CompanyId == companyId
+                        && i.Status == InvoiceStatus.Posted)
+            .Select(i => new
+            {
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                i.CustomerId,
+                SellerName = i.Company.CompanyName,
+                CustomerName = i.Customer.BuyerName,
+                i.SubTotal,
+                i.DiscountAmount,
+                i.TaxAmount,
+                i.NetTotal,
+                Lines = i.Lines.Select(l => new
+                {
+                    l.ProductDescription,
+                    ItemDescription = l.Item.Description,
+                    l.CartonDescription,
+                    l.LotNo,
+                    l.StackNo,
+                    l.Cartons,
+                    l.Quantity,
+                    l.Price,
+                    l.Discount,
+                    l.TaxRate
+                }).ToList()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        var lines = invoice.Lines.Select(l =>
+        {
+            var amount = TradeInvoiceLayout.LineAmountExTax(l.Quantity, l.Price, l.Discount);
+            return new TradeInvoicePrintLineDto(
+                TradeInvoiceLayout.BuildDescription(
+                    l.ProductDescription,
+                    l.ItemDescription,
+                    l.LotNo,
+                    l.StackNo),
+                l.CartonDescription,
+                Math.Round(l.Cartons, 2),
+                Math.Round(l.Quantity, 2),
+                Math.Round(l.Price, 2),
+                amount);
+        }).ToList();
+
+        var taxableTotal = Math.Round(invoice.SubTotal - invoice.DiscountAmount, 2);
+        var taxRateDisplay = TradeInvoiceLayout.ResolveTaxRateDisplay(
+            taxableTotal,
+            invoice.TaxAmount,
+            invoice.Lines.Select(l => l.TaxRate).ToList());
+        var customerBalance = await GetCustomerBalanceAsOfAsync(
+            invoice.CustomerId,
+            invoice.InvoiceDate,
+            cancellationToken);
+
+        return new TradeInvoicePrintDto(
+            invoice.InvoiceNumber,
+            invoice.InvoiceDate,
+            invoice.SellerName,
+            invoice.CustomerName,
+            Math.Round(customerBalance, 2),
+            taxableTotal,
+            Math.Round(invoice.TaxAmount, 2),
+            taxRateDisplay,
+            Math.Round(invoice.NetTotal, 2),
+            DateTime.Now,
             lines);
+    }
+
+    private async Task<decimal> GetCustomerBalanceAsOfAsync(
+        int customerId,
+        DateTime asOfDate,
+        CancellationToken cancellationToken)
+    {
+        var asOf = asOfDate.Date;
+
+        var opening = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.Id == customerId)
+            .Select(c => c.OpeningBalance)
+            .FirstAsync(cancellationToken);
+
+        var invoices = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(si => si.CustomerId == customerId
+                         && si.Status == InvoiceStatus.Posted
+                         && si.InvoiceDate <= asOf)
+            .Select(si => new { si.InvoiceType, si.NetTotal })
+            .ToListAsync(cancellationToken);
+
+        var invoiceMovement = invoices.Sum(i =>
+            i.InvoiceType == InvoiceType.CreditNote ? -i.NetTotal : i.NetTotal);
+
+        var receiptTotal = await _unitOfWork.Repository<CustomerReceipt>()
+            .Query()
+            .Where(r =>
+                r.CustomerId == customerId
+                && r.ReceiptDate <= asOf
+                && (r.PaymentMethod != PaymentMethod.Cheque
+                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null)))
+            .SumAsync(r => r.Amount, cancellationToken);
+
+        var bankEffect = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CustomerId == customerId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null
+                && bt.TransactionDate <= asOf)
+            .SumAsync(bt => bt.CustomerBalanceEffect, cancellationToken);
+
+        return opening + invoiceMovement - receiptTotal + bankEffect;
     }
 
     private async Task<(bool Success, string? Message, FbrSubmissionRequest? Request, string? FbrPostUrl, string? ApiToken)>
@@ -1539,7 +1817,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         return true;
     }
 
-    private async Task<(bool Success, string? Message, int ArAccountId, int RevenueAccountId, int TaxAccountId, int? CartageAccountId)>
+    private async Task<(
+        bool Success,
+        string? Message,
+        int ArAccountId,
+        int RevenueAccountId,
+        int TaxAccountId,
+        int? CartageAccountId,
+        int? CogsAccountId,
+        int? InventoryAccountId)>
         ResolvePostingAccountsAsync(
             int companyId,
             InvoiceType invoiceType,
@@ -1548,6 +1834,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
         var tax = await GetAccountIdAsync(companyId, SalesTaxPayable, cancellationToken);
         var cartage = await GetAccountIdAsync(companyId, CartagePayable, cancellationToken);
+        var cogs = await GetAccountIdAsync(companyId, CostOfGoodsSold, cancellationToken);
+        var inventory = await GetAccountIdAsync(companyId, InventoryAsset, cancellationToken);
 
         var revenueNumber = invoiceType == InvoiceType.CreditNote
             ? SalesReturns
@@ -1557,20 +1845,20 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         if (ar is null)
         {
-            return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0, 0, null);
+            return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0, 0, null, null, null);
         }
 
         if (tax is null)
         {
-            return (false, $"Chart of account {SalesTaxPayable} (Sales Tax Payable) not found.", 0, 0, 0, null);
+            return (false, $"Chart of account {SalesTaxPayable} (Sales Tax Payable) not found.", 0, 0, 0, null, null, null);
         }
 
         if (revenue is null)
         {
-            return (false, $"Chart of account {revenueNumber} not found.", 0, 0, 0, null);
+            return (false, $"Chart of account {revenueNumber} not found.", 0, 0, 0, null, null, null);
         }
 
-        return (true, null, ar.Value, revenue.Value, tax.Value, cartage);
+        return (true, null, ar.Value, revenue.Value, tax.Value, cartage, cogs, inventory);
     }
 
     private async Task<int?> GetAccountIdAsync(
@@ -1591,9 +1879,12 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         int revenueAccountId,
         int taxAccountId,
         int? cartageAccountId,
+        int? cogsAccountId,
+        int? inventoryAccountId,
         decimal salesAmount,
         decimal taxAmount,
         decimal cartageAmount,
+        decimal cogsAmount,
         decimal netTotal)
     {
         var lines = new List<JournalEntryLine>();
@@ -1640,6 +1931,24 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     Memo = "Cartage Payable"
                 });
             }
+
+            if (cogsAmount > 0m && cogsAccountId.HasValue && inventoryAccountId.HasValue)
+            {
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = inventoryAccountId.Value,
+                    Debit = cogsAmount,
+                    Credit = 0m,
+                    Memo = "Inventory Asset"
+                });
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = cogsAccountId.Value,
+                    Debit = 0m,
+                    Credit = cogsAmount,
+                    Memo = "Cost of Goods Sold"
+                });
+            }
         }
         else
         {
@@ -1681,6 +1990,24 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     Debit = 0m,
                     Credit = cartageAmount,
                     Memo = "Cartage Payable"
+                });
+            }
+
+            if (cogsAmount > 0m && cogsAccountId.HasValue && inventoryAccountId.HasValue)
+            {
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = cogsAccountId.Value,
+                    Debit = cogsAmount,
+                    Credit = 0m,
+                    Memo = "Cost of Goods Sold"
+                });
+                lines.Add(new JournalEntryLine
+                {
+                    ChartOfAccountId = inventoryAccountId.Value,
+                    Debit = 0m,
+                    Credit = cogsAmount,
+                    Memo = "Inventory Asset"
                 });
             }
         }

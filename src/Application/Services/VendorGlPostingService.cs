@@ -34,6 +34,7 @@ public partial class VendorGlPostingService : IVendorGlPostingService
         int vendorId,
         string vendorName,
         decimal openingBalance,
+        DateTime? entryDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -65,7 +66,7 @@ public partial class VendorGlPostingService : IVendorGlPostingService
 
         return await CreatePostedJournalAsync(
             companyId,
-            DateTime.UtcNow.Date,
+            (entryDate ?? DateTime.UtcNow).Date,
             $"Vendor opening balance — {vendorName.Trim()}",
             ReferenceTypes.Vendor,
             vendorId,
@@ -291,7 +292,7 @@ public partial class VendorGlPostingService : IVendorGlPostingService
         ResolveOpeningBalanceAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
         var ap = await GetAccountIdAsync(companyId, AccountsPayable, cancellationToken);
-        var equity = await GetAccountIdAsync(companyId, RetainedEarnings, cancellationToken);
+        var equity = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
 
         if (ap is null)
         {
@@ -300,7 +301,7 @@ public partial class VendorGlPostingService : IVendorGlPostingService
 
         if (equity is null)
         {
-            return (false, $"Chart of account {RetainedEarnings} (Retained Earnings) not found.", 0, 0);
+            return (false, $"Chart of account {OpeningBalanceEquity} (Opening Balance Equity) not found.", 0, 0);
         }
 
         return (true, null, ap.Value, equity.Value);

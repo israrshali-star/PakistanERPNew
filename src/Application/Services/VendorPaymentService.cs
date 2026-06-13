@@ -41,6 +41,8 @@ public partial class VendorPaymentService : IVendorPaymentService
 
     public async Task<DataTableResponse<VendorPaymentListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -50,6 +52,18 @@ public partial class VendorPaymentService : IVendorPaymentService
             .Where(p => p.CompanyId == companyId);
 
         var recordsTotal = await query.CountAsync(cancellationToken);
+
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.Date;
+            query = query.Where(p => p.PaymentDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value.Date.AddDays(1);
+            query = query.Where(p => p.PaymentDate < to);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
         {
@@ -489,7 +503,7 @@ public partial class VendorPaymentService : IVendorPaymentService
             3 => desc ? query.OrderByDescending(p => p.Amount) : query.OrderBy(p => p.Amount),
             4 => desc ? query.OrderByDescending(p => p.PaymentMethod) : query.OrderBy(p => p.PaymentMethod),
             5 => desc ? query.OrderByDescending(p => p.Bank!.BankName) : query.OrderBy(p => p.Bank!.BankName),
-            _ => query.OrderByDescending(p => p.PaymentDate).ThenByDescending(p => p.Id)
+            _ => query.OrderBy(p => p.PaymentDate).ThenBy(p => p.Id)
         };
     }
 

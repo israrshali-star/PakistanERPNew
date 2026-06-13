@@ -7,55 +7,83 @@
 <div class="auth-card">
     <div class="auth-header text-center mb-4">
         <h1 class="auth-title">Pakistan Accounting ERP</h1>
-        <p class="text-muted mb-0">Sign in and choose which company to work in</p>
+        <p class="text-muted mb-0">
+            @if (Model.RequireCompanySelection)
+            {
+                @:Select the company you want to work in
+            }
+            else
+            {
+                @:Sign in to your account
+            }
+        </p>
     </div>
 
     <form asp-action="Login" asp-controller="Account" method="post">
         <input type="hidden" asp-for="ReturnUrl" />
+        <input type="hidden" asp-for="RequireCompanySelection" />
         <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-        <div class="mb-3">
-            <label asp-for="CompanyId" class="form-label"></label>
-            @if (Model.Companies.Count == 0)
-            {
-                <div class="alert alert-warning mb-0 py-2">No companies are configured. Contact an administrator.</div>
-            }
-            else
-            {
-                <select asp-for="CompanyId" class="form-select" required>
-                    <option value="">— Select company —</option>
-                    @foreach (var company in Model.Companies)
-                    {
-                        <option value="@company.Id">
-                            @company.CompanyName@(company.IsDefault ? " (Default)" : "")
-                        </option>
-                    }
-                </select>
-                <span asp-validation-for="CompanyId" class="text-danger"></span>
-            }
-        </div>
+        @if (Model.RequireCompanySelection)
+        {
+            <div class="alert alert-info py-2 small">
+                Signed in as <strong>@Model.Email</strong>. Choose a company to continue.
+            </div>
 
-        <div class="mb-3">
-            <label asp-for="Email" class="form-label"></label>
-            <input asp-for="Email" class="form-control" autocomplete="username" />
-            <span asp-validation-for="Email" class="text-danger"></span>
-        </div>
+            <div class="mb-3">
+                <label asp-for="CompanyId" class="form-label"></label>
+                @if (Model.Companies.Count == 0)
+                {
+                    <div class="alert alert-warning mb-0 py-2">No companies are assigned to your account. Contact an administrator.</div>
+                }
+                else
+                {
+                    <select asp-for="CompanyId" class="form-select" required>
+                        <option value="">— Select company —</option>
+                        @foreach (var company in Model.Companies)
+                        {
+                            <option value="@company.Id">
+                                @company.CompanyName@(company.IsDefault ? " (Default)" : "")
+                            </option>
+                        }
+                    </select>
+                    <span asp-validation-for="CompanyId" class="text-danger"></span>
+                }
+            </div>
 
-        <div class="mb-3">
-            <label asp-for="Password" class="form-label"></label>
-            <input asp-for="Password" class="form-control" autocomplete="current-password" />
-            <span asp-validation-for="Password" class="text-danger"></span>
-        </div>
+            <input type="hidden" asp-for="Email" />
+            <input type="hidden" asp-for="Password" />
+            <input type="hidden" asp-for="RememberMe" />
+        }
+        else
+        {
+            <div class="mb-3">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" autocomplete="username" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
 
-        <div class="mb-3 form-check">
-            <input asp-for="RememberMe" class="form-check-input" />
-            <label asp-for="RememberMe" class="form-check-label"></label>
-        </div>
+            <div class="mb-3">
+                <label asp-for="Password" class="form-label"></label>
+                <input asp-for="Password" class="form-control" autocomplete="current-password" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </div>
 
-        <button type="submit" class="btn btn-primary w-100" @(Model.Companies.Count == 0 ? "disabled" : null)>Sign In</button>
+            <div class="mb-3 form-check">
+                <input asp-for="RememberMe" class="form-check-input" />
+                <label asp-for="RememberMe" class="form-check-label"></label>
+            </div>
+        }
+
+        <button type="submit" class="btn btn-primary w-100" @(Model.RequireCompanySelection && Model.Companies.Count == 0 ? "disabled" : null)>
+            @(Model.RequireCompanySelection ? "Continue" : "Sign In")
+        </button>
     </form>
 
-    <p class="text-center text-muted small mt-4 mb-0">
-        Demo: admin@demo.com / Admin@123
-    </p>
+    @if (!Model.RequireCompanySelection)
+    {
+        <p class="text-center text-muted small mt-4 mb-0">
+            Demo: admin@demo.com / Admin@123
+        </p>
+    }
 </div>

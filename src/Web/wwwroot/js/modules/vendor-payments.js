@@ -117,7 +117,8 @@
         $element.select2({
             theme: 'bootstrap-5',
             width: '100%',
-            dropdownParent: $('#paymentModal')
+            dropdownParent: $('#paymentModal'),
+            minimumResultsForSearch: 0
         });
     }
 
@@ -182,6 +183,19 @@
         });
     }
 
+    function initDefaultDateFilters() {
+        var today = new Date();
+        var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        $('#filter-from').val(toInputDate(monthStart));
+        $('#filter-to').val(toInputDate(today));
+    }
+
+    function reloadDataTable() {
+        if (dataTable) {
+            dataTable.ajax.reload();
+        }
+    }
+
     function initDataTable() {
         if (dataTable) {
             dataTable.ajax.reload();
@@ -193,13 +207,17 @@
             serverSide: true,
             ajax: {
                 url: '/api/vendor-payments/datatable',
+                data: function (d) {
+                    d.fromDate = $('#filter-from').val();
+                    d.toDate = $('#filter-to').val();
+                },
                 error: function (xhr) {
                     if (xhr.status === 400) {
                         showCompanyWarning(getApiErrorMessage(xhr, 'Select a company first.'));
                     }
                 }
             },
-            order: [[2, 'desc']],
+            order: [[2, 'asc']],
             columns: [
                 { data: 'paymentNumber' },
                 { data: 'vendorName' },
@@ -365,6 +383,19 @@
         }
 
         paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+
+        initDefaultDateFilters();
+        $('#btn-apply-filter').on('click', reloadDataTable);
+        $('#filter-from, #filter-to').on('change', reloadDataTable);
+
+        if ($.fn.select2) {
+            $('#payment-method').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('#paymentModal'),
+                minimumResultsForSearch: 0
+            });
+        }
 
         ensureCompanySelected()
             .done(function () {

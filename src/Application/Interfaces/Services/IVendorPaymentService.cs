@@ -6,6 +6,8 @@ public interface IVendorPaymentService
 {
     Task<DataTableResponse<VendorPaymentListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 
     Task<VendorPaymentDto?> GetByIdAsync(int id, CancellationToken cancellationToken = default);

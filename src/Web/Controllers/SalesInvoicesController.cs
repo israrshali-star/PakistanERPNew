@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
+using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Web.Authorization;
 
@@ -121,20 +123,26 @@ public class SalesInvoicesApiController : ControllerBase
     private readonly ISalesInvoiceAttachmentService _attachmentService;
     private readonly IStackLotInventoryService _stackLotInventory;
     private readonly ISalesInvoicePdfService _salesInvoicePdfService;
+    private readonly ITradeInvoicePdfService _tradeInvoicePdfService;
     private readonly IDeliveryChallanPdfService _deliveryChallanPdfService;
+    private readonly ICurrentCompanyService _currentCompany;
 
     public SalesInvoicesApiController(
         ISalesInvoiceService salesInvoiceService,
         ISalesInvoiceAttachmentService attachmentService,
         IStackLotInventoryService stackLotInventory,
         ISalesInvoicePdfService salesInvoicePdfService,
-        IDeliveryChallanPdfService deliveryChallanPdfService)
+        ITradeInvoicePdfService tradeInvoicePdfService,
+        IDeliveryChallanPdfService deliveryChallanPdfService,
+        ICurrentCompanyService currentCompany)
     {
         _salesInvoiceService = salesInvoiceService;
         _attachmentService = attachmentService;
         _stackLotInventory = stackLotInventory;
         _salesInvoicePdfService = salesInvoicePdfService;
+        _tradeInvoicePdfService = tradeInvoicePdfService;
         _deliveryChallanPdfService = deliveryChallanPdfService;
+        _currentCompany = currentCompany;
     }
 
     [HttpGet("datatable")]
@@ -151,7 +159,14 @@ public class SalesInvoicesApiController : ControllerBase
                 OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 2,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
-            var result = await _salesInvoiceService.GetDataTableAsync(request, cancellationToken);
+            DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
+            DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+
+            var result = await _salesInvoiceService.GetDataTableAsync(
+                request,
+                fromDate,
+                toDate,
+                cancellationToken);
             return Ok(new
             {
                 draw = result.Draw,
@@ -363,6 +378,20 @@ public class SalesInvoicesApiController : ControllerBase
     {
         try
         {
+            var companyId = _currentCompany.GetRequiredCompanyId();
+            if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
+            {
+                var tradeData = await _salesInvoiceService.GetTradeInvoicePrintDataAsync(id, cancellationToken);
+                if (tradeData is null)
+                {
+                    return BadRequest(new { message = "PDF is available only for posted invoices." });
+                }
+
+                var tradePdfBytes = _tradeInvoicePdfService.GeneratePdf(tradeData);
+                var tradeFileName = $"{tradeData.InvoiceNumber}.pdf".Replace('/', '-');
+                return File(tradePdfBytes, "application/pdf", tradeFileName);
+            }
+
             var printData = await _salesInvoiceService.GetPrintDataAsync(id, cancellationToken);
             if (printData is null)
             {

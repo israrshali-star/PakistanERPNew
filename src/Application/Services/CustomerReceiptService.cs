@@ -20,6 +20,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
     private readonly IAuditService _auditService;
     private readonly ICustomerGlPostingService _customerGlPosting;
     private readonly IBankGlPostingService _bankGlPosting;
+    private readonly IBankTransactionService _bankTransactionService;
     private readonly IBankService _bankService;
     private readonly ILogger<CustomerReceiptService> _logger;
 
@@ -30,6 +31,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         IAuditService auditService,
         ICustomerGlPostingService customerGlPosting,
         IBankGlPostingService bankGlPosting,
+        IBankTransactionService bankTransactionService,
         IBankService bankService,
         ILogger<CustomerReceiptService> logger)
     {
@@ -39,12 +41,15 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         _auditService = auditService;
         _customerGlPosting = customerGlPosting;
         _bankGlPosting = bankGlPosting;
+        _bankTransactionService = bankTransactionService;
         _bankService = bankService;
         _logger = logger;
     }
 
     public async Task<DataTableResponse<CustomerReceiptListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -54,6 +59,18 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             .Where(r => r.CompanyId == companyId);
 
         var recordsTotal = await query.CountAsync(cancellationToken);
+
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.Date;
+            query = query.Where(r => r.ReceiptDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value.Date.AddDays(1);
+            query = query.Where(r => r.ReceiptDate < to);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
         {
@@ -96,7 +113,10 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                     r.ClearedAt,
                     r.IsDeposited,
                     r.ChequeDate,
-                    today)))
+                    today),
+                r.PaymentMethod == PaymentMethod.Cheque
+                    && r.ChequeBankType == ChequeBankType.OtherBank
+                    && !CustomerReceiptBalanceRules.IsChequeReturned(r.Status)))
             .ToListAsync(cancellationToken);
 
         return new DataTableResponse<CustomerReceiptListItemDto>(
@@ -130,7 +150,8 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                 r.Notes,
                 r.Status,
                 r.IsDeposited,
-                r.ClearedAt))
+                r.ClearedAt,
+                r.ReturnedAt))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -236,7 +257,9 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             await _unitOfWork.Repository<CustomerReceipt>().AddAsync(entity, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            var glResult = await _customerGlPosting.PostCustomerReceiptAsync(entity, cancellationToken);
+            var glResult = await _customerGlPosting.PostCustomerReceiptAsync(
+                entity,
+                cancellationToken: cancellationToken);
             if (!glResult.Success)
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
@@ -288,6 +311,11 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         if (entity is null)
         {
             return new CustomerReceiptSaveResult(false, "Receipt not found.", null);
+        }
+
+        if (CustomerReceiptBalanceRules.IsChequeReturned(entity.Status))
+        {
+            return new CustomerReceiptSaveResult(false, "Returned cheques cannot be edited.", null);
         }
 
         if (entity.IsDeposited || CustomerReceiptBalanceRules.IsChequeCleared(entity.Status, entity.ClearedAt))
@@ -344,7 +372,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                 previousBankId,
                 previousPaymentMethod,
                 previousChequeBankType,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             if (!glResult.Success)
             {
@@ -392,6 +420,11 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                 false,
                 "This cheque has been deposited or cleared and cannot be deleted.",
                 null);
+        }
+
+        if (CustomerReceiptBalanceRules.IsChequeReturned(entity.Status))
+        {
+            return new CustomerReceiptSaveResult(false, "Returned cheques cannot be deleted.", null);
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -465,20 +498,30 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                 null);
         }
 
-        var glRepair = await EnsureChequeGlChainAsync(entity, cancellationToken);
-        if (!glRepair.Success)
+        if (!await IsValidClearanceBankCoaAsync(companyId, bankChartOfAccountId.Value, cancellationToken))
         {
-            return new CustomerReceiptSaveResult(false, glRepair.Message, null);
+            return new CustomerReceiptSaveResult(
+                false,
+                "Selected bank account is not valid for cheque clearance.",
+                null);
         }
 
         var now = DateTime.UtcNow;
-        entity.Status = CustomerReceiptStatus.Cleared;
-        entity.ClearedAt = now;
-        entity.ClearedBy = _currentUser.UserName;
 
         try
         {
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            var glRepair = await EnsureChequeGlChainAsync(entity, cancellationToken);
+            if (!glRepair.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new CustomerReceiptSaveResult(false, glRepair.Message, null);
+            }
+
+            entity.Status = CustomerReceiptStatus.Cleared;
+            entity.ClearedAt = now;
+            entity.ClearedBy = _currentUser.UserName;
 
             _unitOfWork.Repository<CustomerReceipt>().Update(entity);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -513,6 +556,90 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             ? "Cheque cleared. Customer balance updated (bank was credited on deposit)."
             : "Cheque cleared. Customer balance and bank account updated.";
         return new CustomerReceiptSaveResult(true, message, dto);
+    }
+
+    public async Task<CustomerReceiptSaveResult> MarkChequeReturnedAsync(
+        int id,
+        CustomerReceiptMarkReturnedRequest? request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return companyError!;
+        }
+
+        var entity = await _unitOfWork.Repository<CustomerReceipt>()
+            .Query(asNoTracking: false)
+            .Include(r => r.DepositedBankTransaction)
+            .FirstOrDefaultAsync(r => r.Id == id && r.CompanyId == companyId, cancellationToken);
+
+        if (entity is null)
+        {
+            return new CustomerReceiptSaveResult(false, "Receipt not found.", null);
+        }
+
+        if (entity.PaymentMethod != PaymentMethod.Cheque)
+        {
+            return new CustomerReceiptSaveResult(false, "Only cheque receipts can be marked as returned.", null);
+        }
+
+        if (entity.ChequeBankType != ChequeBankType.OtherBank)
+        {
+            return new CustomerReceiptSaveResult(false, "Only other-bank cheques can be marked as returned from clearing.", null);
+        }
+
+        if (CustomerReceiptBalanceRules.IsChequeReturned(entity.Status))
+        {
+            return new CustomerReceiptSaveResult(false, "This cheque has already been marked as returned.", null);
+        }
+
+        var now = DateTime.UtcNow;
+        var reason = request?.Reason?.Trim();
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            var glResult = await _customerGlPosting.PostChequeReturnAsync(entity, cancellationToken);
+            if (!glResult.Success)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return new CustomerReceiptSaveResult(false, glResult.Message, null);
+            }
+
+            entity.Status = CustomerReceiptStatus.Returned;
+            entity.ReturnedAt = now;
+            entity.ReturnedBy = _currentUser.UserName;
+            entity.ClearedAt = null;
+            entity.ClearedBy = null;
+            entity.IsDeposited = false;
+            entity.DepositedBankTransactionId = null;
+
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                entity.Notes = string.IsNullOrWhiteSpace(entity.Notes)
+                    ? $"Returned: {reason}"
+                    : $"{entity.Notes.Trim()} | Returned: {reason}";
+            }
+
+            _unitOfWork.Repository<CustomerReceipt>().Update(entity);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to mark cheque returned for receipt {ReceiptId}", id);
+            return new CustomerReceiptSaveResult(false, "Could not mark cheque as returned.", null);
+        }
+
+        await TryAuditAsync("MarkChequeReturned", entity.Id.ToString(), null, reason, cancellationToken);
+
+        var dto = await GetByIdAsync(entity.Id, cancellationToken);
+        return new CustomerReceiptSaveResult(
+            true,
+            "Cheque marked as returned. Reverse GL entry posted and customer balance restored.",
+            dto);
     }
 
     private async Task<CustomerReceiptSaveResult> ValidateSaveRequestAsync(
@@ -692,7 +819,10 @@ public partial class CustomerReceiptService : ICustomerReceiptService
 
         if (!await HasPostedReceiptJournalAsync(companyId, entity.Id, cancellationToken))
         {
-            var receiveGl = await _customerGlPosting.PostCustomerReceiptAsync(entity, cancellationToken);
+            var receiveGl = await _customerGlPosting.PostCustomerReceiptAsync(
+                entity,
+                postUnclearedOtherBankCheque: true,
+                cancellationToken);
             if (!receiveGl.Success)
             {
                 return (false, receiveGl.Message);
@@ -713,6 +843,15 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         }
 
         return (true, null);
+    }
+
+    private async Task<bool> IsValidClearanceBankCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        var depositCoas = await _bankTransactionService.GetDepositCoaLookupsAsync(cancellationToken);
+        return depositCoas.Any(c => c.Id == chartOfAccountId);
     }
 
     private async Task<bool> HasPostedReceiptJournalAsync(
@@ -741,6 +880,11 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         if (paymentMethod != PaymentMethod.Cheque)
         {
             return "—";
+        }
+
+        if (CustomerReceiptBalanceRules.IsChequeReturned(status))
+        {
+            return "Returned (Not Cleared)";
         }
 
         if (chequeBankType == ChequeBankType.SameBank)
@@ -780,7 +924,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             5 => desc ? query.OrderByDescending(r => r.ChequeNumber) : query.OrderBy(r => r.ChequeNumber),
             6 => desc ? query.OrderByDescending(r => r.ChequeDate) : query.OrderBy(r => r.ChequeDate),
             7 => desc ? query.OrderByDescending(r => r.IsDeposited) : query.OrderBy(r => r.IsDeposited),
-            _ => query.OrderByDescending(r => r.ReceiptDate).ThenByDescending(r => r.Id)
+            _ => query.OrderBy(r => r.ReceiptDate).ThenBy(r => r.Id)
         };
     }
 

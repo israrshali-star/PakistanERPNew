@@ -36,6 +36,25 @@
             });
     }
 
+    function toInputDate(date) {
+        return date.getFullYear() + '-' +
+            String(date.getMonth() + 1).padStart(2, '0') + '-' +
+            String(date.getDate()).padStart(2, '0');
+    }
+
+    function initDefaultDateFilters() {
+        var today = new Date();
+        var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        $('#filter-from').val(toInputDate(monthStart));
+        $('#filter-to').val(toInputDate(today));
+    }
+
+    function reloadDataTable() {
+        if (dataTable) {
+            dataTable.ajax.reload();
+        }
+    }
+
     function initDataTable() {
         if (dataTable) {
             return;
@@ -47,6 +66,10 @@
             ajax: {
                 url: '/api/vendor-bills/datatable',
                 type: 'GET',
+                data: function (d) {
+                    d.fromDate = $('#filter-from').val();
+                    d.toDate = $('#filter-to').val();
+                },
                 error: function (xhr) {
                     alert(getApiErrorMessage(xhr, 'Failed to load bills. Select a company from the top navbar.'));
                 }
@@ -105,7 +128,7 @@
                     }
                 }
             ],
-            order: [[2, 'desc']],
+            order: [[2, 'asc']],
             pageLength: 25,
             language: { emptyTable: 'No vendor bills yet.' }
         });
@@ -114,6 +137,10 @@
     $(function () {
         canEdit = $('#bill-permissions').data('can-edit') === true;
         canDelete = $('#bill-permissions').data('can-delete') === true;
+
+        initDefaultDateFilters();
+        $('#btn-apply-filter').on('click', reloadDataTable);
+        $('#filter-from, #filter-to').on('change', reloadDataTable);
 
         $.getJSON('/api/company/current')
             .done(initDataTable)

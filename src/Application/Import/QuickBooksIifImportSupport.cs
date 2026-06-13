@@ -54,6 +54,7 @@ internal static partial class QuickBooksIifImportSupport
         int customerId,
         string buyerName,
         decimal openingBalance,
+        DateTime entryDate,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -93,7 +94,7 @@ internal static partial class QuickBooksIifImportSupport
         return await CreatePostedJournalAsync(
             unitOfWork,
             companyId,
-            now.Date,
+            entryDate.Date,
             $"Customer opening balance — {buyerName}",
             ReferenceTypes.Customer,
             customerId,
@@ -108,6 +109,7 @@ internal static partial class QuickBooksIifImportSupport
         int vendorId,
         string vendorName,
         decimal openingBalance,
+        DateTime entryDate,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -147,7 +149,7 @@ internal static partial class QuickBooksIifImportSupport
         return await CreatePostedJournalAsync(
             unitOfWork,
             companyId,
-            now.Date,
+            entryDate.Date,
             $"Vendor opening balance — {vendorName}",
             ReferenceTypes.Vendor,
             vendorId,

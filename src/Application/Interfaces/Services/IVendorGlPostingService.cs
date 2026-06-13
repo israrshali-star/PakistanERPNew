@@ -9,6 +9,7 @@ public interface IVendorGlPostingService
         int vendorId,
         string vendorName,
         decimal openingBalance,
+        DateTime? entryDate = null,
         CancellationToken cancellationToken = default);
 
     Task<GlPostingResult> RemoveVendorOpeningBalanceAsync(

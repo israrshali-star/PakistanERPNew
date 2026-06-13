@@ -8,6 +8,10 @@ public interface IInventoryReportService
         StockSummaryReportRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<StackWiseStockReportDto> GetStackWiseStockAsync(
+        StockSummaryReportRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<LowStockReportDto> GetLowStockReportAsync(
         CancellationToken cancellationToken = default);
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Web.ViewModels;
+using System.Security.Claims;
 
 namespace PakistanAccountingERP.Web.Controllers;
 
@@ -39,12 +40,19 @@ public class AccountController : Controller
                 return RedirectToAction("Index", "Home");
             }
 
-            return RedirectToAction(nameof(SelectCompany), new { returnUrl });
+            var model = new LoginViewModel
+            {
+                ReturnUrl = returnUrl,
+                RequireCompanySelection = true,
+                Email = User.FindFirstValue(ClaimTypes.Email)
+                    ?? User.Identity?.Name
+                    ?? string.Empty
+            };
+            await PopulateUserCompaniesAsync(model, cancellationToken);
+            return View(model);
         }
 
-        var model = new LoginViewModel { ReturnUrl = returnUrl };
-        await PopulateLoginCompaniesAsync(model, cancellationToken);
-        return View(model);
+        return View(new LoginViewModel { ReturnUrl = returnUrl });
     }
 
     [HttpPost]
@@ -52,10 +60,14 @@ public class AccountController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(LoginViewModel model, CancellationToken cancellationToken)
     {
-        await PopulateLoginCompaniesAsync(model, cancellationToken);
-
-        if (!ModelState.IsValid)
+        if (User.Identity?.IsAuthenticated == true)
         {
+            return await CompleteCompanySelectionAsync(model, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
+        {
+            ModelState.AddModelError(string.Empty, "Email and password are required.");
             return View(model);
         }
 
@@ -71,21 +83,14 @@ public class AccountController : Controller
             return View(model);
         }
 
-        var companySet = await _companyService.SetCurrentCompanyAsync(
-            model.CompanyId,
-            lockSession: true,
-            cancellationToken);
-
-        if (!companySet)
+        if (model.CompanyId > 0)
         {
-            await _authService.LogoutAsync(cancellationToken);
-            ModelState.AddModelError(
-                nameof(model.CompanyId),
-                "You do not have access to the selected company.");
-            return View(model);
+            return await CompleteCompanySelectionAsync(model, cancellationToken);
         }
 
-        return RedirectAfterCompanySelected(model.ReturnUrl);
+        model.RequireCompanySelection = true;
+        await PopulateUserCompaniesAsync(model, cancellationToken);
+        return View(model);
     }
 
     [HttpGet]
@@ -176,6 +181,36 @@ public class AccountController : Controller
         return View();
     }
 
+    private async Task<IActionResult> CompleteCompanySelectionAsync(
+        LoginViewModel model,
+        CancellationToken cancellationToken)
+    {
+        if (model.CompanyId <= 0)
+        {
+            ModelState.AddModelError(nameof(model.CompanyId), "Please select a company.");
+            model.RequireCompanySelection = true;
+            await PopulateUserCompaniesAsync(model, cancellationToken);
+            return View(nameof(Login), model);
+        }
+
+        var companySet = await _companyService.SetCurrentCompanyAsync(
+            model.CompanyId,
+            lockSession: true,
+            cancellationToken);
+
+        if (!companySet)
+        {
+            ModelState.AddModelError(
+                nameof(model.CompanyId),
+                "You do not have access to the selected company.");
+            model.RequireCompanySelection = true;
+            await PopulateUserCompaniesAsync(model, cancellationToken);
+            return View(nameof(Login), model);
+        }
+
+        return RedirectAfterCompanySelected(model.ReturnUrl);
+    }
+
     private IActionResult RedirectAfterCompanySelected(string? returnUrl)
     {
         if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
@@ -186,9 +221,9 @@ public class AccountController : Controller
         return RedirectToAction("Index", "Home");
     }
 
-    private async Task PopulateLoginCompaniesAsync(LoginViewModel model, CancellationToken cancellationToken)
+    private async Task PopulateUserCompaniesAsync(LoginViewModel model, CancellationToken cancellationToken)
     {
-        var companies = await _companyService.GetLoginCompaniesAsync(cancellationToken);
+        var companies = await _companyService.GetUserCompaniesAsync(cancellationToken);
         model.Companies = companies
             .Select(c => new CompanyOptionViewModel
             {

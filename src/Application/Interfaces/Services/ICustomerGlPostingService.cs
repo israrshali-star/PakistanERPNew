@@ -9,6 +9,7 @@ public interface ICustomerGlPostingService
         int customerId,
         string buyerName,
         decimal openingBalance,
+        DateTime? entryDate = null,
         CancellationToken cancellationToken = default);
 
     Task<GlPostingResult> RemoveCustomerOpeningBalanceAsync(
@@ -17,6 +18,7 @@ public interface ICustomerGlPostingService
 
     Task<GlPostingResult> PostCustomerReceiptAsync(
         CustomerReceipt receipt,
+        bool postUnclearedOtherBankCheque = false,
         CancellationToken cancellationToken = default);
 
     Task<GlPostingResult> SyncCustomerReceiptAsync(
@@ -25,6 +27,7 @@ public interface ICustomerGlPostingService
         int? previousBankId,
         Domain.Enums.PaymentMethod previousPaymentMethod,
         Domain.Enums.ChequeBankType? previousChequeBankType,
+        bool postUnclearedOtherBankCheque = false,
         CancellationToken cancellationToken = default);
 
     Task<GlPostingResult> RemoveCustomerReceiptAsync(
@@ -34,5 +37,9 @@ public interface ICustomerGlPostingService
     Task<GlPostingResult> PostChequeClearanceAsync(
         CustomerReceipt receipt,
         int bankChartOfAccountId,
+        CancellationToken cancellationToken = default);
+
+    Task<GlPostingResult> PostChequeReturnAsync(
+        CustomerReceipt receipt,
         CancellationToken cancellationToken = default);
 }

@@ -19,7 +19,8 @@ public record CustomerReceiptDto(
     string? Notes,
     CustomerReceiptStatus Status,
     bool IsDeposited,
-    DateTime? ClearedAt);
+    DateTime? ClearedAt,
+    DateTime? ReturnedAt);
 
 public record CustomerReceiptListItemDto(
     int Id,
@@ -31,7 +32,8 @@ public record CustomerReceiptListItemDto(
     string? BankName,
     string? ChequeNumber,
     DateTime? ChequeDate,
-    string? DepositStatus);
+    string? DepositStatus,
+    bool CanMarkReturned);
 
 public class CustomerReceiptSaveRequest
 {
@@ -53,6 +55,11 @@ public record CustomerReceiptSaveResult(bool Success, string? Message, CustomerR
 public class CustomerReceiptApproveClearanceRequest
 {
     public int? BankChartOfAccountId { get; set; }
+}
+
+public class CustomerReceiptMarkReturnedRequest
+{
+    public string? Reason { get; set; }
 }
 
 public record NextReceiptNumberDto(string ReceiptNumber);

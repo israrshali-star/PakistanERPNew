@@ -10,6 +10,7 @@ public class SalesInvoiceConfiguration : IEntityTypeConfiguration<SalesInvoice>
     {
         builder.ToTable("SalesInvoices");
         builder.Property(x => x.InvoiceNumber).HasMaxLength(450).IsRequired();
+        builder.Property(x => x.ShippingAddress).HasMaxLength(500).IsRequired();
         builder.Property(x => x.SubTotal).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
         builder.Property(x => x.DiscountAmount).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
         builder.Property(x => x.TaxAmount).HasColumnType("decimal(18,2)").HasDefaultValue(0m);

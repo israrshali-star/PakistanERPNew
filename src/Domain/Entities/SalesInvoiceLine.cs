@@ -6,6 +6,7 @@ public class SalesInvoiceLine
     public int SalesInvoiceId { get; set; }
     public int ItemId { get; set; }
     public string? HSCode { get; set; }
+    public string? CartonDescription { get; set; }
     public string? ProductDescription { get; set; }
     public string? Unit { get; set; }
     public string? StackNo { get; set; }

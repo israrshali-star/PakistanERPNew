@@ -8,6 +8,8 @@
 
     var accountLedgerModal = null;
 
+    var ledgerAccountId = null;
+
     var accountTypes = [];
 
 
@@ -329,7 +331,7 @@
 
         );
 
-        $('#account-ledger-opening').text(formatCurrency(account.openingBalance));
+        $('#account-ledger-opening').text(formatCurrency(ledger.openingBalance));
 
         $('#account-ledger-closing').text(formatCurrency(ledger.closingBalance));
 
@@ -379,15 +381,41 @@
 
 
 
-    function openLedgerModal(id) {
+    function loadAccountLedger() {
+
+        if (!ledgerAccountId) {
+
+            return;
+
+        }
+
+
 
         $('#account-ledger-body').html('<tr><td colspan="6" class="text-muted text-center">Loading...</td></tr>');
 
-        accountLedgerModal.show();
+
+
+        var params = {};
+
+        var fromDate = $('#account-ledger-from').val();
+
+        var toDate = $('#account-ledger-to').val();
+
+        if (fromDate) {
+
+            params.fromDate = fromDate;
+
+        }
+
+        if (toDate) {
+
+            params.toDate = toDate;
+
+        }
 
 
 
-        $.getJSON('/api/chart-of-accounts/' + id + '/ledger')
+        $.getJSON('/api/chart-of-accounts/' + ledgerAccountId + '/ledger', params)
 
             .done(renderAccountLedger)
 
@@ -402,6 +430,26 @@
                 );
 
             });
+
+    }
+
+
+
+    function openLedgerModal(id) {
+
+        ledgerAccountId = id;
+
+        var today = new Date();
+
+        var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        $('#account-ledger-from').val(firstOfMonth.toISOString().slice(0, 10));
+
+        $('#account-ledger-to').val(today.toISOString().slice(0, 10));
+
+        accountLedgerModal.show();
+
+        loadAccountLedger();
 
     }
 
@@ -1368,6 +1416,20 @@
         $('#coa-tree-container').on('click', '.btn-view-ledger', function () {
 
             openLedgerModal($(this).data('id'));
+
+        });
+
+
+
+        $('#btn-apply-ledger-filter').on('click', loadAccountLedger);
+
+        $('#btn-clear-ledger-filter').on('click', function () {
+
+            $('#account-ledger-from').val('');
+
+            $('#account-ledger-to').val('');
+
+            loadAccountLedger();
 
         });
 

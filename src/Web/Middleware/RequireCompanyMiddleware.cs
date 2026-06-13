@@ -6,6 +6,7 @@ public class RequireCompanyMiddleware
 {
     private static readonly string[] AllowedPathPrefixes =
     [
+        "/account/login",
         "/account/selectcompany",
         "/account/logout",
         "/account/accessdenied",

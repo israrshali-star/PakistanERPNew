@@ -14,6 +14,7 @@ public static class AppConstants
     public const string StockTransactionReferencePrefix = "STK-";
     public const string VendorBillNumberPrefix = "BILL-";
     public const string VendorPaymentNumberPrefix = "VPAY-";
+    public const string OpeningStockBillNumber = "OPEN-STOCK-31052026";
 }
 
 public static class SessionKeys

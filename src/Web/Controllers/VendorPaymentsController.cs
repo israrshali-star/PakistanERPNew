@@ -43,7 +43,14 @@ public class VendorPaymentsApiController : ControllerBase
                 OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 2,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
-            var result = await _vendorPaymentService.GetDataTableAsync(request, cancellationToken);
+            DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
+            DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+
+            var result = await _vendorPaymentService.GetDataTableAsync(
+                request,
+                fromDate,
+                toDate,
+                cancellationToken);
             return Ok(new
             {
                 draw = result.Draw,

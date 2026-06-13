@@ -90,7 +90,7 @@ public partial class CustomerService : ICustomerService
                         .Sum(r => r.Amount)
                     + c.WriteChequePayments
                         .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.Amount),
+                        .Sum(bt => bt.CustomerBalanceEffect),
                 c.IsActive))
             .ToListAsync(cancellationToken);
 
@@ -123,7 +123,7 @@ public partial class CustomerService : ICustomerService
                         .Sum(r => r.Amount)
                     + c.WriteChequePayments
                         .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.Amount),
+                        .Sum(bt => bt.CustomerBalanceEffect),
                 c.Address,
                 c.ProvinceId,
                 c.Province != null ? c.Province.Name : null,
@@ -216,7 +216,7 @@ public partial class CustomerService : ICustomerService
                 entity.Id,
                 entity.BuyerName,
                 entity.OpeningBalance,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             if (!glResult.Success)
             {
@@ -314,7 +314,7 @@ public partial class CustomerService : ICustomerService
                     entity.Id,
                     entity.BuyerName,
                     entity.OpeningBalance,
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
 
                 if (!glResult.Success)
                 {
@@ -515,6 +515,7 @@ public partial class CustomerService : ICustomerService
                 r.PaymentMethod,
                 r.Status,
                 r.ClearedAt,
+                r.ReturnedAt,
                 r.ChequeNumber,
                 r.Amount,
                 r.Id
@@ -546,6 +547,22 @@ public partial class CustomerService : ICustomerService
 
         foreach (var receipt in receipts)
         {
+            if (CustomerReceiptBalanceRules.IsChequeReturned(receipt.Status))
+            {
+                var returnedRef = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
+                    ? receipt.ChequeNumber.Trim()
+                    : receipt.ReceiptNumber;
+                movements.Add((
+                    receipt.ReturnedAt ?? receipt.ReceiptDate,
+                    1_000_000 + receipt.Id,
+                    receipt.ReceiptNumber,
+                    $"Cheque Returned ({returnedRef})",
+                    receipt.Amount,
+                    0m,
+                    0m));
+                continue;
+            }
+
             var isPendingCheque = receipt.PaymentMethod == PaymentMethod.Cheque
                                   && !CustomerReceiptBalanceRules.IsChequeCleared(
                                       receipt.Status,
@@ -594,7 +611,7 @@ public partial class CustomerService : ICustomerService
                 bt.TransactionDate,
                 bt.ChequeNumber,
                 bt.PaymentMethod,
-                bt.Amount
+                bt.CustomerBalanceEffect
             })
             .ToListAsync(cancellationToken);
 
@@ -618,8 +635,8 @@ public partial class CustomerService : ICustomerService
                 2_000_000 + cheque.Id,
                 reference,
                 description,
-                cheque.Amount,
-                0m,
+                cheque.CustomerBalanceEffect > 0m ? cheque.CustomerBalanceEffect : 0m,
+                cheque.CustomerBalanceEffect < 0m ? Math.Abs(cheque.CustomerBalanceEffect) : 0m,
                 0m));
         }
 
@@ -679,7 +696,7 @@ public partial class CustomerService : ICustomerService
                 && !bt.IsDeleted
                 && bt.JournalEntryId != null
                 && bt.TransactionDate < beforeDate)
-            .SumAsync(bt => bt.Amount, cancellationToken);
+            .SumAsync(bt => bt.CustomerBalanceEffect, cancellationToken);
 
         return customer + movement - receiptTotal + chequeTotal;
     }

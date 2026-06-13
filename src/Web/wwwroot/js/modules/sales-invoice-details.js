@@ -108,7 +108,7 @@
 
         $('#btn-download-challan').on('click', downloadDeliveryChallan);
 
-        if ($detail.data('has-fbr-pdf') === true) {
+        if ($detail.data('can-download-pdf') === true) {
             $('#btn-download-pdf, .btn-download-pdf-inline').on('click', downloadPdf);
         }
 

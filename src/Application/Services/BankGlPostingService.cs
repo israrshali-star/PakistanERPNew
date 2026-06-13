@@ -111,7 +111,8 @@ public partial class BankGlPostingService : IBankGlPostingService
             return new GlPostingResult(false, linesResult.Message);
         }
 
-        var description = BuildJournalDescription(transaction);
+        var payFromAccountNumber = await GetAccountNumberAsync(transaction.ChartOfAccountId, cancellationToken);
+        var description = BuildJournalDescription(transaction, payFromAccountNumber);
         var postResult = await CreatePostedJournalAsync(
             companyId,
             transaction.TransactionDate,
@@ -126,12 +127,9 @@ public partial class BankGlPostingService : IBankGlPostingService
             return new GlPostingResult(false, postResult.Message);
         }
 
-        if (postResult.JournalEntryId.HasValue)
-        {
-            transaction.JournalEntryId = postResult.JournalEntryId;
-            _unitOfWork.Repository<BankTransaction>().Update(transaction);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
+        transaction.JournalEntryId = postResult.JournalEntryId;
+        _unitOfWork.Repository<BankTransaction>().Update(transaction);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         await ApplyLinkedBankBalanceAsync(companyId, transaction, amount, cancellationToken);
 
@@ -228,14 +226,53 @@ public partial class BankGlPostingService : IBankGlPostingService
                     return (false, "Pay-to account is required for write cheque.", null);
                 }
 
-                var payFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
-                if (payFromBalance < amount)
+                var party = await ResolvePartyNameAsync(transaction, cancellationToken);
+                var payFromAccountNumber = await GetAccountNumberAsync(transaction.ChartOfAccountId, cancellationToken);
+                var payFromMemo = BuildWithdrawalPayFromMemo(transaction, party, payFromAccountNumber);
+
+                if (transaction.CustomerId.HasValue)
                 {
-                    return (false, $"Insufficient balance in pay-from account. Available: {payFromBalance:N2}", null);
+                    var outstanding = await GetCustomerOutstandingBeforeTransactionAsync(
+                        transaction,
+                        cancellationToken);
+                    var isDebitBalance = outstanding >= 0m;
+                    transaction.CustomerBalanceEffect = isDebitBalance ? -amount : amount;
+
+                    var arAccountId = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
+                    if (!arAccountId.HasValue)
+                    {
+                        return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", null);
+                    }
+
+                    var payFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
+                    if (payFromBalance < amount)
+                    {
+                        return (false, $"Insufficient balance in pay-from account. Available: {payFromBalance:N2}", null);
+                    }
+
+                    if (isDebitBalance)
+                    {
+                        return (true, null,
+                        [
+                            CreateLine(transaction.CounterChartOfAccountId.Value, 0m, amount, party),
+                            CreateLine(transaction.ChartOfAccountId, amount, 0m, payFromMemo)
+                        ]);
+                    }
+
+                    return (true, null,
+                    [
+                        CreateLine(arAccountId.Value, amount, 0m, party),
+                        CreateLine(transaction.ChartOfAccountId, 0m, amount, payFromMemo)
+                    ]);
                 }
 
-                var party = await ResolvePartyNameAsync(transaction, cancellationToken);
-                var payFromMemo = BuildWithdrawalPayFromMemo(transaction, party);
+                transaction.CustomerBalanceEffect = 0m;
+
+                var vendorPayFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
+                if (vendorPayFromBalance < amount)
+                {
+                    return (false, $"Insufficient balance in pay-from account. Available: {vendorPayFromBalance:N2}", null);
+                }
 
                 return (true, null,
                 [
@@ -278,30 +315,95 @@ public partial class BankGlPostingService : IBankGlPostingService
         }
     }
 
-    private static string BuildJournalDescription(BankTransaction transaction) =>
-        transaction.TransactionType switch
+    private static string BuildJournalDescription(BankTransaction transaction, string? payFromAccountNumber = null)
+    {
+        var party = transaction.PartyName?.Trim() ?? "payment";
+
+        return transaction.TransactionType switch
         {
             BankTransactionType.Deposit => "Bank deposit",
             BankTransactionType.Withdrawal => transaction.PaymentMethod switch
             {
-                PaymentMethod.Cheque => $"Cheque — {transaction.PartyName?.Trim() ?? "payment"}",
-                PaymentMethod.Cash => $"Cash payment — {transaction.PartyName?.Trim() ?? "payment"}",
-                PaymentMethod.BankTransfer => $"Bank transfer — {transaction.PartyName?.Trim() ?? "payment"}",
-                _ => $"Payment — {transaction.PartyName?.Trim() ?? "payment"}"
+                PaymentMethod.Cheque => $"Cheque — {party}",
+                PaymentMethod.CashWithdrawal => "Cash withdrawal — Cash in Hand",
+                PaymentMethod.Cash when IsCashWithdrawalFromBank(payFromAccountNumber)
+                    => $"Cash withdrawal — {party}",
+                PaymentMethod.Cash => $"Cash payment — {party}",
+                PaymentMethod.BankTransfer => $"Bank transfer — {party}",
+                _ => $"Payment — {party}"
             },
             BankTransactionType.Transfer => "Cash/bank transfer",
             _ => "Bank transaction"
         };
+    }
 
-    private static string BuildWithdrawalPayFromMemo(BankTransaction transaction, string party) =>
+    private static string BuildWithdrawalPayFromMemo(
+        BankTransaction transaction,
+        string party,
+        string? payFromAccountNumber = null) =>
         transaction.PaymentMethod switch
         {
             PaymentMethod.Cheque when !string.IsNullOrWhiteSpace(transaction.ChequeNumber)
                 => $"{party} — Chq #{transaction.ChequeNumber.Trim()}",
+            PaymentMethod.CashWithdrawal when !string.IsNullOrWhiteSpace(transaction.ChequeNumber)
+                => $"Cash in Hand — Chq #{transaction.ChequeNumber.Trim()}",
             PaymentMethod.BankTransfer => $"{party} — Bank transfer",
+            PaymentMethod.Cash when IsCashWithdrawalFromBank(payFromAccountNumber)
+                => $"{party} — Cash withdrawal",
             PaymentMethod.Cash => $"{party} — Cash",
             _ => party
         };
+
+    private static bool IsCashWithdrawalFromBank(string? payFromAccountNumber) =>
+        !string.IsNullOrWhiteSpace(payFromAccountNumber)
+        && !string.Equals(payFromAccountNumber.Trim(), CashInHand, StringComparison.Ordinal);
+
+    private async Task<decimal> GetCustomerOutstandingBeforeTransactionAsync(
+        BankTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (!transaction.CustomerId.HasValue)
+        {
+            return 0m;
+        }
+
+        var companyId = transaction.CompanyId;
+        var customerId = transaction.CustomerId.Value;
+
+        var openingBalance = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.Id == customerId && c.CompanyId == companyId)
+            .Select(c => (decimal?)c.OpeningBalance)
+            .FirstOrDefaultAsync(cancellationToken) ?? 0m;
+
+        var invoiceNet = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(si => si.CustomerId == customerId && si.Status == InvoiceStatus.Posted)
+            .Select(si => new { si.InvoiceType, si.NetTotal })
+            .ToListAsync(cancellationToken);
+
+        var invoiceMovement = invoiceNet.Sum(i =>
+            i.InvoiceType == InvoiceType.CreditNote ? -i.NetTotal : i.NetTotal);
+
+        var receiptTotal = await _unitOfWork.Repository<CustomerReceipt>()
+            .Query()
+            .Where(r =>
+                r.CustomerId == customerId
+                && (r.PaymentMethod != PaymentMethod.Cheque
+                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null)))
+            .SumAsync(r => (decimal?)r.Amount, cancellationToken) ?? 0m;
+
+        var chequeEffectTotal = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CustomerId == customerId
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.Id != transaction.Id)
+            .SumAsync(bt => (decimal?)bt.CustomerBalanceEffect, cancellationToken) ?? 0m;
+
+        return Math.Round(openingBalance + invoiceMovement - receiptTotal + chequeEffectTotal, 2);
+    }
 
     private async Task<string> ResolvePartyNameAsync(
         BankTransaction transaction,
@@ -425,6 +527,17 @@ public partial class BankGlPostingService : IBankGlPostingService
             .Query()
             .Where(a => a.CompanyId == companyId && a.AccountNumber == accountNumber && a.IsActive && !a.IsDeleted)
             .Select(a => (int?)a.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<string?> GetAccountNumberAsync(
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.Id == chartOfAccountId)
+            .Select(a => a.AccountNumber)
             .FirstOrDefaultAsync(cancellationToken);
     }
 

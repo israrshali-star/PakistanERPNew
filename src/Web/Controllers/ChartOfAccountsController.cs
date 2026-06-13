@@ -104,11 +104,24 @@ public class ChartOfAccountsApiController : ControllerBase
 
     [HttpGet("{id:int}/ledger")]
     [RequirePermission("ChartOfAccounts.View")]
-    public async Task<IActionResult> Ledger(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Ledger(
+        int id,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var ledger = await _chartOfAccountsService.GetLedgerAsync(id, cancellationToken);
+            if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+            {
+                return BadRequest(new { message = "From date cannot be after to date." });
+            }
+
+            var ledger = await _chartOfAccountsService.GetLedgerAsync(
+                id,
+                fromDate?.Date,
+                toDate?.Date,
+                cancellationToken);
             return ledger is null ? NotFound() : Ok(ledger);
         }
         catch (InvalidOperationException ex)

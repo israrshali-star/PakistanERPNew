@@ -18,6 +18,66 @@ if (TryRunQuickBooksImport(args, out var importExitCode))
     Environment.Exit(importExitCode);
 }
 
+if (TryRunImportOpeningStock(args, out var openingStockExitCode))
+{
+    Environment.Exit(openingStockExitCode);
+}
+
+if (TryRunReapplyOpeningStockQuantityOnly(args, out var reapplyOpeningStockExitCode))
+{
+    Environment.Exit(reapplyOpeningStockExitCode);
+}
+
+if (TryRunCutoverReconcile(args, out var reconcileExitCode))
+{
+    Environment.Exit(reconcileExitCode);
+}
+
+if (TryRunTrialBalanceCoaImport(args, out var trialBalanceExitCode))
+{
+    Environment.Exit(trialBalanceExitCode);
+}
+
+if (TryRunBackdateOpeningJournals(args, out var backdateExitCode))
+{
+    Environment.Exit(backdateExitCode);
+}
+
+if (TryRunResyncOpeningBalances(args, out var resyncExitCode))
+{
+    Environment.Exit(resyncExitCode);
+}
+
+if (TryRunAlignTrialBalanceGl(args, out var alignExitCode))
+{
+    Environment.Exit(alignExitCode);
+}
+
+if (TryRunPostCutoverTransactions(args, out var postCutoverExitCode))
+{
+    Environment.Exit(postCutoverExitCode);
+}
+
+if (TryRunFixTrialBalanceMismatches(args, out var fixTrialBalanceExitCode))
+{
+    Environment.Exit(fixTrialBalanceExitCode);
+}
+
+if (TryRunChaseTrialBalanceGap(args, out var chaseTrialBalanceExitCode))
+{
+    Environment.Exit(chaseTrialBalanceExitCode);
+}
+
+if (TryRunRecalculateItemStock(args, out var recalculateItemStockExitCode))
+{
+    Environment.Exit(recalculateItemStockExitCode);
+}
+
+if (TryRunSyncItemCartons(args, out var syncItemCartonsExitCode))
+{
+    Environment.Exit(syncItemCartonsExitCode);
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
@@ -200,6 +260,553 @@ static bool TryRunQuickBooksImport(string[] args, out int exitCode)
     return true;
 }
 
+static bool TryRunImportOpeningStock(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--import-opening-stock", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    string? csvPath = null;
+    var quantityOnly = false;
+
+    for (var i = 3; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--quantity-only", StringComparison.OrdinalIgnoreCase))
+        {
+            quantityOnly = true;
+        }
+        else if (!args[i].StartsWith('-') && csvPath is null)
+        {
+            csvPath = Path.GetFullPath(args[i]);
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(csvPath))
+    {
+        Console.Error.WriteLine("--import-opening-stock requires a CSV file path.");
+        exitCode = 1;
+        return true;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var importer = scope.ServiceProvider.GetRequiredService<IQuickBooksIifImportService>();
+        var options = new QuickBooksIifImportOptions
+        {
+            InventoryValuationCsvPath = csvPath,
+            OpeningStockQuantityOnly = quantityOnly
+        };
+        var result = importer.ImportReportsAsync(companyId, options).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Item stock updated: {result.ItemsStockUpdated}, skipped: {result.ItemsStockSkipped}");
+        Console.WriteLine($"Quantity-only mode: {quantityOnly}");
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunReapplyOpeningStockQuantityOnly(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--reapply-opening-stock-quantity-only", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var importer = scope.ServiceProvider.GetRequiredService<IQuickBooksIifImportService>();
+        var result = importer.ReapplyOpeningStockQuantityOnlyAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Bill lines zeroed: {result.BillLinesUpdated}");
+        Console.WriteLine($"Inventory transactions zeroed: {result.TransactionsUpdated}");
+        Console.WriteLine($"Items recalculated: {result.ItemsRecalculated}");
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunCutoverReconcile(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--reconcile-cutover", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var cutoverDate = new DateTime(2026, 6, 1);
+    for (var i = 3; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--cutover-date", StringComparison.OrdinalIgnoreCase)
+            && i + 1 < args.Length
+            && DateTime.TryParse(args[++i], out var parsed))
+        {
+            cutoverDate = parsed.Date;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.ReconcileToOpeningBalancesAsync(companyId, cutoverDate).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Transactional journals soft-deleted: {result.TransactionalJournalsSoftDeleted}");
+        Console.WriteLine($"Sales invoices reverted to draft: {result.SalesInvoicesReverted}");
+        Console.WriteLine($"Customer receipts removed: {result.CustomerReceiptsRemoved}");
+        Console.WriteLine($"Bank transactions removed: {result.BankTransactionsRemoved}");
+        Console.WriteLine($"Vendor bills reverted to draft: {result.VendorBillsReverted}");
+        Console.WriteLine($"Sum customer opening balances: {result.SumCustomerOpeningBalance:N2}");
+        Console.WriteLine($"Sum vendor opening balances: {result.SumVendorOpeningBalance:N2}");
+        Console.WriteLine($"AR (11110) balance: {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000) balance: {result.AccountsPayableBalance:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunResyncOpeningBalances(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--resync-opening-balances", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var entryDate = new DateTime(2026, 5, 31);
+    for (var i = 3; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--date", StringComparison.OrdinalIgnoreCase)
+            && i + 1 < args.Length
+            && DateTime.TryParse(args[++i], out var parsed))
+        {
+            entryDate = parsed.Date;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var count = repair.ResyncSubledgerOpeningBalancesAsync(companyId, entryDate).GetAwaiter().GetResult();
+        Console.WriteLine($"Resynced {count} customer/vendor opening balance journals (entry date {entryDate:yyyy-MM-dd}).");
+        exitCode = 0;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunAlignTrialBalanceGl(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--align-trial-balance-gl", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.AlignTrialBalanceGlAsync(companyId).GetAwaiter().GetResult();
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunTrialBalanceCoaImport(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 4
+        || !string.Equals(args[0], "--import-trial-balance-coa", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var filePath = Path.GetFullPath(args[3]);
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.ApplyTrialBalanceCoaOpeningsAsync(companyId, filePath).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Accounts updated: {result.AccountsUpdated}, skipped: {result.AccountsSkipped}");
+        Console.WriteLine($"Banks synced: {result.BanksSynced}");
+        Console.WriteLine($"AR (11110) balance: {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000) balance: {result.AccountsPayableBalance:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunBackdateOpeningJournals(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--backdate-opening-journals", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var entryDate = new DateTime(2026, 5, 31);
+    for (var i = 3; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--date", StringComparison.OrdinalIgnoreCase)
+            && i + 1 < args.Length
+            && DateTime.TryParse(args[++i], out var parsed))
+        {
+            entryDate = parsed.Date;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var count = repair.BackdateOpeningBalanceJournalsAsync(companyId, entryDate).GetAwaiter().GetResult();
+        Console.WriteLine($"Backdated {count} customer/vendor opening balance journals to {entryDate:yyyy-MM-dd}.");
+        exitCode = 0;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunPostCutoverTransactions(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--post-cutover-transactions", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var fromDate = new DateTime(2026, 6, 1);
+    for (var i = 3; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--from-date", StringComparison.OrdinalIgnoreCase)
+            && i + 1 < args.Length
+            && DateTime.TryParse(args[++i], out var parsed))
+        {
+            fromDate = parsed.Date;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.PostCutoverTransactionsAsync(companyId, fromDate).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Journals restored: {result.JournalsRestored}");
+        Console.WriteLine($"Sales invoices posted: {result.SalesInvoicesPosted}");
+        Console.WriteLine($"Vendor bills approved: {result.VendorBillsApproved}");
+        Console.WriteLine($"Customer receipts restored: {result.CustomerReceiptsRestored}");
+        Console.WriteLine($"Bank transactions restored: {result.BankTransactionsRestored}");
+        Console.WriteLine($"Skipped duplicates: {result.SkippedDuplicates}");
+        Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunFixTrialBalanceMismatches(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--fix-trial-balance-mismatches", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.FixTrialBalanceMismatchesAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Customer receipt journals fixed: {result.CustomerReceiptJournalsFixed}");
+        Console.WriteLine($"Duplicate vendor bills reversed: {result.DuplicateVendorBillsReversed}");
+        Console.WriteLine($"Kept Aside opening set: {result.KeptAsideOpeningSet}");
+        Console.WriteLine($"Cash (10015): {result.CashBalance:N2}");
+        Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"Inventory (12110): {result.InventoryBalance:N2}");
+        Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
+        Console.WriteLine($"Kept Aside (10016): {result.KeptAsideBalance:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunChaseTrialBalanceGap(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--chase-trial-balance-gap", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.ChaseTrialBalanceGapAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Sales tax payments reclassified: {result.SalesTaxPaymentsReclassified}");
+        Console.WriteLine($"Customer bank transactions reposted: {result.BankTransactionsReposted}");
+        Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
+        Console.WriteLine($"Sales tax (25500): {result.SalesTaxPayableBalance:N2}");
+        Console.WriteLine($"ERP trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"ERP trial balance credits: {result.TrialBalanceCredits:N2}");
+        Console.WriteLine($"QB trial balance total: {result.QuickBooksTotalDebits:N2}");
+        Console.WriteLine($"Remaining gap vs QB: {result.RemainingGapDebits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunSyncItemCartons(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--sync-item-cartons", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var sync = scope.ServiceProvider.GetRequiredService<IItemCartonSyncService>();
+        sync.SyncCompanyItemsAsync(companyId).GetAwaiter().GetResult();
+        Console.WriteLine($"Item cartons synced for company {companyId}.");
+        exitCode = 0;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRecalculateItemStock(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--recalculate-item-stock", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RecalculateItemStockAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Items updated: {result.ItemsUpdated}");
+        Console.WriteLine($"Sum item CurrentStock: {result.SumItemStock:N2}");
+        Console.WriteLine($"Sum inventory transactions: {result.SumTransactionStock:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
 static QuickBooksIifImportOptions ParseQuickBooksImportOptions(string[] args, int startIndex)
 {
     var options = new QuickBooksIifImportOptions();
@@ -223,8 +830,15 @@ static QuickBooksIifImportOptions ParseQuickBooksImportOptions(string[] args, in
             case "--inventory-valuation-csv" when i + 1 < args.Length:
                 options.InventoryValuationCsvPath = Path.GetFullPath(args[++i]);
                 break;
+            case "--opening-stock-quantity-only":
+                options.OpeningStockQuantityOnly = true;
+                break;
             case "--skip-master-data":
                 options.SkipMasterData = true;
+                break;
+            case "--cutover-date" when i + 1 < args.Length
+                && DateTime.TryParse(args[++i], out var cutoverDate):
+                options.CutoverDate = cutoverDate.Date;
                 break;
         }
     }

@@ -8,7 +8,7 @@
     var typeValue = (int)transactionType;
     var subtitle = transactionType switch
     {
-        BankTransactionType.Withdrawal => "Pay customers, vendors, or other accounts using cash, cheque, or bank transfer.",
+        BankTransactionType.Withdrawal => "Pay customers, vendors, or Cash in Hand. Use Cash Withdrawal to move funds from bank to Cash in Hand by cheque.",
         BankTransactionType.Deposit => "Send in-clearing cheques to the bank. After the bank clears them, approve clearance in Customer Receipts to update the customer balance and bank account.",
         BankTransactionType.Transfer => "Move funds between Cash in Hand and bank accounts.",
         _ => string.Empty
@@ -109,27 +109,27 @@
                         <option value="1">Cash</option>
                         <option value="2">Cheque</option>
                         <option value="3">Bank Transfer</option>
+                        <option value="4">Cash Withdrawal</option>
                     </select>
                 </div>
                 <div class="col-md-8" id="op-pay-from-bank-wrap">
                     <label class="form-label" for="op-bank-account-id">Pay From — Bank Account (COA)</label>
                     <select class="form-select select2" id="op-bank-account-id">
-                        <option value="">— Select bank account —</option>
+                        <option value="">— Select account —</option>
                     </select>
                     <div class="form-text" id="op-bank-balance"></div>
                 </div>
-                <div class="col-md-8 d-none" id="op-pay-from-cash-wrap">
-                    <label class="form-label">Pay From — Cash Account</label>
-                    <div class="form-control bg-light" id="op-cash-account-label">Cash in Hand (10015)</div>
-                    <input type="hidden" id="op-cash-account-id" />
-                    <div class="form-text" id="op-cash-balance"></div>
-                </div>
-                <div class="col-md-6">
+                <div class="col-md-6" id="op-pay-to-wrap">
                     <label class="form-label" for="op-counter-account-id">Pay To</label>
                     <select class="form-select select2" id="op-counter-account-id" required>
                         <option value="">— Select account —</option>
                     </select>
                     <div class="form-text" id="op-party-balance"></div>
+                </div>
+                <div class="col-md-6 d-none" id="op-cash-withdrawal-wrap">
+                    <label class="form-label">Pay To — Cash in Hand</label>
+                    <div class="form-control bg-light" id="op-cash-withdrawal-label">Cash in Hand (10015)</div>
+                    <div class="form-text" id="op-cash-withdrawal-balance"></div>
                 </div>
                 <div class="col-md-6" id="op-cheque-fields">
                     <div class="row g-3">
@@ -155,6 +155,7 @@
                 <div class="col-md-4">
                     <label class="form-label" for="op-amount">Amount (PKR)</label>
                     <input type="number" class="form-control" id="op-amount" step="0.01" min="0.01" required />
+                    <div class="form-text text-success" id="op-amount-words"></div>
                 </div>
             }
             <div class="col-12">

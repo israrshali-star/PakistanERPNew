@@ -72,9 +72,13 @@
                 <label class="form-label form-label-sm" for="scenario-id">FBR Scenario</label>
                 <select class="form-select form-select-sm select2" id="scenario-id" required></select>
             </div>
-            <div class="col-12">
+            <div class="col-md-6 col-12">
                 <label class="form-label form-label-sm" for="buyer-address">Buyer Address</label>
                 <input type="text" class="form-control form-control-sm" id="buyer-address" maxlength="500" />
+            </div>
+            <div class="col-md-6 col-12">
+                <label class="form-label form-label-sm" for="shipping-address">Shipping Address <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm" id="shipping-address" maxlength="500" required />
             </div>
         </div>
     </div>
@@ -95,7 +99,7 @@
                         <th>Description</th>
                         <th>Stack</th>
                         <th class="text-end">Ctn</th>
-                        <th>HS</th>
+                        <th>Carton Desc</th>
                         <th class="text-end">Qty</th>
                         <th>U/M</th>
                         <th class="text-end">Price</th>

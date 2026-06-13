@@ -64,6 +64,30 @@
         $('#bank-op-form-error').addClass('d-none').text('');
     }
 
+    var amountWordsTimer = null;
+
+    function updateAmountInWords() {
+        var $words = $('#op-amount-words');
+        if (!$words.length) return;
+
+        var amount = parseFloat($('#op-amount').val());
+        if (!amount || amount <= 0) {
+            $words.text('');
+            return;
+        }
+
+        clearTimeout(amountWordsTimer);
+        amountWordsTimer = setTimeout(function () {
+            $.getJSON('/api/lookup/amount-in-words', { amount: amount })
+                .done(function (res) {
+                    $words.text(res && res.text ? res.text : '');
+                })
+                .fail(function () {
+                    $words.text('');
+                });
+        }, 250);
+    }
+
     function findAccount(list, id) {
         return list.find(function (a) { return a.id === id; });
     }
@@ -80,10 +104,22 @@
         return (party.customerId || 0) + ':' + (party.vendorId || 0) + ':' + party.chartOfAccountId;
     }
 
+    function formatPaymentMethod(value) {
+        if (!value) return '—';
+        var labels = {
+            Cash: 'Cash',
+            Cheque: 'Cheque',
+            BankTransfer: 'Bank Transfer',
+            CashWithdrawal: 'Cash Withdrawal'
+        };
+        return labels[value] || value;
+    }
+
     function buildPartyOptions($select, list) {
         $select.find('optgroup, option:not(:first)').remove();
         var arParties = (list || []).filter(function (p) { return p.partyType === 'AR'; });
         var apParties = (list || []).filter(function (p) { return p.partyType === 'AP'; });
+        var cashParties = (list || []).filter(function (p) { return p.partyType === 'CASH'; });
         var coaParties = (list || []).filter(function (p) { return p.partyType === 'COA'; });
 
         function appendGroup(label, parties) {
@@ -108,6 +144,7 @@
 
         appendGroup('Accounts Receivable (Customers)', arParties);
         appendGroup('Accounts Payable (Vendors)', apParties);
+        appendGroup('Cash in Hand', cashParties);
         appendGroup('Other Chart of Accounts', coaParties);
     }
 
@@ -147,7 +184,8 @@
     }
 
     function loadNextChequeNumber(coaId) {
-        if (transactionType !== 2 || getPaymentMethod() !== 2 || !coaId) {
+        var method = getPaymentMethod();
+        if (transactionType !== 2 || (method !== 2 && method !== 4) || !coaId) {
             $('#op-cheque-number').val('');
             updateChequeNumberHint(null);
             return $.when();
@@ -168,7 +206,8 @@
     }
 
     function saveStartingChequeNumber() {
-        if (!canCreate || transactionType !== 2 || getPaymentMethod() !== 2) return;
+        var method = getPaymentMethod();
+        if (!canCreate || transactionType !== 2 || (method !== 2 && method !== 4)) return;
 
         var coaId = parseInt($('#op-bank-account-id').val(), 10) || 0;
         var chequeNumber = $('#op-cheque-number').val()?.trim() || '';
@@ -199,40 +238,81 @@
             });
     }
 
+    function refreshPayFromOptions() {
+        if (transactionType !== 2) return;
+
+        var method = getPaymentMethod();
+        var $select = $('#op-bank-account-id');
+        var list = method === 1 ? transferAccounts : bankAccounts;
+        var currentVal = parseInt($select.val(), 10) || 0;
+
+        buildOptions($select, list);
+        if (currentVal && findAccount(list, currentVal)) {
+            $select.val(String(currentVal));
+        } else if (method === 1 && cashAccount) {
+            $select.val(String(cashAccount.id));
+        }
+
+        updateBalanceHint($select, $('#op-bank-balance'), list);
+    }
+
     function syncPaymentMethodUi() {
         if (transactionType !== 2) return;
 
         var method = getPaymentMethod();
         var $bankWrap = $('#op-pay-from-bank-wrap');
-        var $cashWrap = $('#op-pay-from-cash-wrap');
         var $chequeFields = $('#op-cheque-fields');
+        var $payToWrap = $('#op-pay-to-wrap');
+        var $cashWithdrawalWrap = $('#op-cash-withdrawal-wrap');
         var $bankSelect = $('#op-bank-account-id');
+        var $bankLabel = $('label[for="op-bank-account-id"]');
+        var $counterSelect = $('#op-counter-account-id');
+
+        $payToWrap.removeClass('d-none');
+        $cashWithdrawalWrap.addClass('d-none');
+        $counterSelect.prop('required', true);
 
         if (method === 1) {
-            $bankWrap.addClass('d-none');
-            $cashWrap.removeClass('d-none');
-            $chequeFields.addClass('d-none');
-            $bankSelect.prop('required', false);
-            $('#op-cheque-number').prop('required', false);
-        } else if (method === 2) {
             $bankWrap.removeClass('d-none');
-            $cashWrap.addClass('d-none');
-            $chequeFields.removeClass('d-none');
-            $bankSelect.prop('required', true);
-            $('#op-cheque-number').prop('required', true);
-            var bankId = parseInt($bankSelect.val(), 10) || 0;
-            if (bankId) loadNextChequeNumber(bankId);
-        } else if (method === 3) {
-            $bankWrap.removeClass('d-none');
-            $cashWrap.addClass('d-none');
             $chequeFields.addClass('d-none');
             $bankSelect.prop('required', true);
             $('#op-cheque-number').prop('required', false).val('');
+            $bankLabel.text('Pay From — Bank or Cash in Hand (COA)');
+            refreshPayFromOptions();
+        } else if (method === 2) {
+            $bankWrap.removeClass('d-none');
+            $chequeFields.removeClass('d-none');
+            $bankSelect.prop('required', true);
+            $('#op-cheque-number').prop('required', true);
+            $bankLabel.text('Pay From — Bank Account (COA)');
+            refreshPayFromOptions();
+            var bankId = parseInt($bankSelect.val(), 10) || 0;
+            if (bankId) loadNextChequeNumber(bankId);
+        } else if (method === 4) {
+            $bankWrap.removeClass('d-none');
+            $chequeFields.removeClass('d-none');
+            $payToWrap.addClass('d-none');
+            $cashWithdrawalWrap.removeClass('d-none');
+            $bankSelect.prop('required', true);
+            $counterSelect.prop('required', false);
+            $('#op-cheque-number').prop('required', true);
+            $bankLabel.text('Pay From — Bank Account (COA)');
+            refreshPayFromOptions();
+            var withdrawalBankId = parseInt($bankSelect.val(), 10) || 0;
+            if (withdrawalBankId) loadNextChequeNumber(withdrawalBankId);
+        } else if (method === 3) {
+            $bankWrap.removeClass('d-none');
+            $chequeFields.addClass('d-none');
+            $bankSelect.prop('required', true);
+            $('#op-cheque-number').prop('required', false).val('');
+            $bankLabel.text('Pay From — Bank Account (COA)');
+            refreshPayFromOptions();
         } else {
             $bankWrap.removeClass('d-none');
-            $cashWrap.addClass('d-none');
             $chequeFields.addClass('d-none');
             $bankSelect.prop('required', false);
+            $bankLabel.text('Pay From — Bank Account (COA)');
+            refreshPayFromOptions();
         }
     }
 
@@ -242,9 +322,9 @@
         }) || null;
 
         if (cashAccount) {
-            $('#op-cash-account-id').val(String(cashAccount.id));
-            $('#op-cash-account-label').text(cashAccount.label || (cashAccount.accountNumber + ' — ' + cashAccount.accountName));
-            $('#op-cash-balance').text('GL balance: PKR ' + formatMoney(cashAccount.balance));
+            var label = cashAccount.label || (cashAccount.accountNumber + ' — ' + cashAccount.accountName);
+            $('#op-cash-withdrawal-label').text(label);
+            $('#op-cash-withdrawal-balance').text('GL balance: PKR ' + formatMoney(cashAccount.balance));
         }
     }
 
@@ -365,11 +445,11 @@
         } else if (transactionType === 2) {
             requests.push($.getJSON('/api/bank-transactions/coa-banks').done(function (res) {
                 bankAccounts = res || [];
-                buildOptions($('#op-bank-account-id'), bankAccounts);
             }));
             requests.push($.getJSON('/api/bank-transactions/coa-transfer').done(function (res) {
                 transferAccounts = res || [];
                 resolveCashAccount();
+                buildOptions($('#op-bank-account-id'), bankAccounts);
             }));
             requests.push($.getJSON('/api/bank-transactions/coa-counter').done(function (res) {
                 counterAccounts = res || [];
@@ -404,7 +484,11 @@
             columns.push({ data: 'transferToAccountLabel', defaultContent: '—', render: function (d) { return d ? escapeHtml(d) : '—'; } });
         } else if (transactionType === 2) {
             columns.push({ data: 'partyName', defaultContent: '—', render: function (d) { return d ? escapeHtml(d) : '—'; } });
-            columns.push({ data: 'paymentMethod', defaultContent: '—', render: function (d) { return d ? escapeHtml(d) : '—'; } });
+            columns.push({
+                data: 'paymentMethod',
+                defaultContent: '—',
+                render: function (d) { return escapeHtml(formatPaymentMethod(d)); }
+            });
             columns.push({ data: 'chequeNumber', defaultContent: '—', render: function (d) { return d ? escapeHtml(d) : '—'; } });
         }
 
@@ -439,8 +523,31 @@
         if (!canCreate) return;
         clearFormError();
 
-        var selectedParty = transactionType === 2 ? getSelectedParty() : null;
+        var selectedParty = null;
         var paymentMethod = transactionType === 2 ? getPaymentMethod() : null;
+
+        if (transactionType === 2) {
+            if (paymentMethod === 4) {
+                if (!cashAccount) {
+                    showFormError('Cash in Hand account is not configured.');
+                    return;
+                }
+                selectedParty = {
+                    customerId: null,
+                    vendorId: null,
+                    chartOfAccountId: cashAccount.id,
+                    partyName: cashAccount.accountName || 'Cash in Hand',
+                    balance: cashAccount.balance || 0
+                };
+            } else {
+                selectedParty = getSelectedParty();
+                if (!selectedParty) {
+                    showFormError('Select a pay-to account.');
+                    return;
+                }
+            }
+        }
+
         var payload = {
             transactionType: transactionType,
             transactionDate: $('#op-date').val(),
@@ -457,32 +564,23 @@
                 showFormError('Select a payment method.');
                 return;
             }
-            if (!selectedParty) {
-                showFormError('Select a pay-to account.');
+
+            payload.paymentMethod = paymentMethod;
+            payload.chartOfAccountId = parseInt($('#op-bank-account-id').val(), 10) || 0;
+            if (!payload.chartOfAccountId) {
+                showFormError(
+                    paymentMethod === 1
+                        ? 'Select a bank account or Cash in Hand.'
+                        : 'Select a bank account.'
+                );
                 return;
             }
 
-            payload.paymentMethod = paymentMethod;
-
-            if (paymentMethod === 1) {
-                payload.chartOfAccountId = parseInt($('#op-cash-account-id').val(), 10) || 0;
-                if (!payload.chartOfAccountId) {
-                    showFormError('Cash in Hand account is not configured.');
-                    return;
-                }
-            } else {
-                payload.chartOfAccountId = parseInt($('#op-bank-account-id').val(), 10) || 0;
-                if (!payload.chartOfAccountId) {
-                    showFormError('Select a bank account.');
-                    return;
-                }
-            }
-
-            if (paymentMethod === 2) {
+            if (paymentMethod === 2 || paymentMethod === 4) {
                 payload.chequeNumber = $('#op-cheque-number').val()?.trim() || null;
                 payload.chequeDate = $('#op-cheque-date').val() || null;
                 if (!payload.chequeNumber) {
-                    showFormError('Cheque number is required for cheque payments.');
+                    showFormError('Cheque number is required for this payment method.');
                     return;
                 }
             }
@@ -515,13 +613,15 @@
                 $('#bank-op-form')[0].reset();
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
                 $('#op-party-balance').text('');
+                $('#op-amount-words').text('');
                 loadLookups().always(function () {
                     if (transactionType === 2) {
                         if (selectedMethod) $('#op-payment-method').val(String(selectedMethod));
                         syncPaymentMethodUi();
-                        if (selectedBankId && selectedMethod !== 1) {
+                        if (selectedBankId) {
                             $('#op-bank-account-id').val(String(selectedBankId));
-                            updateBalanceHint($('#op-bank-account-id'), $('#op-bank-balance'), bankAccounts);
+                            var payFromList = selectedMethod === 1 ? transferAccounts : bankAccounts;
+                            updateBalanceHint($('#op-bank-account-id'), $('#op-bank-balance'), payFromList);
                             if (selectedMethod === 2) loadNextChequeNumber(selectedBankId);
                         }
                     }
@@ -556,7 +656,9 @@
         $('#op-payment-method').on('change', syncPaymentMethodUi);
 
         $('#op-bank-account-id').on('change', function () {
-            updateBalanceHint($(this), $('#op-bank-balance'), bankAccounts);
+            var method = getPaymentMethod();
+            var list = method === 1 ? transferAccounts : bankAccounts;
+            updateBalanceHint($(this), $('#op-bank-balance'), list);
             loadNextChequeNumber(parseInt($(this).val(), 10) || 0);
         });
         $('#op-from-account-id').on('change', function () {
@@ -575,6 +677,8 @@
         });
 
         $('#bank-op-form').on('submit', saveOperation);
+
+        $('#op-amount').on('input change', updateAmountInWords);
 
         $(document).on('change', '.deposit-cheque-checkbox', updateDepositSelectedTotal);
         $('#deposit-select-all').on('change', function () {

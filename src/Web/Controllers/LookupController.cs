@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Interfaces.Services;
 
 namespace PakistanAccountingERP.Web.Controllers;
@@ -15,6 +16,12 @@ public class LookupController : Controller
     {
         _lookupService = lookupService;
         _stackLotInventory = stackLotInventory;
+    }
+
+    [HttpGet("amount-in-words")]
+    public IActionResult AmountInWords([FromQuery] decimal amount)
+    {
+        return Ok(new { text = PakistanAccountingERP.Application.Common.AmountInWords.ToPakistaniRupees(amount) });
     }
 
     [HttpGet("account-types")]

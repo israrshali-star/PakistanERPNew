@@ -192,7 +192,7 @@ public partial class VendorService : IVendorService
                 entity.Id,
                 entity.VendorName,
                 entity.OpeningBalance,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             if (!glResult.Success)
             {
@@ -284,7 +284,7 @@ public partial class VendorService : IVendorService
                     entity.Id,
                     entity.VendorName,
                     entity.OpeningBalance,
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
 
                 if (!glResult.Success)
                 {

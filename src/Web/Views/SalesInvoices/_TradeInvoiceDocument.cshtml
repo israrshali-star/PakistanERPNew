@@ -1,0 +1,92 @@
+@using PakistanAccountingERP.Application.Common
+@using PakistanAccountingERP.Application.DTOs
+@model SalesInvoiceDetailDto
+@{
+    var taxableTotal = Model.SubTotal - Model.DiscountAmount;
+    var taxRateDisplay = TradeInvoiceLayout.ResolveTaxRateDisplay(
+        taxableTotal,
+        Model.TaxAmount,
+        Model.Lines.Select(l => l.TaxRate).ToList());
+    var totalCartons = Model.Lines.Sum(l => l.Cartons);
+    var totalQty = Model.Lines.Sum(l => l.Quantity);
+    var totalAmount = Model.Lines.Sum(l => TradeInvoiceLayout.LineAmountExTax(l.Quantity, l.Price, l.Discount));
+}
+
+<div class="trade-invoice-doc" id="trade-invoice-document">
+    <div class="trade-invoice-header">
+        <div>
+            <div class="trade-company-name">@(Model.SellerCompanyName ?? "—")</div>
+            <div class="trade-customer-name">@Model.CustomerName</div>
+        </div>
+        <div class="trade-meta-box">
+            <div class="trade-meta-row">
+                <span class="trade-meta-label">Date:</span>
+                <span>@Model.InvoiceDate.ToString("dd/MM/yyyy")</span>
+            </div>
+            <div class="trade-meta-row">
+                <span class="trade-meta-label">Invoice #:</span>
+                <span>@Model.InvoiceNumber</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm trade-invoice-table mb-0">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>CTN Description</th>
+                    <th class="text-end">No of Ctn</th>
+                    <th class="text-end">QTY</th>
+                    <th class="text-end">Rate</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in Model.Lines)
+                {
+                    var description = TradeInvoiceLayout.BuildDescription(
+                        line.ProductDescription,
+                        line.ItemDescription,
+                        line.LotNo,
+                        line.StackNo);
+                    var amount = TradeInvoiceLayout.LineAmountExTax(line.Quantity, line.Price, line.Discount);
+                    <tr>
+                        <td>@description</td>
+                        <td>@(line.CartonDescription ?? "")</td>
+                        <td class="text-end">@line.Cartons.ToString("N2")</td>
+                        <td class="text-end">@line.Quantity.ToString("N2")</td>
+                        <td class="text-end">@TradeInvoiceLayout.FormatAmount(line.Price)</td>
+                        <td class="text-end">@TradeInvoiceLayout.FormatAmount(amount)</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="trade-total-row">
+                    <td colspan="2" class="fw-bold">Total</td>
+                    <td class="text-end fw-bold">@totalCartons.ToString("N2")</td>
+                    <td class="text-end fw-bold">@totalQty.ToString("N2")</td>
+                    <td></td>
+                    <td class="text-end fw-bold">@TradeInvoiceLayout.FormatAmount(totalAmount)</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="trade-invoice-footer">
+        <div class="trade-balance-box">
+            <div class="fw-bold">Customer Total Balance</div>
+            <div class="trade-balance-value">PKR @TradeInvoiceLayout.FormatAmount(Model.CustomerTotalBalance)</div>
+        </div>
+        <div class="trade-summary-box">
+            <div class="trade-summary-row">
+                <span>Sales Tax (@TradeInvoiceLayout.FormatTaxRate(taxRateDisplay)%)</span>
+                <span>PKR @TradeInvoiceLayout.FormatAmount(Model.TaxAmount)</span>
+            </div>
+            <div class="trade-summary-row trade-summary-total">
+                <span class="fw-bold">Total</span>
+                <span class="fw-bold">PKR @TradeInvoiceLayout.FormatAmount(Model.NetTotal)</span>
+            </div>
+        </div>
+    </div>
+</div>

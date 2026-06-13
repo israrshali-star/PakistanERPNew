@@ -6,6 +6,8 @@ public interface ICustomerReceiptService
 {
     Task<DataTableResponse<CustomerReceiptListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 
     Task<CustomerReceiptDto?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
@@ -31,5 +33,10 @@ public interface ICustomerReceiptService
     Task<CustomerReceiptSaveResult> ApproveClearanceAsync(
         int id,
         CustomerReceiptApproveClearanceRequest? request,
+        CancellationToken cancellationToken = default);
+
+    Task<CustomerReceiptSaveResult> MarkChequeReturnedAsync(
+        int id,
+        CustomerReceiptMarkReturnedRequest? request,
         CancellationToken cancellationToken = default);
 }

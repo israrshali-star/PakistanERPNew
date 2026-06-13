@@ -1,0 +1,114 @@
+.trade-invoice-doc {
+    background: #fff;
+    border: 1px solid #333;
+    padding: 1.25rem;
+    font-size: 0.85rem;
+    color: #000;
+}
+
+.trade-invoice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.trade-company-name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-transform: uppercase;
+}
+
+.trade-customer-name {
+    margin-top: 0.75rem;
+    font-size: 0.95rem;
+}
+
+.trade-meta-box {
+    border: 1px solid #333;
+    padding: 0.5rem 0.75rem;
+    min-width: 150px;
+}
+
+.trade-meta-row {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 0.25rem;
+}
+
+.trade-meta-row:last-child {
+    margin-bottom: 0;
+}
+
+.trade-meta-label {
+    font-weight: 600;
+    min-width: 4.5rem;
+}
+
+.trade-invoice-table {
+    border-color: #333 !important;
+}
+
+.trade-invoice-table th,
+.trade-invoice-table td {
+    border-color: #333 !important;
+    vertical-align: top;
+}
+
+.trade-invoice-table th {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.trade-total-row td {
+    background: #f8f8f8;
+}
+
+.trade-invoice-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.trade-balance-box,
+.trade-summary-box {
+    border: 1px solid #333;
+    padding: 0.75rem;
+}
+
+.trade-balance-box {
+    flex: 1;
+}
+
+.trade-balance-value {
+    margin-top: 0.5rem;
+    font-size: 1rem;
+}
+
+.trade-summary-box {
+    min-width: 220px;
+}
+
+.trade-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.35rem;
+}
+
+.trade-summary-total {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #333;
+    margin-bottom: 0;
+}
+
+@media print {
+    .trade-invoice-doc {
+        border: none;
+        padding: 0;
+    }
+}

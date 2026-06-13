@@ -182,9 +182,7 @@ public class FinancialReportService : IFinancialReportService
         var accounts = await GetAccountsAsync(companyId, cancellationToken);
         var journalByAccount = await GetJournalTotalsByAccountAsync(companyId, cancellationToken);
 
-        var yearStart = new DateTime(asOf.Year, 1, 1);
-        var plRequest = new FinancialReportDateRangeRequest { FromDate = yearStart, ToDate = asOf };
-        var netIncomeYtd = (await GetProfitAndLossAsync(plRequest, cancellationToken)).NetProfit;
+        var netIncome = CalculateCumulativeNetIncome(accounts, journalByAccount, asOf);
 
         var lines = new List<BalanceSheetLineDto>();
         decimal totalAssets = 0m;
@@ -230,15 +228,15 @@ public class FinancialReportService : IFinancialReportService
             }
         }
 
-        if (netIncomeYtd != 0m)
+        if (netIncome != 0m)
         {
             lines.Add(new BalanceSheetLineDto(
                 0,
                 "—",
-                "Net Income (YTD)",
+                "Net Income",
                 "Equity",
-                netIncomeYtd));
-            totalEquity += netIncomeYtd;
+                netIncome));
+            totalEquity += netIncome;
         }
 
         var orderedLines = lines.OrderBy(l => l.Section).ThenBy(l => l.AccountNumber).ToList();
@@ -246,7 +244,7 @@ public class FinancialReportService : IFinancialReportService
             accounts,
             journalByAccount,
             asOf,
-            netIncomeYtd,
+            netIncome,
             totalAssets,
             totalLiabilities,
             totalEquity,
@@ -257,7 +255,7 @@ public class FinancialReportService : IFinancialReportService
             totalAssets,
             totalLiabilities,
             totalEquity,
-            netIncomeYtd,
+            netIncome,
             totalLiabilities + totalEquity,
             orderedLines,
             rows);
@@ -829,6 +827,23 @@ public class FinancialReportService : IFinancialReportService
         return amounts;
     }
 
+    private static decimal CalculateCumulativeNetIncome(
+        IReadOnlyList<AccountRow> accounts,
+        Dictionary<int, JournalAggregate> journalByAccount,
+        DateTime asOf)
+    {
+        decimal netIncome = 0m;
+
+        foreach (var account in accounts.Where(a => a.TypeId is RevenueTypeId or CogsTypeId or ExpenseTypeId))
+        {
+            var journal = journalByAccount.GetValueOrDefault(account.Id) ?? EmptyJournal;
+            var net = account.OpeningBalance + journal.UpToToDebit(asOf) - journal.UpToToCredit(asOf);
+            netIncome -= net;
+        }
+
+        return Math.Round(netIncome, 2);
+    }
+
     private static Dictionary<int, decimal> BuildBalanceSheetAmountsByAccount(
         IReadOnlyList<AccountRow> accounts,
         Dictionary<int, JournalAggregate> journalByAccount,
@@ -962,7 +977,8 @@ public class FinancialReportService : IFinancialReportService
         var entries = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.JournalEntry.CompanyId == companyId
-                        && l.JournalEntry.Status == JournalStatus.Posted)
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
             .Select(l => new
             {
                 l.ChartOfAccountId,

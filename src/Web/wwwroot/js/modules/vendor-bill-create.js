@@ -3,6 +3,7 @@
 
     var vendors = [];
     var items = [];
+    var warehouses = [];
     var lineCounter = 0;
     var pendingAttachments = [];
     var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -51,9 +52,18 @@
             .text(message || 'Select a company from the top navbar before entering a bill.');
     }
 
+    function hasFieldValue($input, numeric) {
+        var value = $input.val();
+        if (numeric) {
+            var n = parseFloat(value);
+            return !isNaN(n) && n !== 0;
+        }
+
+        return value != null && String(value).trim() !== '';
+    }
+
     function updateTaxRateLabel() {
-        var rate = getBillTaxRate();
-        $('#tax-rate-label').text('(' + rate.toFixed(2) + '%)');
+        // Tax rate is resolved on the server from vendor/company settings.
     }
 
     function recalcTotals() {
@@ -111,7 +121,10 @@
 
         var lotSelectValue = prefill && (prefill.lotNo || prefill.lotValue);
         if (lotSelectValue) {
-            $lotSelect.val(lotSelectValue).trigger('change');
+            $lotSelect.val(lotSelectValue);
+            if (!prefill.skipLotTrigger) {
+                $lotSelect.trigger('change');
+            }
             if (prefill.rate != null) {
                 $row.find('.line-rate').val(prefill.rate);
             }
@@ -147,6 +160,9 @@
         $('#bill-date').val((bill.billDate || bill.BillDate || '').substring(0, 10));
         $('#ref-no').val(bill.refNo || bill.RefNo || '');
         $('#vendor-id').val(String(bill.vendorId || bill.VendorId)).trigger('change');
+        if (bill.warehouseId || bill.WarehouseId) {
+            $('#warehouse-id').val(String(bill.warehouseId || bill.WarehouseId)).trigger('change');
+        }
 
         var subTotal = bill.subTotal != null ? bill.subTotal : bill.SubTotal;
         var taxAmount = bill.taxAmount != null ? bill.taxAmount : bill.TaxAmount;
@@ -168,7 +184,8 @@
                 rate: line.rate != null ? line.rate : line.Rate,
                 description: line.description || line.Description,
                 stackNo: line.stackNo || line.StackNo,
-                itemId: line.itemId || line.ItemId
+                itemId: line.itemId || line.ItemId,
+                skipLotTrigger: true
             });
             var $row = $('#bill-lines-body tr').last();
             if (line.description || line.Description) {
@@ -177,6 +194,15 @@
             if (line.stackNo || line.StackNo) {
                 $row.find('.line-stack').val(line.stackNo || line.StackNo);
             }
+            if (line.rate != null || line.Rate != null) {
+                $row.find('.line-rate').val(line.rate != null ? line.rate : line.Rate);
+            }
+            if (line.quantity != null || line.Quantity != null) {
+                $row.find('.line-qty').val(line.quantity != null ? line.quantity : line.Quantity);
+            }
+            if (line.cartons != null || line.Cartons != null) {
+                $row.find('.line-cartons').val(line.cartons != null ? line.cartons : line.Cartons);
+            }
             if (line.itemId || line.ItemId) {
                 $row.find('.line-item-id').val(line.itemId || line.ItemId);
             }
@@ -184,6 +210,7 @@
                 $row.data('requires-stock', false);
                 $row.data('is-taxable', false);
             }
+            window.LotStackLine.onLotChange($row, $.extend({}, lineOptions(), { preserveLineFields: true }));
         });
         recalcTotals();
     }
@@ -198,14 +225,16 @@
             numberRequest,
             $.getJSON('/api/vendor-bills/vendors'),
             $.getJSON('/api/vendor-bills/items'),
+            $.getJSON('/api/vendor-bills/warehouses'),
             $.getJSON('/api/sales-invoices/tax-rates'),
             window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, vendorsRes, itemsRes, taxRatesRes) {
+        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, taxRatesRes) {
             if (!editId) {
                 $('#bill-number').val(numberRes[0].billNumber || numberRes[0].BillNumber);
             }
             vendors = vendorsRes[0] || [];
             items = itemsRes[0] || [];
+            warehouses = warehousesRes[0] || [];
             var taxRates = taxRatesRes[0] || {};
             var companyTaxRate = taxRates.registeredSalesTaxRate != null
                 ? taxRates.registeredSalesTaxRate
@@ -221,7 +250,25 @@
             });
 
             if ($.fn.select2) {
-                $vendor.select2({ theme: 'bootstrap-5', width: '100%' });
+                $vendor.select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    minimumResultsForSearch: 0
+                });
+            }
+
+            var $warehouse = $('#warehouse-id');
+            $warehouse.find('option:not(:first)').remove();
+            warehouses.forEach(function (w) {
+                $warehouse.append($('<option></option>').val(w.id).text(w.code + ' — ' + w.name));
+            });
+
+            if ($.fn.select2) {
+                $warehouse.select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    minimumResultsForSearch: 0
+                });
             }
 
             if (items.length === 0) {
@@ -402,6 +449,7 @@
         var payload = {
             billNumber: $('#bill-number').val().trim(),
             vendorId: vendorId,
+            warehouseId: parseInt($('#warehouse-id').val(), 10) || null,
             billDate: billDate,
             refNo: $('#ref-no').val().trim() || null,
             taxRate: getBillTaxRate(),
@@ -462,7 +510,6 @@
             });
 
         $('#vendor-id').on('change', onVendorChange);
-        $('#tax-rate').on('input', recalcTotals);
         $('#bill-lines-body').on('change', '.line-lot', function () {
             window.LotStackLine.onLotChange($(this).closest('tr'), lineOptions());
         });

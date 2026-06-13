@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 
 namespace PakistanAccountingERP.Application.Import;
@@ -37,6 +38,12 @@ public sealed class QuickBooksInventoryValuationRow
     public decimal? AssetValue { get; init; }
 }
 
+public sealed class QuickBooksTrialBalanceCoaRow
+{
+    public required string ErpAccountNumber { get; init; }
+    public decimal OpeningBalance { get; init; }
+}
+
 public sealed class OpeningStockStackLotRow
 {
     public required string ItemCode { get; init; }
@@ -53,6 +60,87 @@ public sealed class OpeningStockStackLotRow
 
 public static class QuickBooksReportCsvParser
 {
+    private static readonly Dictionary<string, string> QbAccountNumberToErp = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["10800"] = "10015",
+        ["10900"] = "10016",
+        ["12000"] = "10017",
+        ["15200"] = "15100",
+        ["30800"] = "30020",
+    };
+
+    private static readonly HashSet<string> SkipErpAccountNumbers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "10000",
+        "11000",
+        "11110",
+        "12100",
+        "20000",
+        "47900",
+    };
+
+    public static IReadOnlyList<QuickBooksTrialBalanceCoaRow> ParseTrialBalanceCoaOpenings(string filePath)
+    {
+        var rows = ReadReportRows(filePath);
+        var openings = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in rows)
+        {
+            if (row.Count == 0)
+            {
+                continue;
+            }
+
+            var label = row[0].Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(label)
+                || label.StartsWith("TOTAL", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Debit", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var accountNumber = ExtractTrialBalanceAccountNumber(label);
+            if (string.IsNullOrWhiteSpace(accountNumber))
+            {
+                continue;
+            }
+
+            if (QbAccountNumberToErp.TryGetValue(accountNumber, out var mapped))
+            {
+                accountNumber = mapped;
+            }
+
+            if (SkipErpAccountNumbers.Contains(accountNumber))
+            {
+                continue;
+            }
+
+            var debit = row.Count > 1 ? ParseDecimal(row[1]) : 0m;
+            var credit = row.Count > 2 ? ParseDecimal(row[2]) : 0m;
+            openings[accountNumber] = Math.Round(debit - credit, 2);
+        }
+
+        return openings
+            .Select(kv => new QuickBooksTrialBalanceCoaRow
+            {
+                ErpAccountNumber = kv.Key,
+                OpeningBalance = kv.Value
+            })
+            .ToList();
+    }
+
+    private static string? ExtractTrialBalanceAccountNumber(string label)
+    {
+        var subAccountMatch = Regex.Match(label, @":(\d{4,5})\b");
+        if (subAccountMatch.Success)
+        {
+            return subAccountMatch.Groups[1].Value;
+        }
+
+        var topAccountMatch = Regex.Match(label, @"^\s*""?(\d{4,5})\b");
+        return topAccountMatch.Success ? topAccountMatch.Groups[1].Value : null;
+    }
+
     public static IReadOnlyList<QuickBooksNameBalanceRow> ParseNameBalanceReport(string filePath)
     {
         var rows = ReadReportRows(filePath);
@@ -66,6 +154,12 @@ public static class QuickBooksReportCsvParser
         var headerIndex = FindHeaderRowIndex(rows, ["customer", "vendor"], ["balance", "amount", "total"]);
         if (headerIndex < 0)
         {
+            var desktopSummary = TryParseQuickBooksDesktopSummaryRows(rows);
+            if (desktopSummary.Count > 0)
+            {
+                return desktopSummary;
+            }
+
             throw new InvalidOperationException(
                 "Could not find customer/vendor balance columns. Expected columns like Customer and Balance in the Excel or CSV export from QuickBooks.");
         }
@@ -102,6 +196,42 @@ public static class QuickBooksReportCsvParser
             }
 
             var balance = ParseDecimal(row[balanceIndex]);
+            if (balance == 0m)
+            {
+                continue;
+            }
+
+            result.Add(new QuickBooksNameBalanceRow { Name = name, Balance = balance });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// QuickBooks Desktop CSV export: "Customer Name",balance per line with no header row.
+    /// First row is often the report date; last row is TOTAL.
+    /// </summary>
+    private static List<QuickBooksNameBalanceRow> TryParseQuickBooksDesktopSummaryRows(
+        IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        var result = new List<QuickBooksNameBalanceRow>();
+
+        foreach (var row in rows)
+        {
+            if (row.Count < 2)
+            {
+                continue;
+            }
+
+            var name = row[0].Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(name)
+                || name.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("Grand", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var balance = ParseDecimal(row[1]);
             if (balance == 0m)
             {
                 continue;

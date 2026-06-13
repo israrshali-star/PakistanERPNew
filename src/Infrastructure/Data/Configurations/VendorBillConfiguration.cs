@@ -20,6 +20,11 @@ public class VendorBillConfiguration : IEntityTypeConfiguration<VendorBill>
             .WithMany(v => v.VendorBills)
             .HasForeignKey(x => x.VendorId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Warehouse)
+            .WithMany()
+            .HasForeignKey(x => x.WarehouseId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.WarehouseId).HasDatabaseName("IX_VendorBills_WarehouseId");
         builder.HasOne(x => x.JournalEntry)
             .WithMany(j => j.VendorBills)
             .HasForeignKey(x => x.JournalEntryId)

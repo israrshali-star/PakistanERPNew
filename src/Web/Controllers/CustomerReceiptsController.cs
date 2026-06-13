@@ -43,7 +43,14 @@ public class CustomerReceiptsApiController : ControllerBase
                 OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 2,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
-            var result = await _customerReceiptService.GetDataTableAsync(request, cancellationToken);
+            DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
+            DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+
+            var result = await _customerReceiptService.GetDataTableAsync(
+                request,
+                fromDate,
+                toDate,
+                cancellationToken);
             return Ok(new
             {
                 draw = result.Draw,
@@ -180,6 +187,25 @@ public class CustomerReceiptsApiController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new CustomerReceiptSaveResult(false, ex.Message, null));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new CustomerReceiptSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpPost("{id:int}/mark-returned")]
+    [RequirePermission("Sales.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> MarkChequeReturned(
+        int id,
+        [FromBody] CustomerReceiptMarkReturnedRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _customerReceiptService.MarkChequeReturnedAsync(id, request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
         }
         catch (Exception ex)
         {

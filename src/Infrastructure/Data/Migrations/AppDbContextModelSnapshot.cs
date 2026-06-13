@@ -410,6 +410,10 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal>("CustomerBalanceEffect")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int?>("CustomerId")
                         .HasColumnType("int");
 
@@ -810,6 +814,12 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReturnedBy")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -1567,6 +1577,11 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<int?>("ScenarioId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ShippingAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -1691,6 +1706,10 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CartonDescription")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<decimal>("Cartons")
                         .ValueGeneratedOnAdd()
@@ -2043,6 +2062,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<int>("VendorId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("WarehouseId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId")
@@ -2051,6 +2073,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.HasIndex("JournalEntryId");
 
                     b.HasIndex("VendorId");
+
+                    b.HasIndex("WarehouseId")
+                        .HasDatabaseName("IX_VendorBills_WarehouseId");
 
                     b.HasIndex("CompanyId", "BillNumber")
                         .IsUnique()
@@ -2948,11 +2973,18 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PakistanAccountingERP.Domain.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Company");
 
                     b.Navigation("JournalEntry");
 
                     b.Navigation("Vendor");
+
+                    b.Navigation("Warehouse");
                 });
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.VendorBillAttachment", b =>

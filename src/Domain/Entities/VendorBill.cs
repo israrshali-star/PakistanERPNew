@@ -7,6 +7,7 @@ public class VendorBill : CompanyAuditableEntity
 {
     public int Id { get; set; }
     public int VendorId { get; set; }
+    public int? WarehouseId { get; set; }
     public string BillNumber { get; set; } = string.Empty;
     public string? RefNo { get; set; }
     public DateTime BillDate { get; set; }
@@ -18,6 +19,7 @@ public class VendorBill : CompanyAuditableEntity
     public int? JournalEntryId { get; set; }
 
     public Vendor Vendor { get; set; } = null!;
+    public Warehouse? Warehouse { get; set; }
     public JournalEntry? JournalEntry { get; set; }
     public Company Company { get; set; } = null!;
     public ICollection<VendorBillLine> Lines { get; set; } = new List<VendorBillLine>();

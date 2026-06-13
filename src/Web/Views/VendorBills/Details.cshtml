@@ -78,6 +78,15 @@
             <div class="fw-semibold">@(Model.RefNo ?? "—")</div>
         </div>
     </div>
+    @if (Model.WarehouseId.HasValue)
+    {
+        <div class="col-md-3">
+            <div class="card p-3 h-100">
+                <div class="text-muted small">Warehouse</div>
+                <div class="fw-semibold">@(Model.WarehouseCode) — @(Model.WarehouseName)</div>
+            </div>
+        </div>
+    }
     <div class="col-md-3">
         <div class="card p-3 h-100">
             <div class="text-muted small">Journal Entry</div>

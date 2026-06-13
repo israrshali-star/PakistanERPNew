@@ -17,10 +17,10 @@ public class LoginViewModel
     [Display(Name = "Remember me")]
     public bool RememberMe { get; set; }
 
-    [Required(ErrorMessage = "Please select a company.")]
-    [Range(1, int.MaxValue, ErrorMessage = "Please select a company.")]
     [Display(Name = "Company")]
     public int CompanyId { get; set; }
+
+    public bool RequireCompanySelection { get; set; }
 
     public string? ReturnUrl { get; set; }
 

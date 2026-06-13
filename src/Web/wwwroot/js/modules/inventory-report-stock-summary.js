@@ -228,6 +228,8 @@
 
 
 
+        $('#report-total-stock').text(formatQty(data.totalStock, 'Kg'));
+
         $('#report-total-cartons').text(formatQty(data.totalCartons, 'Ctn'));
 
         $('#report-total-value').text(formatAmount(data.totalStockValue));

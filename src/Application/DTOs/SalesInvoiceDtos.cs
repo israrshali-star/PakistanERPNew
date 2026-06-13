@@ -25,6 +25,7 @@ public record SalesInvoiceLineDto(
     string ItemName,
     string? ItemDescription,
     string? HsCode,
+    string? CartonDescription,
     string? ProductDescription,
     string? Unit,
     string? StackNo,
@@ -48,6 +49,7 @@ public record SalesInvoiceDetailDto(
     int? ScenarioId,
     string? ScenarioCode,
     string? BuyerAddress,
+    string ShippingAddress,
     string? BuyerProvince,
     string? BuyerNTN,
     string? BuyerCNIC,
@@ -68,7 +70,10 @@ public record SalesInvoiceDetailDto(
     string? JournalEntryNumber,
     bool HasFbrPdf,
     IReadOnlyList<SalesInvoiceLineDto> Lines,
-    IReadOnlyList<SalesInvoiceAttachmentDto> Attachments);
+    IReadOnlyList<SalesInvoiceAttachmentDto> Attachments,
+    int CompanyId = 0,
+    decimal CustomerTotalBalance = 0m,
+    bool CanDownloadInvoicePdf = false);
 
 public record SalesInvoiceActionResult(bool Success, string? Message, SalesInvoiceDetailDto? Invoice);
 
@@ -105,6 +110,7 @@ public class SalesInvoiceLineSaveRequest
 {
     public int ItemId { get; set; }
     public string? ProductDescription { get; set; }
+    public string? CartonDescription { get; set; }
     public string? StackNo { get; set; }
     public string? LotNo { get; set; }
     public decimal Cartons { get; set; }
@@ -124,6 +130,7 @@ public class SalesInvoiceSaveRequest
     public int? ScenarioId { get; set; }
     public int? ProvinceId { get; set; }
     public string? BuyerAddress { get; set; }
+    public string ShippingAddress { get; set; } = string.Empty;
     public string? BuyerNTN { get; set; }
     public string? BuyerCNIC { get; set; }
     public List<SalesInvoiceLineSaveRequest> Lines { get; set; } = new();

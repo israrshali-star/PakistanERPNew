@@ -22,6 +22,24 @@
     </a>
 </div>
 
+<div class="card p-3 mb-3">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label" for="filter-from">From Date</label>
+            <input type="date" class="form-control" id="filter-from" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label" for="filter-to">To Date</label>
+            <input type="date" class="form-control" id="filter-to" />
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-primary w-100" id="btn-apply-filter">
+                <i class="fa-solid fa-magnifying-glass me-1"></i>Apply
+            </button>
+        </div>
+    </div>
+</div>
+
 <div class="card p-3">
     <div class="table-responsive">
         <table class="table table-hover w-100" id="sales-invoices-table">

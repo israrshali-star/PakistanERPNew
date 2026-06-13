@@ -14,4 +14,8 @@ public interface IQuickBooksIifImportService
         int companyId,
         QuickBooksIifImportOptions options,
         CancellationToken cancellationToken = default);
+
+    Task<OpeningStockRepairResult> ReapplyOpeningStockQuantityOnlyAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
 }

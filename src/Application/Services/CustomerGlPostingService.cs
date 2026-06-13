@@ -38,6 +38,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         int customerId,
         string buyerName,
         decimal openingBalance,
+        DateTime? entryDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -69,7 +70,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
         return await CreatePostedJournalAsync(
             companyId,
-            DateTime.UtcNow.Date,
+            (entryDate ?? DateTime.UtcNow).Date,
             $"Customer opening balance — {buyerName.Trim()}",
             ReferenceTypes.Customer,
             customerId,
@@ -87,6 +88,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
     public async Task<GlPostingResult> PostCustomerReceiptAsync(
         CustomerReceipt receipt,
+        bool postUnclearedOtherBankCheque = false,
         CancellationToken cancellationToken = default)
     {
         return await SyncCustomerReceiptAsync(
@@ -95,6 +97,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
             null,
             receipt.PaymentMethod,
             receipt.ChequeBankType,
+            postUnclearedOtherBankCheque,
             cancellationToken);
     }
 
@@ -104,6 +107,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         int? previousBankId,
         PaymentMethod previousPaymentMethod,
         ChequeBankType? previousChequeBankType,
+        bool postUnclearedOtherBankCheque = false,
         CancellationToken cancellationToken = default)
     {
         var companyId = receipt.CompanyId;
@@ -118,6 +122,11 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
             cancellationToken);
 
         if (receipt.Amount <= 0m)
+        {
+            return new GlPostingResult(true, null);
+        }
+
+        if (ShouldDeferOtherBankChequeGl(receipt) && !postUnclearedOtherBankCheque)
         {
             return new GlPostingResult(true, null);
         }
@@ -176,6 +185,14 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         CancellationToken cancellationToken = default)
     {
         var companyId = receipt.CompanyId;
+
+        if (!await IsValidClearanceBankCoaAsync(companyId, bankChartOfAccountId, cancellationToken))
+        {
+            return new GlPostingResult(false, "Selected bank account is not valid for cheque clearance.");
+        }
+
+        await RemoveJournalByReferenceAsync(companyId, ReferenceTypes.CustomerReceipt, receipt.Id, cancellationToken);
+
         var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
         if (ar is null)
         {
@@ -228,6 +245,123 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
                 PaymentMethod.BankTransfer,
                 null,
                 amount,
+                cancellationToken);
+        }
+
+        return postResult;
+    }
+
+    public async Task<GlPostingResult> PostChequeReturnAsync(
+        CustomerReceipt receipt,
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = receipt.CompanyId;
+        var amount = Math.Round(receipt.Amount, 2);
+
+        var hasActiveJournal = await _unitOfWork.Repository<JournalEntry>()
+            .Query()
+            .AnyAsync(j =>
+                j.CompanyId == companyId
+                && j.ReferenceType == ReferenceTypes.CustomerReceipt
+                && j.ReferenceId == receipt.Id
+                && j.Status == JournalStatus.Posted
+                && !j.IsDeleted,
+                cancellationToken);
+
+        if (!hasActiveJournal
+            && !receipt.IsDeposited
+            && !CustomerReceiptBalanceRules.IsChequeCleared(receipt.Status, receipt.ClearedAt))
+        {
+            return new GlPostingResult(true, null);
+        }
+
+        var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
+        if (ar is null)
+        {
+            return new GlPostingResult(false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.");
+        }
+
+        var undepositedId = await _bankGlPosting.EnsureUndepositedFundsAccountAsync(companyId, cancellationToken);
+        if (!undepositedId.HasValue)
+        {
+            return new GlPostingResult(false, "Undeposited Funds account could not be resolved.");
+        }
+
+        int? bankCoaId = null;
+        int? bankIdForBalance = null;
+        if (receipt.DepositedBankTransactionId.HasValue)
+        {
+            var deposit = await _unitOfWork.Repository<BankTransaction>()
+                .Query()
+                .Where(bt => bt.Id == receipt.DepositedBankTransactionId.Value && bt.CompanyId == companyId)
+                .Select(bt => new { bt.ChartOfAccountId, bt.BankId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (deposit is not null)
+            {
+                bankCoaId = deposit.ChartOfAccountId;
+                bankIdForBalance = deposit.BankId;
+            }
+        }
+
+        if (!bankCoaId.HasValue && receipt.BankId.HasValue)
+        {
+            bankCoaId = await _unitOfWork.Repository<Bank>()
+                .Query()
+                .Where(b => b.Id == receipt.BankId.Value && b.CompanyId == companyId && !b.IsDeleted)
+                .Select(b => (int?)b.ChartOfAccountId)
+                .FirstOrDefaultAsync(cancellationToken);
+            bankIdForBalance = receipt.BankId;
+        }
+
+        var chequeRef = string.IsNullOrWhiteSpace(receipt.ChequeNumber)
+            ? receipt.ReceiptNumber.Trim()
+            : receipt.ChequeNumber.Trim();
+
+        List<JournalEntryLine> reversalLines;
+        if (bankCoaId.HasValue
+            && (receipt.IsDeposited || CustomerReceiptBalanceRules.IsChequeCleared(receipt.Status, receipt.ClearedAt)))
+        {
+            reversalLines =
+            [
+                CreateLine(ar.Value, amount, 0m, $"Cheque returned — {chequeRef}"),
+                CreateLine(bankCoaId.Value, 0m, amount, $"Cheque returned — {chequeRef}")
+            ];
+        }
+        else
+        {
+            reversalLines =
+            [
+                CreateLine(ar.Value, amount, 0m, $"Cheque returned — {chequeRef}"),
+                CreateLine(undepositedId.Value, 0m, amount, $"Cheque returned — {chequeRef}")
+            ];
+        }
+
+        await RemoveJournalByReferenceAsync(companyId, ReferenceTypes.CustomerReceipt, receipt.Id, cancellationToken);
+
+        var postResult = await CreatePostedJournalAsync(
+            companyId,
+            DateTime.UtcNow,
+            $"Cheque returned {receipt.ReceiptNumber}",
+            ReferenceTypes.CustomerReceipt,
+            receipt.Id,
+            reversalLines,
+            cancellationToken);
+
+        if (!postResult.Success)
+        {
+            return postResult;
+        }
+
+        if (bankIdForBalance.HasValue
+            && (receipt.IsDeposited || CustomerReceiptBalanceRules.IsChequeCleared(receipt.Status, receipt.ClearedAt)))
+        {
+            await ApplyBankBalanceChangeAsync(
+                companyId,
+                bankIdForBalance,
+                PaymentMethod.BankTransfer,
+                null,
+                -amount,
                 cancellationToken);
         }
 
@@ -385,7 +519,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         ResolveOpeningBalanceAccountsAsync(int companyId, CancellationToken cancellationToken)
     {
         var ar = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
-        var equity = await GetAccountIdAsync(companyId, RetainedEarnings, cancellationToken);
+        var equity = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
 
         if (ar is null)
         {
@@ -394,7 +528,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
         if (equity is null)
         {
-            return (false, $"Chart of account {RetainedEarnings} (Retained Earnings) not found.", 0, 0);
+            return (false, $"Chart of account {OpeningBalanceEquity} (Opening Balance Equity) not found.", 0, 0);
         }
 
         return (true, null, ar.Value, equity.Value);
@@ -511,6 +645,32 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
     private static bool UsesBankLedger(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>
         paymentMethod == PaymentMethod.BankTransfer
         || (paymentMethod == PaymentMethod.Cheque && chequeBankType == ChequeBankType.SameBank);
+
+    private static bool ShouldDeferOtherBankChequeGl(CustomerReceipt receipt) =>
+        receipt.PaymentMethod == PaymentMethod.Cheque
+        && receipt.ChequeBankType == ChequeBankType.OtherBank
+        && !CustomerReceiptBalanceRules.IsChequeCleared(receipt.Status, receipt.ClearedAt);
+
+    private async Task<bool> IsValidClearanceBankCoaAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        var cashInHand = await GetAccountIdAsync(companyId, CashInHand, cancellationToken);
+        if (cashInHand.HasValue && cashInHand.Value == chartOfAccountId)
+        {
+            return true;
+        }
+
+        return await _unitOfWork.Repository<Bank>()
+            .Query()
+            .AnyAsync(
+                b => b.CompanyId == companyId
+                     && b.ChartOfAccountId == chartOfAccountId
+                     && b.IsActive
+                     && !b.IsDeleted,
+                cancellationToken);
+    }
 
     private static JournalEntryLine CreateLine(int accountId, decimal debit, decimal credit, string memo) =>
         new()

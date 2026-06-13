@@ -35,6 +35,9 @@ public record VendorBillDetailDto(
     string VendorCode,
     string VendorName,
     DateTime BillDate,
+    int? WarehouseId,
+    string? WarehouseCode,
+    string? WarehouseName,
     decimal SubTotal,
     decimal TaxAmount,
     decimal NetAmount,
@@ -62,6 +65,7 @@ public class VendorBillSaveRequest
     public int? Id { get; set; }
     public string BillNumber { get; set; } = string.Empty;
     public int VendorId { get; set; }
+    public int? WarehouseId { get; set; }
     public DateTime BillDate { get; set; }
     public string? RefNo { get; set; }
     public decimal? TaxRate { get; set; }
@@ -88,3 +92,5 @@ public record VendorBillItemLookupDto(
     string StackNo,
     string LotNo,
     decimal PurchaseRate);
+
+public record VendorBillWarehouseLookupDto(int Id, string Code, string Name);

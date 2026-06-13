@@ -11,9 +11,13 @@ public static class CustomerReceiptBalanceRules
     public static bool AffectsCustomerBalance(CustomerReceipt receipt) =>
         AffectsCustomerBalance(receipt.PaymentMethod, receipt.Status, receipt.ClearedAt);
 
+    public static bool IsChequeReturned(CustomerReceiptStatus status) =>
+        status == CustomerReceiptStatus.Returned;
+
     public static bool AffectsCustomerBalance(
         PaymentMethod paymentMethod,
         CustomerReceiptStatus status,
         DateTime? clearedAt) =>
-        paymentMethod != PaymentMethod.Cheque || IsChequeCleared(status, clearedAt);
+        !IsChequeReturned(status)
+        && (paymentMethod != PaymentMethod.Cheque || IsChequeCleared(status, clearedAt));
 }
