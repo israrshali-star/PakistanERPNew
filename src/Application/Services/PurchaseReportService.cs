@@ -80,26 +80,49 @@ public class PurchaseReportService : IPurchaseReportService
         }
 
         var grouped = await query
-            .GroupBy(b => new { b.VendorId, b.Vendor.VendorCode, b.Vendor.VendorName })
-            .Select(g => new PurchaseByVendorLineDto(
-                g.Key.VendorId,
-                g.Key.VendorCode,
-                g.Key.VendorName,
-                g.Count(),
-                g.Sum(b => b.TotalQuantity),
-                g.Sum(b => b.TaxAmount),
-                g.Sum(b => b.NetAmount)))
-            .OrderBy(l => l.VendorName)
+            .GroupBy(b => b.VendorId)
+            .Select(g => new
+            {
+                VendorId = g.Key,
+                BillCount = g.Count(),
+                TotalQuantity = g.Sum(b => b.TotalQuantity),
+                TaxAmount = g.Sum(b => b.TaxAmount),
+                NetAmount = g.Sum(b => b.NetAmount)
+            })
             .ToListAsync(cancellationToken);
+
+        var vendorIds = grouped.Select(g => g.VendorId).Distinct().ToList();
+        var vendors = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => vendorIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.VendorCode, v.VendorName })
+            .ToListAsync(cancellationToken);
+        var vendorLookup = vendors.ToDictionary(v => v.Id);
+
+        var groupedLines = grouped
+            .Select(g =>
+            {
+                vendorLookup.TryGetValue(g.VendorId, out var vendor);
+                return new PurchaseByVendorLineDto(
+                    g.VendorId,
+                    vendor?.VendorCode ?? "—",
+                    vendor?.VendorName ?? "—",
+                    g.BillCount,
+                    g.TotalQuantity,
+                    g.TaxAmount,
+                    g.NetAmount);
+            })
+            .OrderBy(l => l.VendorName)
+            .ToList();
 
         return new PurchaseByVendorReportDto(
             request.FromDate.Date,
             request.ToDate.Date,
-            grouped.Count,
-            grouped.Sum(l => l.TotalQuantity),
-            grouped.Sum(l => l.TaxAmount),
-            grouped.Sum(l => l.NetAmount),
-            grouped);
+            groupedLines.Count,
+            groupedLines.Sum(l => l.TotalQuantity),
+            groupedLines.Sum(l => l.TaxAmount),
+            groupedLines.Sum(l => l.NetAmount),
+            groupedLines);
     }
 
     public async Task<InputTaxSummaryReportDto> GetInputTaxSummaryAsync(

@@ -327,7 +327,7 @@ public static class DbInitializer
             SaleRate = 1000m,
             MinimumStock = 0m,
             ReorderLevel = 0m,
-            CurrentStock = 100m,
+            CurrentStock = 0m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = "system"
