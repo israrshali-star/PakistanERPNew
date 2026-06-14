@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerReceiptService, CustomerReceiptService>();
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IItemCartonSyncService, ItemCartonSyncService>();
+        services.AddScoped<IItemCopyService, ItemCopyService>();
         services.AddScoped<IItemCategoryService, ItemCategoryService>();
         services.AddScoped<IUnitOfMeasureService, UnitOfMeasureService>();
         services.AddScoped<IWarehouseService, WarehouseService>();

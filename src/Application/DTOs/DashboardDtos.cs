@@ -9,6 +9,10 @@ public record DashboardSummaryDto(
 
 public record MonthlySalesPointDto(string Label, decimal Cartons);
 
+public record DailySalesPointDto(string Label, DateTime Date, decimal Cartons);
+
+public record MonthlyProfitLossPointDto(string Label, decimal NetProfit, decimal Revenue, decimal Expenses);
+
 public record TopCustomerBalanceDto(int CustomerId, string BuyerName, string BuyerId, decimal Balance);
 
 public record LowStockItemDto(int ItemId, string ItemCode, string ItemName, decimal CurrentStock, decimal MinimumStock, string Unit);
@@ -24,6 +28,8 @@ public record RecentInvoiceDto(
 
 public record DashboardDataDto(
     DashboardSummaryDto Summary,
+    IReadOnlyList<DailySalesPointDto> DailySales,
+    IReadOnlyList<MonthlyProfitLossPointDto> MonthlyProfitLoss,
     IReadOnlyList<MonthlySalesPointDto> MonthlySales,
     IReadOnlyList<TopCustomerBalanceDto> TopCustomers,
     IReadOnlyList<LowStockItemDto> LowStockItems,

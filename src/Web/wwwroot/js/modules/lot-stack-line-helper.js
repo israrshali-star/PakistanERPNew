@@ -259,13 +259,23 @@
                 return;
             }
 
+            if (window.initPaSelect2) {
+                window.initPaSelect2($select, {
+                    width: 'resolve',
+                    dropdownParent: dropdownParent,
+                    tags: true,
+                    placeholder: 'Item + lot'
+                });
+                return;
+            }
+
             $select.select2({
                 theme: 'bootstrap-5',
                 width: 'resolve',
                 dropdownParent: dropdownParent,
                 tags: true,
                 placeholder: 'Item + lot',
-                minimumResultsForSearch: 5
+                minimumResultsForSearch: 0
             });
         },
 

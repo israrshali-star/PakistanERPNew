@@ -1,7 +1,9 @@
 wwwroot\css\auth.css
 wwwroot\css\fbr-invoice.css
 wwwroot\css\financial-report-proforma.css
+wwwroot\css\report-print.css
 wwwroot\css\site.css
+wwwroot\css\trade-invoice.css
 wwwroot\favicon.ico
 wwwroot\js\app.js
 wwwroot\js\dashboard.js
@@ -23,6 +25,7 @@ wwwroot\js\modules\financial-report-profit-loss.js
 wwwroot\js\modules\financial-report-trial-balance.js
 wwwroot\js\modules\fiscal-years.js
 wwwroot\js\modules\inventory-report-low-stock.js
+wwwroot\js\modules\inventory-report-stack-wise-stock.js
 wwwroot\js\modules\inventory-report-stock-movement.js
 wwwroot\js\modules\inventory-report-stock-summary.js
 wwwroot\js\modules\inventory-transactions.js
@@ -36,6 +39,7 @@ wwwroot\js\modules\purchase-report-by-vendor.js
 wwwroot\js\modules\purchase-report-input-tax.js
 wwwroot\js\modules\purchase-report-register.js
 wwwroot\js\modules\purchase-report-stack-lot.js
+wwwroot\js\modules\report-print-common.js
 wwwroot\js\modules\roles.js
 wwwroot\js\modules\sales-invoice-create.js
 wwwroot\js\modules\sales-invoice-details.js

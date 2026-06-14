@@ -36,3 +36,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Release
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Release\net8.0\PakistanAccountingERP.Infrastructure.pdb
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Release\net8.0\PakistanAccountingERP.Infrastructure.genruntimeconfig.cache
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Release\net8.0\ref\PakistanAccountingERP.Infrastructure.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Release\net8.0\PakistanAccountingERP.Infrastructure.sourcelink.json

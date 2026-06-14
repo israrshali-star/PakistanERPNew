@@ -78,6 +78,11 @@ if (TryRunSyncItemCartons(args, out var syncItemCartonsExitCode))
     Environment.Exit(syncItemCartonsExitCode);
 }
 
+if (TryRunCopyItems(args, out var copyItemsExitCode))
+{
+    Environment.Exit(copyItemsExitCode);
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
@@ -759,6 +764,58 @@ static bool TryRunSyncItemCartons(string[] args, out int exitCode)
         sync.SyncCompanyItemsAsync(companyId).GetAwaiter().GetResult();
         Console.WriteLine($"Item cartons synced for company {companyId}.");
         exitCode = 0;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunCopyItems(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 5
+        || !string.Equals(args[0], "--copy-items", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--from-company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var sourceCompanyId)
+        || !string.Equals(args[3], "--to-company-ids", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var targetCompanyIds = args[4]
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(id => int.TryParse(id, out var companyId) ? companyId : (int?)null)
+        .Where(id => id.HasValue)
+        .Select(id => id!.Value)
+        .ToList();
+
+    if (targetCompanyIds.Count == 0)
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var copy = scope.ServiceProvider.GetRequiredService<IItemCopyService>();
+        var result = copy.CopyItemsAsync(sourceCompanyId, targetCompanyIds).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Categories created: {result.CategoriesCreated}");
+        Console.WriteLine($"Items created: {result.ItemsCreated}");
+        Console.WriteLine($"Items skipped (already exist): {result.ItemsSkipped}");
+
+        exitCode = result.Success ? 0 : 1;
     }
     finally
     {

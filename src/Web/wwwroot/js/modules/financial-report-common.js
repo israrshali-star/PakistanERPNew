@@ -129,6 +129,38 @@
         $('#report-company-name').text(company.companyName || company.CompanyName || '');
     }
 
+    function resetPrintFit() {
+        var $content = $('#report-content');
+        $content.removeClass('report-proforma-fit').css({
+            transform: '',
+            width: ''
+        });
+    }
+
+    function applyPrintFit() {
+        var $content = $('#report-content');
+        resetPrintFit();
+
+        if (!$content.hasClass('report-proforma-single-page')) {
+            return;
+        }
+
+        var printableHeight = window.innerHeight || 1050;
+        var contentHeight = $content[0].scrollHeight;
+        if (contentHeight <= printableHeight) {
+            return;
+        }
+
+        var scale = Math.max(0.55, printableHeight / contentHeight);
+        $content.addClass('report-proforma-fit').css({
+            transform: 'scale(' + scale.toFixed(3) + ')',
+            width: ((1 / scale) * 100).toFixed(2) + '%'
+        });
+    }
+
+    window.addEventListener('beforeprint', applyPrintFit);
+    window.addEventListener('afterprint', resetPrintFit);
+
     window.FinancialReportCommon = {
         rowKind: rowKind,
         escapeHtml: escapeHtml,
@@ -138,6 +170,8 @@
         toInputDate: toInputDate,
         getApiErrorMessage: getApiErrorMessage,
         renderProformaRows: renderProformaRows,
-        setCompanyHeader: setCompanyHeader
+        setCompanyHeader: setCompanyHeader,
+        applyPrintFit: applyPrintFit,
+        resetPrintFit: resetPrintFit
     };
 })(window);

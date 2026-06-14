@@ -32,3 +32,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Release\ne
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Release\net8.0\refint\PakistanAccountingERP.Application.dll
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Release\net8.0\PakistanAccountingERP.Application.pdb
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Release\net8.0\ref\PakistanAccountingERP.Application.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Application\obj\Release\net8.0\PakistanAccountingERP.Application.sourcelink.json

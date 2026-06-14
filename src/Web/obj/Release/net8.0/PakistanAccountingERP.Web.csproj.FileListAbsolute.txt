@@ -221,3 +221,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\ref
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\PakistanAccountingERP.Web.pdb
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\PakistanAccountingERP.Web.genruntimeconfig.cache
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\ref\PakistanAccountingERP.Web.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\PakistanAccountingERP.Web.sourcelink.json

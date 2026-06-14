@@ -365,6 +365,16 @@
         "Name": "id",
         "Type": "System.Int32",
         "IsRequired": true
+      },
+      {
+        "Name": "fromDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      },
+      {
+        "Name": "toDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
       }
     ],
     "ReturnTypes": []
@@ -748,6 +758,27 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
+    "Method": "MarkChequeReturned",
+    "RelativePath": "api/customer-receipts/{id}/mark-returned",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.CustomerReceiptMarkReturnedRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
     "Method": "Banks",
     "RelativePath": "api/customer-receipts/banks",
     "HttpMethod": "GET",
@@ -1087,6 +1118,58 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.GlRepairApiController",
+    "Method": "ReconcileCutover",
+    "RelativePath": "api/gl-repair/cutover-reconcile",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "companyId",
+        "Type": "System.Int32",
+        "IsRequired": false
+      },
+      {
+        "Name": "cutoverDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.GlRepairApiController",
+    "Method": "RepairHistorical",
+    "RelativePath": "api/gl-repair/historical",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.GlRepairApiController",
+    "Method": "PostCutoverTransactions",
+    "RelativePath": "api/gl-repair/post-cutover-transactions",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "companyId",
+        "Type": "System.Int32",
+        "IsRequired": false
+      },
+      {
+        "Name": "fromDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.InventoryReportsApiController",
     "Method": "Categories",
     "RelativePath": "api/inventory-reports/categories",
@@ -1114,6 +1197,37 @@
     "IsController": true,
     "Order": 0,
     "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.InventoryReportsApiController",
+    "Method": "StackWiseStock",
+    "RelativePath": "api/inventory-reports/stack-wise-stock",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "categoryId",
+        "Type": "System.Nullable\u00601[[System.Int32, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      },
+      {
+        "Name": "activeOnly",
+        "Type": "System.Boolean",
+        "IsRequired": false
+      },
+      {
+        "Name": "hideZeroQoh",
+        "Type": "System.Boolean",
+        "IsRequired": false
+      },
+      {
+        "Name": "asOfDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      }
+    ],
     "ReturnTypes": []
   },
   {
@@ -2701,6 +2815,16 @@
     "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
     "Method": "Vendors",
     "RelativePath": "api/vendor-bills/vendors",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
+    "Method": "Warehouses",
+    "RelativePath": "api/vendor-bills/warehouses",
     "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,

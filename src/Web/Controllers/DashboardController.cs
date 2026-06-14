@@ -31,6 +31,20 @@ public class DashboardController : Controller
         return Ok(await _dashboardService.GetSummaryAsync(cancellationToken));
     }
 
+    [HttpGet("daily-sales")]
+    [RequirePermission("Dashboard.View")]
+    public async Task<IActionResult> DailySales(CancellationToken cancellationToken)
+    {
+        return Ok(await _dashboardService.GetDailySalesAsync(cancellationToken));
+    }
+
+    [HttpGet("monthly-profit-loss")]
+    [RequirePermission("Dashboard.View")]
+    public async Task<IActionResult> MonthlyProfitLoss(CancellationToken cancellationToken)
+    {
+        return Ok(await _dashboardService.GetMonthlyProfitLossAsync(cancellationToken));
+    }
+
     [HttpGet("monthly-sales")]
     [RequirePermission("Dashboard.View")]
     public async Task<IActionResult> MonthlySales(CancellationToken cancellationToken)

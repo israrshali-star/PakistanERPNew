@@ -8,6 +8,7 @@
 
         var rows = data.rows || data.Rows || [];
         $('#report-lines').html(common.renderProformaRows(rows, 'amount'));
+        common.resetPrintFit();
     }
 
     function loadReport() {

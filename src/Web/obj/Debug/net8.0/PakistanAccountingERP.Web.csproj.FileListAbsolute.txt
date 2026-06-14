@@ -221,3 +221,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\Seril
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\Serilog.Sinks.Debug.dll
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Debug\net8.0\Serilog.Sinks.File.dll
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Debug\net8.0\PakistanAccountingERP.Web.sourcelink.json

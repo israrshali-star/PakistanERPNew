@@ -51,6 +51,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQmFua3NcSW5kZXguY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/BankTransactions/BankOperation.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQmFua1RyYW5zYWN0aW9uc1xCYW5rT3BlcmF0aW9uLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/BankTransactions/Index.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQmFua1RyYW5zYWN0aW9uc1xJbmRleC5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 
@@ -81,6 +85,10 @@ build_metadata.AdditionalFiles.CssScope =
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/CustomReports/Index.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQ3VzdG9tUmVwb3J0c1xJbmRleC5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/FinancialReports/ArAgingSummary.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcRmluYW5jaWFsUmVwb3J0c1xBckFnaW5nU3VtbWFyeS5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/FinancialReports/BalanceSheet.cshtml]
@@ -117,6 +125,10 @@ build_metadata.AdditionalFiles.CssScope =
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/InventoryReports/LowStock.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSW52ZW50b3J5UmVwb3J0c1xMb3dTdG9jay5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/InventoryReports/StackWiseStock.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSW52ZW50b3J5UmVwb3J0c1xTdGFja1dpc2VTdG9jay5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/InventoryReports/StockMovement.cshtml]
@@ -197,6 +209,10 @@ build_metadata.AdditionalFiles.CssScope =
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/SalesInvoices/_FbrPayloadModal.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2FsZXNJbnZvaWNlc1xfRmJyUGF5bG9hZE1vZGFsLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/SalesInvoices/_TradeInvoiceDocument.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2FsZXNJbnZvaWNlc1xfVHJhZGVJbnZvaWNlRG9jdW1lbnQuY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/Muhammad Israr Ali/PakistanAccountingERP/src/Web/Views/SalesReports/Index.cshtml]

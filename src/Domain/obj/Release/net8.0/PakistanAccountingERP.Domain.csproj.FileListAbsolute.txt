@@ -9,3 +9,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Domain\obj\Release\net8.0\
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Domain\obj\Release\net8.0\refint\PakistanAccountingERP.Domain.dll
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Domain\obj\Release\net8.0\PakistanAccountingERP.Domain.pdb
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Domain\obj\Release\net8.0\ref\PakistanAccountingERP.Domain.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Domain\obj\Release\net8.0\PakistanAccountingERP.Domain.sourcelink.json

@@ -1,40 +1,11 @@
 (function () {
     'use strict';
 
-    function escapeHtml(text) {
-        return $('<div>').text(text ?? '').html();
-    }
-
-    function formatAmount(value) {
-        var num = parseFloat(value) || 0;
-        return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function formatDate(value) {
-        var d = new Date(value);
-        if (Number.isNaN(d.getTime())) {
-            return value;
-        }
-        return d.toLocaleDateString('en-GB');
-    }
-
-    function toInputDate(date) {
-        return date.getFullYear() + '-' +
-            String(date.getMonth() + 1).padStart(2, '0') + '-' +
-            String(date.getDate()).padStart(2, '0');
-    }
-
-    function getApiErrorMessage(xhr, fallback) {
-        var body = xhr && xhr.responseJSON;
-        if (!body) {
-            return fallback;
-        }
-        return body.message || body.Message || fallback;
-    }
+    var common = window.FinancialReportCommon;
 
     function renderReport(data) {
         $('#report-period').text(
-            'As of: ' + formatDate(data.asOfDate) + ' — ' + data.customerCount + ' customer(s)'
+            'As of ' + common.formatProformaDate(data.asOfDate) + ' — ' + data.customerCount + ' customer(s)'
         );
 
         var $tbody = $('#report-lines');
@@ -49,24 +20,24 @@
         data.lines.forEach(function (line) {
             $tbody.append(
                 '<tr>' +
-                '<td><code>' + escapeHtml(line.customerCode) + '</code></td>' +
-                '<td>' + escapeHtml(line.customerName) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.openingBalance) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.current) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.days31To60) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.days61To90) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.over90) + '</td>' +
-                '<td class="text-end fw-semibold">' + formatAmount(line.total) + '</td>' +
+                '<td><code>' + common.escapeHtml(line.customerCode) + '</code></td>' +
+                '<td>' + common.escapeHtml(line.customerName) + '</td>' +
+                '<td class="text-end">' + common.formatAmount(line.openingBalance) + '</td>' +
+                '<td class="text-end">' + common.formatAmount(line.current) + '</td>' +
+                '<td class="text-end">' + common.formatAmount(line.days31To60) + '</td>' +
+                '<td class="text-end">' + common.formatAmount(line.days61To90) + '</td>' +
+                '<td class="text-end">' + common.formatAmount(line.over90) + '</td>' +
+                '<td class="text-end fw-semibold">' + common.formatAmount(line.total) + '</td>' +
                 '</tr>'
             );
         });
 
-        $('#report-total-opening').text(formatAmount(data.totalOpeningBalance));
-        $('#report-total-current').text(formatAmount(data.totalCurrent));
-        $('#report-total-31-60').text(formatAmount(data.totalDays31To60));
-        $('#report-total-61-90').text(formatAmount(data.totalDays61To90));
-        $('#report-total-over-90').text(formatAmount(data.totalOver90));
-        $('#report-total-grand').text(formatAmount(data.grandTotal));
+        $('#report-total-opening').text(common.formatAmount(data.totalOpeningBalance));
+        $('#report-total-current').text(common.formatAmount(data.totalCurrent));
+        $('#report-total-31-60').text(common.formatAmount(data.totalDays31To60));
+        $('#report-total-61-90').text(common.formatAmount(data.totalDays61To90));
+        $('#report-total-over-90').text(common.formatAmount(data.totalOver90));
+        $('#report-total-grand').text(common.formatAmount(data.grandTotal));
         $('#report-footer').removeClass('d-none');
     }
 
@@ -76,17 +47,20 @@
         })
             .done(renderReport)
             .fail(function (xhr) {
-                alert(getApiErrorMessage(xhr, 'Failed to load report.'));
+                alert(common.getApiErrorMessage(xhr, 'Failed to load report.'));
             });
     }
 
     $(function () {
         var today = new Date();
 
-        $('#filter-as-of').val(toInputDate(today));
+        $('#filter-as-of').val(common.toInputDate(today));
 
         $.getJSON('/api/company/current')
-            .done(loadReport)
+            .done(function (company) {
+                common.setCompanyHeader(company);
+                loadReport();
+            })
             .fail(function () {
                 $('#report-company-warning')
                     .removeClass('d-none')

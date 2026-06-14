@@ -37,6 +37,20 @@
 </div>
 
 <div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card p-3">
+            <h5 class="card-title text-primary mb-1">Daily Sales (Last 30 Days)</h5>
+            <p class="text-muted small mb-3">Posted invoice cartons sold by day</p>
+            <canvas id="dailySalesChart" height="140"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card p-3">
+            <h5 class="card-title text-primary mb-1">Profit &amp; Loss Trend (Last 12 Months)</h5>
+            <p class="text-muted small mb-3">Green = profit, red = loss (from general ledger)</p>
+            <canvas id="profitLossChart" height="140"></canvas>
+        </div>
+    </div>
     <div class="col-lg-8">
         <div class="card p-3">
             <h5 class="card-title text-primary mb-3">Monthly Cartons Sold (Last 12 Months)</h5>

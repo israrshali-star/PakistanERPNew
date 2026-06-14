@@ -10,6 +10,12 @@ public interface IDashboardService
     /// <summary>Returns KPI summary cards for the active company.</summary>
     Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Returns daily posted sales cartons for the last 30 days.</summary>
+    Task<IReadOnlyList<DailySalesPointDto>> GetDailySalesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns monthly net profit or loss from GL for the last 12 months.</summary>
+    Task<IReadOnlyList<MonthlyProfitLossPointDto>> GetMonthlyProfitLossAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Returns monthly posted sales cartons for the last 12 months.</summary>
     Task<IReadOnlyList<MonthlySalesPointDto>> GetMonthlySalesAsync(CancellationToken cancellationToken = default);
 

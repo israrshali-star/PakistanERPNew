@@ -36,3 +36,4 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\bin\Debug\n
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\bin\Debug\net8.0\LatoFont\Lato-Thin.ttf
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\bin\Debug\net8.0\LatoFont\Lato-ThinItalic.ttf
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\bin\Debug\net8.0\LatoFont\OFL.txt
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Infrastructure\obj\Debug\net8.0\PakistanAccountingERP.Infrastructure.sourcelink.json

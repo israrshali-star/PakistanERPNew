@@ -22,7 +22,7 @@
 
 <div id="report-company-warning" class="alert alert-warning d-none mb-3 no-print"></div>
 
-<div class="card p-4 report-print-area" id="report-content">
+<div class="card p-3 report-print-area report-print-landscape" id="report-content">
     <div class="text-center mb-4">
         <h5 class="text-primary mb-1">Low Stock Alert Report</h5>
         <p class="text-muted small mb-0" id="report-generated">Loading...</p>
@@ -56,16 +56,10 @@
 </div>
 
 @section Styles {
-    <style>
-        @@media print {
-            .sidebar, .top-navbar, .content-header, .app-footer, .no-print { display: none !important; }
-            .main-wrapper { margin: 0 !important; }
-            .content-area { padding: 0 !important; }
-            .report-print-area { border: none !important; box-shadow: none !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="~/css/report-print.css" asp-append-version="true" />
 }
 
 @section Scripts {
+    <script src="~/js/modules/report-print-common.js" asp-append-version="true"></script>
     <script src="~/js/modules/inventory-report-low-stock.js" asp-append-version="true"></script>
 }

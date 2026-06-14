@@ -9,6 +9,10 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class DashboardService : IDashboardService
 {
+    private const int RevenueTypeId = 4;
+    private const int CogsTypeId = 5;
+    private const int ExpenseTypeId = 6;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
 
@@ -114,6 +118,137 @@ public class DashboardService : IDashboardService
             outstandingReceivables,
             outstandingPayables,
             inventoryValue);
+    }
+
+    public async Task<IReadOnlyList<DailySalesPointDto>> GetDailySalesAsync(CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var today = DateTime.Today;
+        var start = today.AddDays(-29);
+        var endExclusive = today.AddDays(1);
+
+        var lines = await _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query()
+            .Where(l => l.SalesInvoice.CompanyId == companyId
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted
+                        && l.SalesInvoice.InvoiceDate >= start
+                        && l.SalesInvoice.InvoiceDate < endExclusive)
+            .Select(l => new
+            {
+                l.SalesInvoice.InvoiceDate,
+                l.SalesInvoice.InvoiceType,
+                l.Cartons
+            })
+            .ToListAsync(cancellationToken);
+
+        var cartonsByDay = lines
+            .GroupBy(l => l.InvoiceDate.Date)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.Cartons : x.Cartons));
+
+        var points = new List<DailySalesPointDto>();
+        for (var day = start; day <= today; day = day.AddDays(1))
+        {
+            cartonsByDay.TryGetValue(day, out var cartons);
+            points.Add(new DailySalesPointDto(day.ToString("dd MMM"), day, cartons));
+        }
+
+        return points;
+    }
+
+    public async Task<IReadOnlyList<MonthlyProfitLossPointDto>> GetMonthlyProfitLossAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var today = DateTime.Today;
+        var startMonth = new DateTime(today.Year, today.Month, 1).AddMonths(-11);
+        var endExclusive = new DateTime(today.Year, today.Month, 1).AddMonths(1);
+
+        var plAccounts = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId
+                        && a.IsActive
+                        && (a.TypeId == RevenueTypeId || a.TypeId == CogsTypeId || a.TypeId == ExpenseTypeId))
+            .Select(a => new { a.Id, a.TypeId })
+            .ToListAsync(cancellationToken);
+
+        if (plAccounts.Count == 0)
+        {
+            return BuildEmptyMonthlyProfitLossPoints(startMonth);
+        }
+
+        var accountIds = plAccounts.Select(a => a.Id).ToList();
+        var typeByAccountId = plAccounts.ToDictionary(a => a.Id, a => a.TypeId!.Value);
+
+        var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => accountIds.Contains(l.ChartOfAccountId)
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.EntryDate >= startMonth
+                        && l.JournalEntry.EntryDate < endExclusive)
+            .Select(l => new
+            {
+                l.ChartOfAccountId,
+                l.Debit,
+                l.Credit,
+                l.JournalEntry.EntryDate
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalsByMonth = new Dictionary<(int Year, int Month), (decimal Revenue, decimal Expenses)>();
+
+        foreach (var line in journalLines)
+        {
+            if (!typeByAccountId.TryGetValue(line.ChartOfAccountId, out var typeId))
+            {
+                continue;
+            }
+
+            var key = (line.EntryDate.Year, line.EntryDate.Month);
+            totalsByMonth.TryGetValue(key, out var totals);
+
+            switch (typeId)
+            {
+                case RevenueTypeId:
+                    totals.Revenue += line.Credit - line.Debit;
+                    break;
+                case CogsTypeId:
+                case ExpenseTypeId:
+                    totals.Expenses += line.Debit - line.Credit;
+                    break;
+            }
+
+            totalsByMonth[key] = totals;
+        }
+
+        var points = new List<MonthlyProfitLossPointDto>();
+        for (var i = 0; i < 12; i++)
+        {
+            var month = startMonth.AddMonths(i);
+            totalsByMonth.TryGetValue((month.Year, month.Month), out var totals);
+            var netProfit = totals.Revenue - totals.Expenses;
+            points.Add(new MonthlyProfitLossPointDto(
+                month.ToString("MMM yyyy"),
+                netProfit,
+                totals.Revenue,
+                totals.Expenses));
+        }
+
+        return points;
+    }
+
+    private static IReadOnlyList<MonthlyProfitLossPointDto> BuildEmptyMonthlyProfitLossPoints(DateTime startMonth)
+    {
+        var points = new List<MonthlyProfitLossPointDto>();
+        for (var i = 0; i < 12; i++)
+        {
+            var month = startMonth.AddMonths(i);
+            points.Add(new MonthlyProfitLossPointDto(month.ToString("MMM yyyy"), 0m, 0m, 0m));
+        }
+
+        return points;
     }
 
     public async Task<IReadOnlyList<MonthlySalesPointDto>> GetMonthlySalesAsync(CancellationToken cancellationToken = default)
@@ -273,12 +408,21 @@ public class DashboardService : IDashboardService
     public async Task<DashboardDataDto> GetDashboardDataAsync(CancellationToken cancellationToken = default)
     {
         var summary = await GetSummaryAsync(cancellationToken);
+        var dailySales = await GetDailySalesAsync(cancellationToken);
+        var monthlyProfitLoss = await GetMonthlyProfitLossAsync(cancellationToken);
         var monthlySales = await GetMonthlySalesAsync(cancellationToken);
         var topCustomers = await GetTopCustomersByBalanceAsync(cancellationToken: cancellationToken);
         var lowStock = await GetLowStockItemsAsync(cancellationToken);
         var recent = await GetRecentInvoicesAsync(cancellationToken: cancellationToken);
 
-        return new DashboardDataDto(summary, monthlySales, topCustomers, lowStock, recent);
+        return new DashboardDataDto(
+            summary,
+            dailySales,
+            monthlyProfitLoss,
+            monthlySales,
+            topCustomers,
+            lowStock,
+            recent);
     }
 
     private static string GetInvoiceStatusBadgeClass(InvoiceStatus status) =>

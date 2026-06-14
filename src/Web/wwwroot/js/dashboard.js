@@ -2,6 +2,8 @@
     'use strict';
 
     let salesChart = null;
+    let dailySalesChart = null;
+    let profitLossChart = null;
 
     function formatDate(value) {
         const d = new Date(value);
@@ -14,12 +16,141 @@
         return day + '/' + month + '/' + year;
     }
 
+    function formatCompactCurrency(value) {
+        const num = parseFloat(value) || 0;
+        if (Math.abs(num) >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        }
+        if (Math.abs(num) >= 1000) {
+            return (num / 1000).toFixed(0) + 'K';
+        }
+        return num.toLocaleString('en-PK', { maximumFractionDigits: 0 });
+    }
+
     function setKpis(summary) {
         $('[data-kpi="todaySales"]').text(formatCurrency(summary.todaySales));
         $('[data-kpi="monthSales"]').text(formatCurrency(summary.monthSales));
         $('[data-kpi="outstandingReceivables"]').text(formatCurrency(summary.outstandingReceivables));
         $('[data-kpi="outstandingPayables"]').text(formatCurrency(summary.outstandingPayables));
         $('[data-kpi="inventoryValue"]').text(formatCurrency(summary.inventoryValue));
+    }
+
+    function renderDailySalesChart(dailySales) {
+        const ctx = document.getElementById('dailySalesChart');
+        if (!ctx || typeof Chart === 'undefined') {
+            return;
+        }
+
+        const labels = (dailySales || []).map(function (p) { return p.label; });
+        const data = (dailySales || []).map(function (p) { return p.cartons; });
+
+        if (dailySalesChart) {
+            dailySalesChart.destroy();
+        }
+
+        dailySalesChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cartons Sold',
+                    data: data,
+                    backgroundColor: 'rgba(13, 110, 253, 0.75)',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return 'Cartons: ' + Number(context.parsed.y).toLocaleString('en-PK', {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 2
+                                });
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) {
+                                return Number(value).toLocaleString('en-PK');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderProfitLossChart(monthlyProfitLoss) {
+        const ctx = document.getElementById('profitLossChart');
+        if (!ctx || typeof Chart === 'undefined') {
+            return;
+        }
+
+        const labels = (monthlyProfitLoss || []).map(function (p) { return p.label; });
+        const data = (monthlyProfitLoss || []).map(function (p) { return p.netProfit; });
+        const colors = data.map(function (value) {
+            return value >= 0 ? 'rgba(25, 135, 84, 0.85)' : 'rgba(220, 53, 69, 0.85)';
+        });
+
+        if (profitLossChart) {
+            profitLossChart.destroy();
+        }
+
+        profitLossChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Net Profit / Loss (PKR)',
+                    data: data,
+                    backgroundColor: colors,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                var point = monthlyProfitLoss[context.dataIndex] || {};
+                                var lines = [
+                                    'Net: ' + formatCurrency(context.parsed.y),
+                                    'Revenue: ' + formatCurrency(point.revenue || 0),
+                                    'Expenses: ' + formatCurrency(point.expenses || 0)
+                                ];
+                                return lines;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function (value) {
+                                return formatCompactCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function renderChart(monthlySales) {
@@ -142,6 +273,8 @@
         $.getJSON('/api/dashboard')
             .done(function (data) {
                 setKpis(data.summary);
+                renderDailySalesChart(data.dailySales);
+                renderProfitLossChart(data.monthlyProfitLoss);
                 renderChart(data.monthlySales);
                 renderTopCustomers(data.topCustomers);
                 renderLowStock(data.lowStockItems);

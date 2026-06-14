@@ -33,55 +33,48 @@
     </div>
 </div>
 
-<div class="card p-4 report-print-area" id="report-content">
-    <div class="text-center mb-4">
-        <h5 class="text-primary mb-1">Accounts Receivable Aging Summary</h5>
-        <p class="text-muted small mb-0" id="report-period">Select a date and click Load</p>
+<div class="card p-3 report-print-area report-proforma report-proforma-trial-balance" id="report-content">
+    <div class="report-proforma-header">
+        <div class="report-proforma-company" id="report-company-name"></div>
+        <div class="report-proforma-title">Accounts Receivable Aging Summary</div>
+        <p class="report-proforma-period" id="report-period">Select a date and click Load</p>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Customer Code</th>
-                    <th>Customer Name</th>
-                    <th class="text-end">Opening</th>
-                    <th class="text-end">Current</th>
-                    <th class="text-end">31–60 Days</th>
-                    <th class="text-end">61–90 Days</th>
-                    <th class="text-end">90+ Days</th>
-                    <th class="text-end">Total</th>
-                </tr>
-            </thead>
-            <tbody id="report-lines">
-                <tr><td colspan="8" class="text-muted text-center">No data loaded.</td></tr>
-            </tbody>
-            <tfoot id="report-footer" class="d-none table-light">
-                <tr>
-                    <th colspan="2" class="text-end">Totals</th>
-                    <th class="text-end" id="report-total-opening">0.00</th>
-                    <th class="text-end" id="report-total-current">0.00</th>
-                    <th class="text-end" id="report-total-31-60">0.00</th>
-                    <th class="text-end" id="report-total-61-90">0.00</th>
-                    <th class="text-end" id="report-total-over-90">0.00</th>
-                    <th class="text-end" id="report-total-grand">0.00</th>
-                </tr>
-            </tfoot>
-        </table>
-    </div>
+    <table class="report-proforma-table report-proforma-table-wide">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Customer</th>
+                <th class="text-end">Opening</th>
+                <th class="text-end">Current</th>
+                <th class="text-end">31-60</th>
+                <th class="text-end">61-90</th>
+                <th class="text-end">90+</th>
+                <th class="text-end">Total</th>
+            </tr>
+        </thead>
+        <tbody id="report-lines">
+            <tr><td colspan="8" class="text-muted text-center">No data loaded.</td></tr>
+        </tbody>
+        <tfoot id="report-footer" class="d-none">
+            <tr class="row-total">
+                <td colspan="2" class="text-end">Totals</td>
+                <td class="text-end" id="report-total-opening">0.00</td>
+                <td class="text-end" id="report-total-current">0.00</td>
+                <td class="text-end" id="report-total-31-60">0.00</td>
+                <td class="text-end" id="report-total-61-90">0.00</td>
+                <td class="text-end" id="report-total-over-90">0.00</td>
+                <td class="text-end" id="report-total-grand">0.00</td>
+            </tr>
+        </tfoot>
+    </table>
 </div>
 
 @section Styles {
-    <style>
-        @@media print {
-            .sidebar, .top-navbar, .content-header, .app-footer, .no-print { display: none !important; }
-            .main-wrapper { margin: 0 !important; }
-            .content-area { padding: 0 !important; }
-            .report-print-area { border: none !important; box-shadow: none !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="~/css/financial-report-proforma.css" asp-append-version="true" />
 }
 
 @section Scripts {
+    <script src="~/js/modules/financial-report-common.js" asp-append-version="true"></script>
     <script src="~/js/modules/financial-report-ar-aging.js" asp-append-version="true"></script>
 }
