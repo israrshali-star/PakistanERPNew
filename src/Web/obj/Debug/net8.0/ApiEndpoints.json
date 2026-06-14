@@ -904,6 +904,79 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomersApiController",
+    "Method": "LedgerEmail",
+    "RelativePath": "api/customers/{id}/ledger-email",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.LedgerEmailShareRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomersApiController",
+    "Method": "LedgerPdf",
+    "RelativePath": "api/customers/{id}/ledger-pdf",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "from",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      },
+      {
+        "Name": "to",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomersApiController",
+    "Method": "LedgerShareInfo",
+    "RelativePath": "api/customers/{id}/ledger-share-info",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "from",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      },
+      {
+        "Name": "to",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomersApiController",
     "Method": "Statement",
     "RelativePath": "api/customers/{id}/statement",
     "HttpMethod": "GET",
@@ -2009,6 +2082,48 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "EmailInvoice",
+    "RelativePath": "api/sales-invoices/{id}/email",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.SalesInvoiceEmailShareRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "EmailDeliveryChallan",
+    "RelativePath": "api/sales-invoices/{id}/email-challan",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.SalesInvoiceChallanEmailShareRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
     "Method": "FbrPayload",
     "RelativePath": "api/sales-invoices/{id}/fbr-payload",
     "HttpMethod": "GET",
@@ -2044,6 +2159,22 @@
     "Method": "Post",
     "RelativePath": "api/sales-invoices/{id}/post",
     "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "ShareInfo",
+    "RelativePath": "api/sales-invoices/{id}/share-info",
+    "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
     "Parameters": [

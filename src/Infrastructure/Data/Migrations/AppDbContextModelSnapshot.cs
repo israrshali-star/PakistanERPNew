@@ -606,6 +606,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("FbrPostUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("GodownEmail")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsDefault")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")

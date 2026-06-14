@@ -70,6 +70,10 @@
 
                 window.SalesInvoiceFbr.showFbrPreviewAndSubmit(invoiceId, function (result) {
                     showMessage('success', result.message || 'Invoice submitted to FBR.');
+                    if (window.SalesInvoiceShare) {
+                        window.SalesInvoiceShare.openShareModal(invoiceId);
+                        return;
+                    }
                     setTimeout(function () {
                         window.location.reload();
                     }, 800);
@@ -108,8 +112,23 @@
 
         $('#btn-download-challan').on('click', downloadDeliveryChallan);
 
+        $('#btn-email-challan-godown').on('click', function () {
+            var invoiceId = $detail.data('id');
+            if (window.SalesInvoiceShare && window.SalesInvoiceShare.emailChallanToGodown) {
+                window.SalesInvoiceShare.emailChallanToGodown(invoiceId);
+            }
+        });
+
         if ($detail.data('can-download-pdf') === true) {
             $('#btn-download-pdf, .btn-download-pdf-inline').on('click', downloadPdf);
+        }
+
+        if ($detail.data('can-share') === true) {
+            $('#btn-share-invoice').on('click', function () {
+                if (window.SalesInvoiceShare) {
+                    window.SalesInvoiceShare.openShareModal($detail.data('id'));
+                }
+            });
         }
 
         $('#invoice-attachment-upload').on('change', function () {

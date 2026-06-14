@@ -104,7 +104,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.Status == InvoiceStatus.Posted && i.FbrSubmittedAt == null,
                 i.FbrSubmittedAt != null,
                 i.FbrSubmittedAt == null,
-                i.Status != InvoiceStatus.Cancelled))
+                i.Status != InvoiceStatus.Cancelled,
+                i.Status == InvoiceStatus.Posted
+                    && (i.FbrSubmittedAt != null
+                        || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)))
             .ToListAsync(cancellationToken);
 
         return new DataTableResponse<SalesInvoiceListItemDto>(

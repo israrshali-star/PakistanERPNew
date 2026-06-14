@@ -245,7 +245,7 @@
                             return '—';
                         }
                         var html = '<code>' + escapeHtml(d) + '</code>';
-                        if (row.hasFbrPdf) {
+                        if (row.canShareInvoice) {
                             html += ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 btn-download-pdf" data-id="' + row.id + '" title="Download PDF"><i class="fa-solid fa-file-pdf text-danger"></i></button>';
                         }
                         return html;
@@ -271,6 +271,10 @@
                         }
                         if (canEdit && row.canSubmitFbr) {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-primary btn-submit-fbr" data-id="' + id + '" title="Submit to FBR"><i class="fa-solid fa-paper-plane"></i></button>';
+                        }
+                        if (row.canShareInvoice) {
+                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-danger btn-download-pdf" data-id="' + id + '" title="Download PDF"><i class="fa-solid fa-file-pdf"></i></button>';
+                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-share-invoice" data-id="' + id + '" title="Email or WhatsApp"><i class="fa-solid fa-share-nodes"></i></button>';
                         }
                         if (canEdit && row.status === 'Draft') {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-cancel-invoice" data-id="' + id + '" title="Cancel"><i class="fa-solid fa-ban"></i></button>';
@@ -340,6 +344,9 @@
                     if (dataTable) {
                         dataTable.ajax.reload(null, false);
                     }
+                    if (window.SalesInvoiceShare) {
+                        window.SalesInvoiceShare.openShareModal(id);
+                    }
                 });
                 return;
             }
@@ -352,6 +359,15 @@
             var id = $(this).data('id');
             if (window.SalesInvoiceFbr) {
                 window.SalesInvoiceFbr.downloadInvoicePdf(id);
+            }
+        });
+
+        $('#sales-invoices-table').on('click', '.btn-share-invoice', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var id = $(this).data('id');
+            if (window.SalesInvoiceShare) {
+                window.SalesInvoiceShare.openShareModal(id);
             }
         });
 

@@ -66,12 +66,22 @@
         );
     }
 
+    function toggleGodownEmailField(companyId) {
+        if (companyId === 3) {
+            $('#godown-email-group').removeClass('d-none');
+        } else {
+            $('#godown-email-group').addClass('d-none');
+            $('#godown-email').val('');
+        }
+    }
+
     function populateForm(settings) {
         $('#company-name').val(settings.companyName);
         $('#company-ntn').val(settings.ntn || '');
         $('#company-address').val(settings.address || '');
         $('#company-phone').val(settings.phone || '');
         $('#company-email').val(settings.email || '');
+        $('#godown-email').val(settings.godownEmail || '');
         $('#province-id').val(settings.provinceId || '');
         $('#fbr-post-url').val(settings.fbrPostUrl || '');
         $('#api-token').val('');
@@ -296,6 +306,7 @@
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,
             phone: $('#company-phone').val().trim() || null,
             email: $('#company-email').val().trim() || null,
+            godownEmail: $('#godown-email-group').hasClass('d-none') ? null : ($('#godown-email').val().trim() || null),
             fbrPostUrl: $('#fbr-post-url').val().trim() || null,
             apiToken: $('#api-token').val().trim() || null,
             clearApiToken: $('#clear-api-token').is(':checked'),
@@ -362,8 +373,9 @@
         });
 
         $.getJSON('/api/company/current')
-            .done(function () {
+            .done(function (company) {
                 $('#settings-company-warning').addClass('d-none');
+                toggleGodownEmailField(company.id);
                 loadSettings().fail(function (xhr) {
                     showError(getApiErrorMessage(xhr, 'Failed to load settings.'));
                 });

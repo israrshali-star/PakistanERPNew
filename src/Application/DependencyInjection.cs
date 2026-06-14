@@ -22,6 +22,9 @@ public static class DependencyInjection
         services.AddScoped<ITradeInvoicePdfService, TradeInvoicePdfService>();
         services.AddScoped<IDeliveryChallanPdfService, DeliveryChallanPdfService>();
         services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
+        services.AddScoped<IInvoiceShareService, InvoiceShareService>();
+        services.AddScoped<ILedgerPdfService, LedgerPdfService>();
+        services.AddScoped<ILedgerShareService, LedgerShareService>();
         services.AddScoped<ISalesInvoiceAttachmentService, SalesInvoiceAttachmentService>();
         services.AddScoped<IVendorBillAttachmentService, VendorBillAttachmentService>();
         services.AddScoped<ICustomerReceiptService, CustomerReceiptService>();

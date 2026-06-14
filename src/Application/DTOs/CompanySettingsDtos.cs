@@ -9,6 +9,7 @@ public record CompanySettingsDto(
     string? ProvinceName,
     string? Phone,
     string? Email,
+    string? GodownEmail,
     string? FbrPostUrl,
     bool HasApiToken,
     bool FbrLiveMode,
@@ -25,6 +26,7 @@ public class CompanySettingsSaveRequest
     public int? ProvinceId { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
+    public string? GodownEmail { get; set; }
     public string? FbrPostUrl { get; set; }
     public string? ApiToken { get; set; }
     public bool ClearApiToken { get; set; }

@@ -11,6 +11,7 @@ public class Company : AuditableEntity
     public int? ProvinceId { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
+    public string? GodownEmail { get; set; }
     public string? FbrPostUrl { get; set; }
     public string? ApiToken { get; set; }
     public string? LogoPath { get; set; }

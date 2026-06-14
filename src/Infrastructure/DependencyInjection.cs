@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.Configure<BackupOptions>(configuration.GetSection("Backup"));
         services.Configure<ExportOptions>(configuration.GetSection("Export"));
         services.Configure<AttachmentOptions>(configuration.GetSection("Attachments"));
+        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
 
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>
             {
@@ -64,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionManagementService, RolePermissionManagementService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IFbrSubmissionService, FbrSubmissionService>();
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
         services.AddScoped<ICompanyDataPurgeService, CompanyDataPurgeService>();
         services.AddHttpClient("FbrApi");

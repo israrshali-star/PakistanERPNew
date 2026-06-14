@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -48,6 +49,7 @@ public class CompanySettingsService : ICompanySettingsService
                 ProvinceName = c.Province != null ? c.Province.Name : null,
                 c.Phone,
                 c.Email,
+                c.GodownEmail,
                 c.FbrPostUrl,
                 HasApiToken = c.ApiToken != null && c.ApiToken != ""
             })
@@ -76,6 +78,7 @@ public class CompanySettingsService : ICompanySettingsService
             company.ProvinceName,
             company.Phone,
             company.Email,
+            company.GodownEmail,
             company.FbrPostUrl,
             company.HasApiToken,
             fbrLive,
@@ -132,6 +135,10 @@ public class CompanySettingsService : ICompanySettingsService
         company.ProvinceId = request.ProvinceId;
         company.Phone = request.Phone?.Trim();
         company.Email = request.Email?.Trim();
+        if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
+        {
+            company.GodownEmail = request.GodownEmail?.Trim();
+        }
         company.FbrPostUrl = string.IsNullOrWhiteSpace(request.FbrPostUrl)
             ? null
             : request.FbrPostUrl.Trim();

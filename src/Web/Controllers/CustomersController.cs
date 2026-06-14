@@ -73,10 +73,12 @@ public class CustomersController : Controller
 public class CustomersApiController : ControllerBase
 {
     private readonly ICustomerService _customerService;
+    private readonly ILedgerShareService _ledgerShareService;
 
-    public CustomersApiController(ICustomerService customerService)
+    public CustomersApiController(ICustomerService customerService, ILedgerShareService ledgerShareService)
     {
         _customerService = customerService;
+        _ledgerShareService = ledgerShareService;
     }
 
     [HttpGet("datatable")]
@@ -239,6 +241,78 @@ public class CustomersApiController : ControllerBase
             return statement is null ? NotFound() : Ok(statement);
         }
         catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/ledger-share-info")]
+    [RequirePermission("Customers.View")]
+    public async Task<IActionResult> LedgerShareInfo(
+        int id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var info = await _ledgerShareService.GetCustomerShareInfoAsync(id, from, to, cancellationToken);
+            return info is null ? NotFound() : Ok(info);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/ledger-pdf")]
+    [RequirePermission("Customers.View")]
+    public async Task<IActionResult> LedgerPdf(
+        int id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pdf = await _ledgerShareService.GetCustomerLedgerPdfAsync(id, from, to, cancellationToken);
+            if (pdf is null)
+            {
+                return NotFound();
+            }
+
+            var fileName = $"customer-ledger-{id}.pdf";
+            return File(pdf, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/ledger-email")]
+    [RequirePermission("Customers.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> LedgerEmail(
+        int id,
+        [FromBody] LedgerEmailShareRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { message = "Invalid request body." });
+        }
+
+        try
+        {
+            var result = await _ledgerShareService.SendCustomerLedgerEmailAsync(id, request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(new { message = result.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
         {
             return BadRequest(new { message = ex.Message });
         }

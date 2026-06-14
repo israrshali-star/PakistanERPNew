@@ -12,6 +12,9 @@ public static class TradeInvoiceLayout
     public static bool SupportsBulkInvoicePrint(int companyId) =>
         BulkInvoicePrintCompanyIds.Contains(companyId);
 
+    public static bool SupportsGodownChallanEmail(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     public static CultureInfo NumberCulture { get; } = CultureInfo.GetCultureInfo("en-PK");
 
     public static string FormatAmount(decimal value) =>

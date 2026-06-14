@@ -56,10 +56,12 @@ public class VendorsController : Controller
 public class VendorsApiController : Controller
 {
     private readonly IVendorService _vendorService;
+    private readonly ILedgerShareService _ledgerShareService;
 
-    public VendorsApiController(IVendorService vendorService)
+    public VendorsApiController(IVendorService vendorService, ILedgerShareService ledgerShareService)
     {
         _vendorService = vendorService;
+        _ledgerShareService = ledgerShareService;
     }
 
     [HttpGet("datatable")]
@@ -158,5 +160,58 @@ public class VendorsApiController : Controller
 
         var statement = await _vendorService.GetStatementAsync(id, fromDate, toDate, cancellationToken);
         return statement is null ? NotFound() : Ok(statement);
+    }
+
+    [HttpGet("{id:int}/ledger-share-info")]
+    [RequirePermission("Vendors.View")]
+    public async Task<IActionResult> LedgerShareInfo(
+        int id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken cancellationToken)
+    {
+        var info = await _ledgerShareService.GetVendorShareInfoAsync(id, from, to, cancellationToken);
+        return info is null ? NotFound() : Ok(info);
+    }
+
+    [HttpGet("{id:int}/ledger-pdf")]
+    [RequirePermission("Vendors.View")]
+    public async Task<IActionResult> LedgerPdf(
+        int id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken cancellationToken)
+    {
+        var pdf = await _ledgerShareService.GetVendorLedgerPdfAsync(id, from, to, cancellationToken);
+        if (pdf is null)
+        {
+            return NotFound();
+        }
+
+        return File(pdf, "application/pdf", $"vendor-ledger-{id}.pdf");
+    }
+
+    [HttpPost("{id:int}/ledger-email")]
+    [RequirePermission("Vendors.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> LedgerEmail(
+        int id,
+        [FromBody] LedgerEmailShareRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { message = "Invalid request body." });
+        }
+
+        try
+        {
+            var result = await _ledgerShareService.SendVendorLedgerEmailAsync(id, request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(new { message = result.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

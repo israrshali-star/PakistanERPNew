@@ -14,7 +14,11 @@
             }
         </p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 no-print">
+        <button type="button" class="btn btn-outline-success btn-sm" id="btn-share-ledger"
+                data-party-type="vendor" data-party-id="@Model.Vendor.Id">
+            <i class="fa-solid fa-share-nodes me-1"></i>Share
+        </button>
         <a asp-action="Statement" asp-route-id="@Model.Vendor.Id" class="btn btn-outline-primary btn-sm">
             <i class="fa-solid fa-file-lines me-1"></i>Statement
         </a>
@@ -90,3 +94,17 @@
         </table>
     </div>
 </div>
+
+<partial name="_LedgerShareModal" />
+
+@section Scripts {
+    <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
+    <script>
+        document.getElementById('btn-share-ledger').addEventListener('click', function () {
+            window.LedgerShare.open({
+                partyType: 'vendor',
+                partyId: @Model.Vendor.Id
+            });
+        });
+    </script>
+}

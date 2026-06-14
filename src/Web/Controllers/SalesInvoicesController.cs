@@ -126,6 +126,7 @@ public class SalesInvoicesApiController : ControllerBase
     private readonly ITradeInvoicePdfService _tradeInvoicePdfService;
     private readonly IDeliveryChallanPdfService _deliveryChallanPdfService;
     private readonly ICurrentCompanyService _currentCompany;
+    private readonly IInvoiceShareService _invoiceShareService;
 
     public SalesInvoicesApiController(
         ISalesInvoiceService salesInvoiceService,
@@ -134,7 +135,8 @@ public class SalesInvoicesApiController : ControllerBase
         ISalesInvoicePdfService salesInvoicePdfService,
         ITradeInvoicePdfService tradeInvoicePdfService,
         IDeliveryChallanPdfService deliveryChallanPdfService,
-        ICurrentCompanyService currentCompany)
+        ICurrentCompanyService currentCompany,
+        IInvoiceShareService invoiceShareService)
     {
         _salesInvoiceService = salesInvoiceService;
         _attachmentService = attachmentService;
@@ -143,6 +145,7 @@ public class SalesInvoicesApiController : ControllerBase
         _tradeInvoicePdfService = tradeInvoicePdfService;
         _deliveryChallanPdfService = deliveryChallanPdfService;
         _currentCompany = currentCompany;
+        _invoiceShareService = invoiceShareService;
     }
 
     [HttpGet("submitted-for-print")]
@@ -464,6 +467,75 @@ public class SalesInvoicesApiController : ControllerBase
             return File(pdfBytes, "application/pdf", fileName);
         }
         catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/share-info")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> ShareInfo(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var info = await _invoiceShareService.GetShareInfoAsync(id, cancellationToken);
+            return info is null ? NotFound() : Ok(info);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/email")]
+    [RequirePermission("Sales.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> EmailInvoice(
+        int id,
+        [FromBody] SalesInvoiceEmailShareRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { message = "Invalid request body." });
+        }
+
+        try
+        {
+            var result = await _invoiceShareService.SendEmailAsync(id, request, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(new { message = result.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/email-challan")]
+    [RequirePermission("Sales.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> EmailDeliveryChallan(
+        int id,
+        [FromBody] SalesInvoiceChallanEmailShareRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _invoiceShareService.SendDeliveryChallanEmailAsync(
+                id,
+                request ?? new SalesInvoiceChallanEmailShareRequest(null, null),
+                cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(new { message = result.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
         {
             return BadRequest(new { message = ex.Message });
         }

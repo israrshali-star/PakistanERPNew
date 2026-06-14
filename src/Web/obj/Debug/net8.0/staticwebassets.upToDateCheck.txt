@@ -34,6 +34,7 @@ wwwroot\js\modules\items.js
 wwwroot\js\modules\journal-entries.js
 wwwroot\js\modules\journal-entry-create.js
 wwwroot\js\modules\journal-entry-details.js
+wwwroot\js\modules\ledger-share.js
 wwwroot\js\modules\lot-stack-line-helper.js
 wwwroot\js\modules\purchase-report-by-vendor.js
 wwwroot\js\modules\purchase-report-input-tax.js
@@ -45,6 +46,7 @@ wwwroot\js\modules\sales-invoice-create.js
 wwwroot\js\modules\sales-invoice-details.js
 wwwroot\js\modules\sales-invoice-fbr.js
 wwwroot\js\modules\sales-invoices.js
+wwwroot\js\modules\sales-invoice-share.js
 wwwroot\js\modules\sales-report-by-customer.js
 wwwroot\js\modules\sales-report-register.js
 wwwroot\js\modules\sales-report-tax-summary.js

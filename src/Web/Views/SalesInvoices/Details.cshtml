@@ -32,7 +32,8 @@
      data-can-cancel="@canCancel.ToString().ToLower()"
      data-can-submit-fbr="@canSubmitFbr.ToString().ToLower()"
      data-can-delete="@canDelete.ToString().ToLower()"
-     data-can-download-pdf="@canDownloadPdf.ToString().ToLower()"></div>
+     data-can-download-pdf="@canDownloadPdf.ToString().ToLower()"
+     data-can-share="@canDownloadPdf.ToString().ToLower()"></div>
 
 <div id="invoice-action-message" class="alert d-none mb-3 no-print"></div>
 
@@ -66,10 +67,19 @@
         <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-download-challan" title="Delivery challan PDF for goods dispatch">
             <i class="fa-solid fa-truck me-1"></i>Delivery Challan PDF
         </button>
+        @if (Model.Status == InvoiceStatus.Posted && Model.CompanyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
+        {
+            <button type="button" class="btn btn-outline-warning btn-sm" id="btn-email-challan-godown" title="Email delivery challan to godown">
+                <i class="fa-solid fa-envelope me-1"></i>Email Challan to Godown
+            </button>
+        }
         @if (canDownloadPdf)
         {
             <button type="button" class="btn btn-outline-danger btn-sm" id="btn-download-pdf" title="Download PDF invoice">
                 <i class="fa-solid fa-file-pdf me-1"></i>Download PDF
+            </button>
+            <button type="button" class="btn btn-outline-success btn-sm" id="btn-share-invoice" title="Email or WhatsApp invoice to customer">
+                <i class="fa-solid fa-share-nodes me-1"></i>Share
             </button>
         }
         @if (canCancel)
@@ -279,6 +289,7 @@ else
 </div>
 
 <partial name="_FbrPayloadModal" />
+<partial name="_InvoiceShareModal" />
 
 @section Styles {
     @if (useTradeInvoice)
@@ -293,5 +304,6 @@ else
 
 @section Scripts {
     <script src="~/js/modules/sales-invoice-fbr.js" asp-append-version="true"></script>
+    <script src="~/js/modules/sales-invoice-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/sales-invoice-details.js" asp-append-version="true"></script>
 }

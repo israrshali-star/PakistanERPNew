@@ -116,6 +116,23 @@
             window.print();
         });
 
+        $('#btn-share-statement').on('click', function () {
+            var from = parseDateInput($('#statement-from').val());
+            var to = parseDateInput($('#statement-to').val());
+            if (!from || !to) {
+                alert('Please select valid from and to dates.');
+                return;
+            }
+            if (window.LedgerShare) {
+                window.LedgerShare.open({
+                    partyType: 'vendor',
+                    partyId: parseInt($('#statement-vendor-id').val(), 10),
+                    fromDate: from,
+                    toDate: to
+                });
+            }
+        });
+
         loadStatement();
     });
 })();

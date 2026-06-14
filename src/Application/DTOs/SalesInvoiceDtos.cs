@@ -16,7 +16,8 @@ public record SalesInvoiceListItemDto(
     bool CanSubmitFbr,
     bool HasFbrPdf,
     bool CanDelete,
-    bool IsActive);
+    bool IsActive,
+    bool CanShareInvoice);
 
 public record SalesInvoiceLineDto(
     int Id,
