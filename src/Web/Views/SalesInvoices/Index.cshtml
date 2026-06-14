@@ -40,6 +40,53 @@
     </div>
 </div>
 
+<div class="card p-3 mb-3 d-none" id="bulk-print-panel">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+            <h6 class="text-primary mb-1">Print Submitted Invoices (PDF)</h6>
+            <p class="text-muted small mb-0">Search FBR-submitted invoices by buyer or invoice number, select, and download one combined PDF.</p>
+        </div>
+        <button type="button" class="btn btn-outline-danger btn-sm" id="btn-bulk-print-pdf" disabled>
+            <i class="fa-solid fa-file-pdf me-1"></i>Print Selected PDF
+        </button>
+    </div>
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-md-4">
+            <label class="form-label" for="bulk-buyer-name">Buyer Name</label>
+            <input type="text" class="form-control" id="bulk-buyer-name" placeholder="Search buyer name..." maxlength="200" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="bulk-invoice-number">Invoice #</label>
+            <input type="text" class="form-control" id="bulk-invoice-number" placeholder="INV-0001 or FBR #" maxlength="50" />
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-primary w-100" id="btn-bulk-search">
+                <i class="fa-solid fa-magnifying-glass me-1"></i>Search
+            </button>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="bulk-print-table">
+            <thead>
+                <tr>
+                    <th style="width:2.5rem">
+                        <input type="checkbox" class="form-check-input" id="bulk-select-all" title="Select all" />
+                    </th>
+                    <th>Invoice #</th>
+                    <th>Buyer</th>
+                    <th>Date</th>
+                    <th class="text-end">Net Total</th>
+                    <th>FBR #</th>
+                </tr>
+            </thead>
+            <tbody id="bulk-print-lines">
+                <tr><td colspan="6" class="text-muted text-center small">Search submitted invoices to select for printing.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted small mb-0 mt-2" id="bulk-print-summary"></p>
+</div>
+
 <div class="card p-3">
     <div class="table-responsive">
         <table class="table table-hover w-100" id="sales-invoices-table">

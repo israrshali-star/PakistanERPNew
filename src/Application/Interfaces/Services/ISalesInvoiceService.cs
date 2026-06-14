@@ -49,4 +49,15 @@ public interface ISalesInvoiceService
     Task<TradeInvoicePrintDto?> GetTradeInvoicePrintDataAsync(
         int id,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SubmittedInvoicePrintListItemDto>> GetSubmittedInvoicesForPrintAsync(
+        string? buyerName,
+        string? invoiceNumber,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default);
+
+    Task<SalesInvoiceBulkPdfResult> GenerateBulkInvoicePdfAsync(
+        IReadOnlyList<int> invoiceIds,
+        CancellationToken cancellationToken = default);
 }

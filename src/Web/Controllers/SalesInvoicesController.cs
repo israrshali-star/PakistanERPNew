@@ -145,6 +145,67 @@ public class SalesInvoicesApiController : ControllerBase
         _currentCompany = currentCompany;
     }
 
+    [HttpGet("submitted-for-print")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> SubmittedForPrint(
+        [FromQuery] string? buyerName,
+        [FromQuery] string? invoiceNumber,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var companyId = _currentCompany.GetRequiredCompanyId();
+            if (!TradeInvoiceLayout.SupportsBulkInvoicePrint(companyId))
+            {
+                return Ok(Array.Empty<SubmittedInvoicePrintListItemDto>());
+            }
+
+            return Ok(await _salesInvoiceService.GetSubmittedInvoicesForPrintAsync(
+                buyerName,
+                invoiceNumber,
+                fromDate,
+                toDate,
+                cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("bulk-pdf")]
+    [RequirePermission("Sales.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> BulkPdf(
+        [FromBody] SalesInvoiceBulkPdfRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || request.InvoiceIds is null || request.InvoiceIds.Count == 0)
+        {
+            return BadRequest(new { message = "Select at least one invoice to print." });
+        }
+
+        try
+        {
+            var result = await _salesInvoiceService.GenerateBulkInvoicePdfAsync(
+                request.InvoiceIds,
+                cancellationToken);
+
+            if (!result.Success || result.PdfBytes is null)
+            {
+                return BadRequest(new { message = result.Message ?? "Could not generate PDF." });
+            }
+
+            return File(result.PdfBytes, "application/pdf", result.FileName ?? "invoices.pdf");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("datatable")]
     [RequirePermission("Sales.View")]
     public async Task<IActionResult> DataTable(CancellationToken cancellationToken)

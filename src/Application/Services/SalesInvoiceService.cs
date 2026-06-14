@@ -21,6 +21,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private readonly IAuditService _auditService;
     private readonly IFbrSubmissionService _fbrSubmissionService;
     private readonly IStackLotInventoryService _stackLotInventory;
+    private readonly ISalesInvoicePdfService _salesInvoicePdfService;
     private readonly ILogger<SalesInvoiceService> _logger;
 
     private const string CartageItemCode = "ITEM-0002";
@@ -32,6 +33,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         IAuditService auditService,
         IFbrSubmissionService fbrSubmissionService,
         IStackLotInventoryService stackLotInventory,
+        ISalesInvoicePdfService salesInvoicePdfService,
         ILogger<SalesInvoiceService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -40,6 +42,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         _auditService = auditService;
         _fbrSubmissionService = fbrSubmissionService;
         _stackLotInventory = stackLotInventory;
+        _salesInvoicePdfService = salesInvoicePdfService;
         _logger = logger;
     }
 
@@ -1573,6 +1576,149 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             Math.Round(invoice.NetTotal, 2),
             DateTime.Now,
             lines);
+    }
+
+    public async Task<IReadOnlyList<SubmittedInvoicePrintListItemDto>> GetSubmittedInvoicesForPrintAsync(
+        string? buyerName,
+        string? invoiceNumber,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out _))
+        {
+            return [];
+        }
+
+        if (!TradeInvoiceLayout.SupportsBulkInvoicePrint(companyId))
+        {
+            return [];
+        }
+
+        var query = _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.CompanyId == companyId
+                        && i.FbrSubmittedAt != null
+                        && i.Status == InvoiceStatus.Posted);
+
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.Date;
+            query = query.Where(i => i.InvoiceDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value.Date.AddDays(1);
+            query = query.Where(i => i.InvoiceDate < to);
+        }
+
+        if (!string.IsNullOrWhiteSpace(buyerName))
+        {
+            var buyerTerm = buyerName.Trim();
+            query = query.Where(i => i.Customer.BuyerName.Contains(buyerTerm));
+        }
+
+        if (!string.IsNullOrWhiteSpace(invoiceNumber))
+        {
+            var invTerm = invoiceNumber.Trim();
+            query = query.Where(i =>
+                i.InvoiceNumber.Contains(invTerm)
+                || (i.FbrInvoiceNumber != null && i.FbrInvoiceNumber.Contains(invTerm)));
+        }
+
+        return await query
+            .OrderBy(i => i.Customer.BuyerName)
+            .ThenBy(i => i.InvoiceDate)
+            .ThenBy(i => i.InvoiceNumber)
+            .Select(i => new SubmittedInvoicePrintListItemDto(
+                i.Id,
+                i.InvoiceNumber,
+                i.Customer.BuyerName,
+                i.InvoiceDate,
+                i.NetTotal,
+                i.FbrInvoiceNumber))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<SalesInvoiceBulkPdfResult> GenerateBulkInvoicePdfAsync(
+        IReadOnlyList<int> invoiceIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return new SalesInvoiceBulkPdfResult(false, companyError?.Message, null, null);
+        }
+
+        if (!TradeInvoiceLayout.SupportsBulkInvoicePrint(companyId))
+        {
+            return new SalesInvoiceBulkPdfResult(false, "Bulk PDF print is not enabled for this company.", null, null);
+        }
+
+        if (invoiceIds is null || invoiceIds.Count == 0)
+        {
+            return new SalesInvoiceBulkPdfResult(false, "Select at least one invoice to print.", null, null);
+        }
+
+        var distinctIds = invoiceIds.Distinct().ToList();
+        var invoices = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.CompanyId == companyId
+                        && distinctIds.Contains(i.Id)
+                        && i.FbrSubmittedAt != null
+                        && i.Status == InvoiceStatus.Posted)
+            .Select(i => new { i.Id, i.Customer.BuyerName, i.InvoiceDate, i.InvoiceNumber })
+            .ToListAsync(cancellationToken);
+
+        if (invoices.Count != distinctIds.Count)
+        {
+            return new SalesInvoiceBulkPdfResult(
+                false,
+                "One or more selected invoices are missing or not FBR-submitted.",
+                null,
+                null);
+        }
+
+        var orderedIds = invoices
+            .OrderBy(i => i.BuyerName)
+            .ThenBy(i => i.InvoiceDate)
+            .ThenBy(i => i.InvoiceNumber)
+            .Select(i => i.Id)
+            .ToList();
+
+        var printModels = new List<SalesInvoicePrintDto>(orderedIds.Count);
+        foreach (var id in orderedIds)
+        {
+            var printData = await GetPrintDataAsync(id, cancellationToken);
+            if (printData is null)
+            {
+                return new SalesInvoiceBulkPdfResult(
+                    false,
+                    "Could not load print data for one or more invoices.",
+                    null,
+                    null);
+            }
+
+            printModels.Add(printData);
+        }
+
+        var buyerNames = invoices.Select(i => i.BuyerName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var fileName = buyerNames.Count == 1
+            ? SanitizePdfFileName($"{buyerNames[0]}-invoices.pdf")
+            : SanitizePdfFileName("selected-invoices.pdf");
+
+        var pdfBytes = _salesInvoicePdfService.GenerateBulkPdf(printModels);
+        return new SalesInvoiceBulkPdfResult(true, null, pdfBytes, fileName);
+    }
+
+    private static string SanitizePdfFileName(string fileName)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(fileName
+            .Select(ch => invalid.Contains(ch) ? '-' : ch)
+            .ToArray())
+            .Trim('-', ' ');
+        return string.IsNullOrWhiteSpace(sanitized) ? "invoices.pdf" : sanitized;
     }
 
     private async Task<decimal> GetCustomerBalanceAsOfAsync(

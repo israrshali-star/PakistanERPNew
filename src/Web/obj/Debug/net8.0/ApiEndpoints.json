@@ -2105,6 +2105,22 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "BulkPdf",
+    "RelativePath": "api/sales-invoices/bulk-pdf",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "PakistanAccountingERP.Application.DTOs.SalesInvoiceBulkPdfRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
     "Method": "Customers",
     "RelativePath": "api/sales-invoices/customers",
     "HttpMethod": "GET",
@@ -2164,6 +2180,37 @@
       {
         "Name": "lotNo",
         "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.SalesInvoicesApiController",
+    "Method": "SubmittedForPrint",
+    "RelativePath": "api/sales-invoices/submitted-for-print",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "buyerName",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "invoiceNumber",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "fromDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
+        "IsRequired": false
+      },
+      {
+        "Name": "toDate",
+        "Type": "System.Nullable\u00601[[System.DateTime, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]",
         "IsRequired": false
       }
     ],

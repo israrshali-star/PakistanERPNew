@@ -23,6 +23,24 @@ public class SalesInvoicePdfService : ISalesInvoicePdfService
     }
 
     public byte[] GeneratePdf(SalesInvoicePrintDto model) =>
+        CreateDocument(model).GeneratePdf();
+
+    public byte[] GenerateBulkPdf(IReadOnlyList<SalesInvoicePrintDto> models)
+    {
+        if (models.Count == 0)
+        {
+            return [];
+        }
+
+        if (models.Count == 1)
+        {
+            return GeneratePdf(models[0]);
+        }
+
+        return Document.Merge(models.Select(CreateDocument)).GeneratePdf();
+    }
+
+    private static Document CreateDocument(SalesInvoicePrintDto model) =>
         Document.Create(container =>
         {
             container.Page(page =>
@@ -47,7 +65,7 @@ public class SalesInvoicePdfService : ISalesInvoicePdfService
                         .FontSize(8).FontColor(Colors.Grey.Darken1);
                 });
             });
-        }).GeneratePdf();
+        });
 
     private static void ComposeHeader(IContainer container, SalesInvoicePrintDto model)
     {

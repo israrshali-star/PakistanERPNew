@@ -6,6 +6,12 @@ public static class TradeInvoiceLayout
 {
     public const int TradeInvoiceCompanyId = 3;
 
+    /// <summary>Companies that support bulk PDF print of FBR-submitted invoices from the list page.</summary>
+    public static readonly int[] BulkInvoicePrintCompanyIds = [2, 4, 5, 6, 7];
+
+    public static bool SupportsBulkInvoicePrint(int companyId) =>
+        BulkInvoicePrintCompanyIds.Contains(companyId);
+
     public static CultureInfo NumberCulture { get; } = CultureInfo.GetCultureInfo("en-PK");
 
     public static string FormatAmount(decimal value) =>

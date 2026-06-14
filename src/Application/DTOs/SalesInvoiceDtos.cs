@@ -137,3 +137,15 @@ public class SalesInvoiceSaveRequest
 }
 
 public record SalesInvoiceSaveResult(bool Success, string? Message, int? InvoiceId);
+
+public record SubmittedInvoicePrintListItemDto(
+    int Id,
+    string InvoiceNumber,
+    string CustomerName,
+    DateTime InvoiceDate,
+    decimal NetTotal,
+    string? FbrInvoiceNumber);
+
+public record SalesInvoiceBulkPdfRequest(IReadOnlyList<int> InvoiceIds);
+
+public record SalesInvoiceBulkPdfResult(bool Success, string? Message, byte[]? PdfBytes, string? FileName);

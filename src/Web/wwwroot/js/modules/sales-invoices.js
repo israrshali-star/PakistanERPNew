@@ -4,6 +4,8 @@
     var dataTable = null;
     var canEdit = false;
     var canDelete = false;
+    var bulkPrintEnabled = false;
+    var bulkPrintItems = [];
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -15,6 +17,131 @@
             return fallback;
         }
         return body.message || body.Message || fallback;
+    }
+
+    function formatInvoiceDate(value) {
+        var dt = new Date(value);
+        if (Number.isNaN(dt.getTime())) {
+            return value;
+        }
+        return String(dt.getDate()).padStart(2, '0') + '/' +
+            String(dt.getMonth() + 1).padStart(2, '0') + '/' +
+            dt.getFullYear();
+    }
+
+    function updateBulkPrintButton() {
+        var selectedCount = $('#bulk-print-lines .bulk-invoice-check:checked').length;
+        $('#btn-bulk-print-pdf').prop('disabled', selectedCount === 0);
+        $('#bulk-print-summary').text(selectedCount > 0
+            ? selectedCount + ' invoice(s) selected for PDF.'
+            : '');
+    }
+
+    function renderBulkPrintRows(items) {
+        bulkPrintItems = items || [];
+        var $tbody = $('#bulk-print-lines');
+        $tbody.empty();
+        $('#bulk-select-all').prop('checked', false);
+
+        if (!bulkPrintItems.length) {
+            $tbody.append('<tr><td colspan="6" class="text-muted text-center small">No submitted invoices match your search.</td></tr>');
+            updateBulkPrintButton();
+            return;
+        }
+
+        bulkPrintItems.forEach(function (item) {
+            $tbody.append(
+                '<tr>' +
+                '<td><input type="checkbox" class="form-check-input bulk-invoice-check" value="' + item.id + '" /></td>' +
+                '<td><code>' + escapeHtml(item.invoiceNumber) + '</code></td>' +
+                '<td>' + escapeHtml(item.customerName) + '</td>' +
+                '<td>' + formatInvoiceDate(item.invoiceDate) + '</td>' +
+                '<td class="text-end text-currency">' + formatCurrency(item.netTotal) + '</td>' +
+                '<td>' + (item.fbrInvoiceNumber ? '<code>' + escapeHtml(item.fbrInvoiceNumber) + '</code>' : '—') + '</td>' +
+                '</tr>'
+            );
+        });
+
+        updateBulkPrintButton();
+    }
+
+    function loadBulkPrintInvoices() {
+        if (!bulkPrintEnabled) {
+            return;
+        }
+
+        $.getJSON('/api/sales-invoices/submitted-for-print', {
+            buyerName: $('#bulk-buyer-name').val(),
+            invoiceNumber: $('#bulk-invoice-number').val(),
+            fromDate: $('#filter-from').val(),
+            toDate: $('#filter-to').val()
+        })
+            .done(renderBulkPrintRows)
+            .fail(function (xhr) {
+                alert(getApiErrorMessage(xhr, 'Failed to load submitted invoices.'));
+            });
+    }
+
+    function printSelectedBulkPdf() {
+        var ids = $('#bulk-print-lines .bulk-invoice-check:checked').map(function () {
+            return parseInt($(this).val(), 10);
+        }).get();
+
+        if (!ids.length) {
+            alert('Select at least one invoice to print.');
+            return;
+        }
+
+        var $btn = $('#btn-bulk-print-pdf');
+        $btn.prop('disabled', true);
+
+        fetch('/api/sales-invoices/bulk-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoiceIds: ids })
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().then(function (body) {
+                        throw new Error(body.message || body.Message || 'Could not generate PDF.');
+                    });
+                }
+
+                var disposition = response.headers.get('Content-Disposition') || '';
+                var match = /filename="?([^";]+)"?/i.exec(disposition);
+                var fileName = match ? match[1] : 'invoices.pdf';
+
+                return response.blob().then(function (blob) {
+                    return { blob: blob, fileName: fileName };
+                });
+            })
+            .then(function (result) {
+                var url = window.URL.createObjectURL(result.blob);
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = result.fileName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(function (err) {
+                alert(err.message || 'Could not generate PDF.');
+            })
+            .finally(function () {
+                updateBulkPrintButton();
+            });
+    }
+
+    function initBulkPrintPanel(company) {
+        bulkPrintEnabled = [2, 4, 5, 6, 7].indexOf(company.id) >= 0;
+        if (!bulkPrintEnabled) {
+            $('#bulk-print-panel').addClass('d-none');
+            return;
+        }
+
+        $('#bulk-print-panel').removeClass('d-none');
+        loadBulkPrintInvoices();
     }
 
     function runInvoiceAction(id, action, confirmText, successReload, method) {
@@ -95,13 +222,7 @@
                 {
                     data: 'invoiceDate',
                     render: function (d) {
-                        var dt = new Date(d);
-                        if (Number.isNaN(dt.getTime())) {
-                            return d;
-                        }
-                        return String(dt.getDate()).padStart(2, '0') + '/' +
-                            String(dt.getMonth() + 1).padStart(2, '0') + '/' +
-                            dt.getFullYear();
+                        return formatInvoiceDate(d);
                     }
                 },
                 {
@@ -173,11 +294,35 @@
         canDelete = $('#sales-invoice-permissions').data('can-delete') === true;
 
         initDefaultDateFilters();
-        $('#btn-apply-filter').on('click', reloadDataTable);
-        $('#filter-from, #filter-to').on('change', reloadDataTable);
+        $('#btn-apply-filter').on('click', function () {
+            reloadDataTable();
+            loadBulkPrintInvoices();
+        });
+        $('#filter-from, #filter-to').on('change', function () {
+            reloadDataTable();
+            loadBulkPrintInvoices();
+        });
+
+        $('#btn-bulk-search').on('click', loadBulkPrintInvoices);
+        $('#bulk-buyer-name, #bulk-invoice-number').on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadBulkPrintInvoices();
+            }
+        });
+        $('#bulk-select-all').on('change', function () {
+            var checked = $(this).is(':checked');
+            $('#bulk-print-lines .bulk-invoice-check').prop('checked', checked);
+            updateBulkPrintButton();
+        });
+        $('#bulk-print-lines').on('change', '.bulk-invoice-check', updateBulkPrintButton);
+        $('#btn-bulk-print-pdf').on('click', printSelectedBulkPdf);
 
         $.getJSON('/api/company/current')
-            .done(initDataTable)
+            .done(function (company) {
+                initDataTable();
+                initBulkPrintPanel(company);
+            })
             .fail(function () {
                 $('#sales-company-warning')
                     .removeClass('d-none')
