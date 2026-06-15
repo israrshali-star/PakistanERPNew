@@ -99,6 +99,7 @@
                         <div class="col-md-4">
                             <label class="form-label" for="receipt-amount">Amount (PKR)</label>
                             <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
+                            <div class="form-text text-success" id="receipt-amount-words"></div>
                         </div>
                         <div class="col-md-8">
                             <label class="form-label" for="receipt-customer-id">Customer</label>
@@ -204,5 +205,7 @@
 </div>
 
 @section Scripts {
+    <partial name="_ReceiptShareModal" />
+    <script src="~/js/modules/customer-receipt-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/customer-receipts.js" asp-append-version="true"></script>
 }

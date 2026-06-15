@@ -23,10 +23,14 @@ public class CustomerReceiptsController : Controller
 public class CustomerReceiptsApiController : ControllerBase
 {
     private readonly ICustomerReceiptService _customerReceiptService;
+    private readonly ICustomerReceiptShareService _customerReceiptShareService;
 
-    public CustomerReceiptsApiController(ICustomerReceiptService customerReceiptService)
+    public CustomerReceiptsApiController(
+        ICustomerReceiptService customerReceiptService,
+        ICustomerReceiptShareService customerReceiptShareService)
     {
         _customerReceiptService = customerReceiptService;
+        _customerReceiptShareService = customerReceiptShareService;
     }
 
     [HttpGet("datatable")]
@@ -226,6 +230,41 @@ public class CustomerReceiptsApiController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new CustomerReceiptSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("{id:int}/share-info")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> ShareInfo(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var info = await _customerReceiptShareService.GetShareInfoAsync(id, cancellationToken);
+            return info is null ? NotFound() : Ok(info);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/pdf")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> Pdf(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pdf = await _customerReceiptShareService.GetReceiptPdfAsync(id, cancellationToken);
+            if (pdf is null)
+            {
+                return NotFound();
+            }
+
+            return File(pdf, "application/pdf", $"customer-receipt-{id}.pdf");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 }

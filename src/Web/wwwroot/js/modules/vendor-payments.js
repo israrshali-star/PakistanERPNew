@@ -65,6 +65,31 @@
         $('#payment-company-warning').addClass('d-none').text('');
     }
 
+    var amountWordsTimer = null;
+
+    function updateAmountInWords() {
+        var $words = $('#payment-amount-words');
+        var amount = parseFloat($('#payment-amount').val());
+        if (!$words.length) {
+            return;
+        }
+        if (!amount || amount <= 0) {
+            $words.text('');
+            return;
+        }
+
+        clearTimeout(amountWordsTimer);
+        amountWordsTimer = setTimeout(function () {
+            $.getJSON('/api/lookup/amount-in-words', { amount: amount })
+                .done(function (res) {
+                    $words.text(res.text || '');
+                })
+                .fail(function () {
+                    $words.text('');
+                });
+        }, 250);
+    }
+
     function ensureCompanySelected() {
         return $.getJSON('/api/company/current');
     }
@@ -101,6 +126,7 @@
         $('#payment-number').val('');
         $('#payment-date').val(toInputDate(new Date()));
         $('#payment-amount').val('');
+        $('#payment-amount-words').text('');
         $('#payment-vendor-id').val('').trigger('change');
         $('#payment-method').val('1');
         $('#payment-bank-id').val('').trigger('change');
@@ -240,7 +266,10 @@
                     orderable: false,
                     className: 'text-end',
                     render: function (data, type, row) {
-                        var buttons = [];
+                        var buttons = [
+                            '<button type="button" class="btn btn-sm btn-outline-success btn-share-payment" data-id="' + row.id + '" title="Share on WhatsApp">' +
+                            '<i class="fa-brands fa-whatsapp"></i></button>'
+                        ];
                         if (canEdit) {
                             buttons.push(
                                 '<button type="button" class="btn btn-sm btn-outline-primary btn-edit-payment" data-id="' + row.id + '" title="Edit">' +
@@ -302,6 +331,7 @@
                 $('#payment-notes').val(payment.notes || '');
                 togglePaymentFields();
                 updateVendorBalanceHint();
+                updateAmountInWords();
                 paymentModal.show();
             })
             .fail(function (xhr) {
@@ -420,6 +450,13 @@
         $('#payment-method').on('change', togglePaymentFields);
         $('#payment-vendor-id').on('change', updateVendorBalanceHint);
         $('#payment-form').on('submit', savePayment);
+        $('#payment-amount').on('input change', updateAmountInWords);
+
+        $('#vendor-payments-table').on('click', '.btn-share-payment', function () {
+            if (window.VendorPaymentShare) {
+                window.VendorPaymentShare.open($(this).data('id'));
+            }
+        });
 
         $('#vendor-payments-table').on('click', '.btn-edit-payment', function () {
             openEditModal($(this).data('id'));

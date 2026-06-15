@@ -93,6 +93,7 @@
                         <div class="col-md-4">
                             <label class="form-label" for="payment-amount">Amount (PKR)</label>
                             <input type="number" class="form-control" id="payment-amount" step="0.01" min="0.01" required />
+                            <div class="form-text text-success" id="payment-amount-words"></div>
                         </div>
                         <div class="col-md-8">
                             <label class="form-label" for="payment-vendor-id">Vendor</label>
@@ -140,5 +141,7 @@
 </div>
 
 @section Scripts {
+    <partial name="_VendorPaymentShareModal" />
+    <script src="~/js/modules/vendor-payment-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/vendor-payments.js" asp-append-version="true"></script>
 }

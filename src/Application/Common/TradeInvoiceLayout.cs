@@ -29,12 +29,11 @@ public static class TradeInvoiceLayout
         string? lotNo,
         string? stackNo)
     {
-        if (!string.IsNullOrWhiteSpace(productDescription))
-        {
-            return productDescription.Trim();
-        }
+        var baseDescription = !string.IsNullOrWhiteSpace(productDescription)
+            ? productDescription.Trim()
+            : itemDescription;
 
-        return FbrInvoiceLayout.BuildFbrProductDescription(itemDescription, lotNo, stackNo);
+        return FbrInvoiceLayout.BuildFbrProductDescription(baseDescription, lotNo, stackNo);
     }
 
     public static decimal LineAmountExTax(decimal quantity, decimal price, decimal discount) =>

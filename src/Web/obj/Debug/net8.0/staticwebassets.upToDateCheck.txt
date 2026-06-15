@@ -15,6 +15,7 @@ wwwroot\js\modules\bank-transactions.js
 wwwroot\js\modules\chart-of-accounts.js
 wwwroot\js\modules\company-settings.js
 wwwroot\js\modules\customer-receipts.js
+wwwroot\js\modules\customer-receipt-share.js
 wwwroot\js\modules\customers.js
 wwwroot\js\modules\customer-statement.js
 wwwroot\js\modules\custom-reports.js
@@ -58,6 +59,7 @@ wwwroot\js\modules\vendor-bill-create.js
 wwwroot\js\modules\vendor-bill-details.js
 wwwroot\js\modules\vendor-bills.js
 wwwroot\js\modules\vendor-payments.js
+wwwroot\js\modules\vendor-payment-share.js
 wwwroot\js\modules\vendors.js
 wwwroot\js\modules\vendor-statement.js
 wwwroot\js\modules\warehouses.js

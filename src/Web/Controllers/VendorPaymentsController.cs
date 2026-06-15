@@ -23,10 +23,14 @@ public class VendorPaymentsController : Controller
 public class VendorPaymentsApiController : ControllerBase
 {
     private readonly IVendorPaymentService _vendorPaymentService;
+    private readonly IVendorPaymentShareService _vendorPaymentShareService;
 
-    public VendorPaymentsApiController(IVendorPaymentService vendorPaymentService)
+    public VendorPaymentsApiController(
+        IVendorPaymentService vendorPaymentService,
+        IVendorPaymentShareService vendorPaymentShareService)
     {
         _vendorPaymentService = vendorPaymentService;
+        _vendorPaymentShareService = vendorPaymentShareService;
     }
 
     [HttpGet("datatable")]
@@ -184,6 +188,41 @@ public class VendorPaymentsApiController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new VendorPaymentSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("{id:int}/share-info")]
+    [RequirePermission("Purchase.View")]
+    public async Task<IActionResult> ShareInfo(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var info = await _vendorPaymentShareService.GetShareInfoAsync(id, cancellationToken);
+            return info is null ? NotFound() : Ok(info);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/pdf")]
+    [RequirePermission("Purchase.View")]
+    public async Task<IActionResult> Pdf(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pdf = await _vendorPaymentShareService.GetPaymentPdfAsync(id, cancellationToken);
+            if (pdf is null)
+            {
+                return NotFound();
+            }
+
+            return File(pdf, "application/pdf", $"vendor-payment-{id}.pdf");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 }

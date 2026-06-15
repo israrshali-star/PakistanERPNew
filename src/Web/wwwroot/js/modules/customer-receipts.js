@@ -80,6 +80,31 @@
         $('#receipt-company-warning').addClass('d-none').text('');
     }
 
+    var amountWordsTimer = null;
+
+    function updateAmountInWords() {
+        var $words = $('#receipt-amount-words');
+        var amount = parseFloat($('#receipt-amount').val());
+        if (!$words.length) {
+            return;
+        }
+        if (!amount || amount <= 0) {
+            $words.text('');
+            return;
+        }
+
+        clearTimeout(amountWordsTimer);
+        amountWordsTimer = setTimeout(function () {
+            $.getJSON('/api/lookup/amount-in-words', { amount: amount })
+                .done(function (res) {
+                    $words.text(res.text || '');
+                })
+                .fail(function () {
+                    $words.text('');
+                });
+        }, 250);
+    }
+
     function ensureCompanySelected() {
         return $.getJSON('/api/company/current');
     }
@@ -199,6 +224,7 @@
         $('#receipt-number').val('');
         $('#receipt-date').val(toInputDate(new Date()));
         $('#receipt-amount').val('');
+        $('#receipt-amount-words').text('');
         $('#receipt-customer-id').val('').trigger('change');
         $('#payment-method').val('1');
         $('#receipt-bank-id, #same-bank-id').val('').trigger('change');
@@ -388,7 +414,10 @@
                     orderable: false,
                     className: 'text-end',
                     render: function (data, type, row) {
-                        var buttons = [];
+                        var buttons = [
+                            '<button type="button" class="btn btn-sm btn-outline-success btn-share-receipt" data-id="' + row.id + '" title="Share on WhatsApp">' +
+                            '<i class="fa-brands fa-whatsapp"></i></button>'
+                        ];
                         if (canEdit && row.depositStatus === 'Deposited (Awaiting Approval)') {
                             buttons.push(
                                 '<button type="button" class="btn btn-sm btn-success btn-approve-clearance" data-id="' + row.id + '" title="Approve clearance">' +
@@ -482,6 +511,7 @@
                 togglePaymentFields();
                 setFormReadOnly(receipt.isDeposited === true || !!receipt.clearedAt);
                 updateCustomerBalanceHint();
+                updateAmountInWords();
                 receiptModal.show();
             })
             .fail(function (xhr) {
@@ -686,6 +716,7 @@
         });
 
         $('#payment-method').on('change', togglePaymentFields);
+        $('#receipt-amount').on('input change', updateAmountInWords);
         $('.cheque-type-option').on('change', function () {
             var $target = $(this);
             if ($target.is(':checked')) {
@@ -695,6 +726,12 @@
         });
         $('#receipt-customer-id').on('change', updateCustomerBalanceHint);
         $('#receipt-form').on('submit', saveReceipt);
+
+        $('#customer-receipts-table').on('click', '.btn-share-receipt', function () {
+            if (window.ReceiptShare) {
+                window.ReceiptShare.open($(this).data('id'));
+            }
+        });
 
         $('#customer-receipts-table').on('click', '.btn-edit-receipt', function () {
             openEditModal($(this).data('id'));

@@ -779,6 +779,38 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
+    "Method": "Pdf",
+    "RelativePath": "api/customer-receipts/{id}/pdf",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
+    "Method": "ShareInfo",
+    "RelativePath": "api/customer-receipts/{id}/share-info",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.CustomerReceiptsApiController",
     "Method": "Banks",
     "RelativePath": "api/customer-receipts/banks",
     "HttpMethod": "GET",
@@ -3067,6 +3099,38 @@
     "Method": "Delete",
     "RelativePath": "api/vendor-payments/{id}",
     "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorPaymentsApiController",
+    "Method": "Pdf",
+    "RelativePath": "api/vendor-payments/{id}/pdf",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorPaymentsApiController",
+    "Method": "ShareInfo",
+    "RelativePath": "api/vendor-payments/{id}/share-info",
+    "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
     "Parameters": [

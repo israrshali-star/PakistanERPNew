@@ -198,7 +198,11 @@ else
                 {
                     sr++;
                     var valueExSt = Math.Max(0m, line.Quantity * line.Price - line.Discount);
-                    var product = FbrInvoiceLayout.BuildFbrProductDescription(line.ItemDescription, line.LotNo, line.StackNo);
+                    var product = TradeInvoiceLayout.BuildDescription(
+                        line.ProductDescription,
+                        line.ItemDescription,
+                        line.LotNo,
+                        line.StackNo);
                     <tr>
                         <td>@sr</td>
                         <td>@product</td>

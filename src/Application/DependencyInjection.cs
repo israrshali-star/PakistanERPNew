@@ -28,6 +28,10 @@ public static class DependencyInjection
         services.AddScoped<ISalesInvoiceAttachmentService, SalesInvoiceAttachmentService>();
         services.AddScoped<IVendorBillAttachmentService, VendorBillAttachmentService>();
         services.AddScoped<ICustomerReceiptService, CustomerReceiptService>();
+        services.AddScoped<ICustomerReceiptPdfService, CustomerReceiptPdfService>();
+        services.AddScoped<ICustomerReceiptShareService, CustomerReceiptShareService>();
+        services.AddScoped<IVendorPaymentPdfService, VendorPaymentPdfService>();
+        services.AddScoped<IVendorPaymentShareService, VendorPaymentShareService>();
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IItemCartonSyncService, ItemCartonSyncService>();
         services.AddScoped<IItemCopyService, ItemCopyService>();

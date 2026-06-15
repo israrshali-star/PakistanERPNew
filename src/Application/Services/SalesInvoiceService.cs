@@ -1333,7 +1333,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.NetTotal,
                 Lines = i.Lines.Select(l => new
                 {
-                    l.Item.Description,
+                    l.ProductDescription,
+                    ItemDescription = l.Item.Description,
                     l.HSCode,
                     l.StackNo,
                     l.LotNo,
@@ -1360,7 +1361,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             var valueExcludingSt = Math.Round(Math.Max(0m, l.Quantity * l.Price - l.Discount), 2);
             return new SalesInvoicePrintLineDto(
                 index + 1,
-                FbrInvoiceLayout.BuildFbrProductDescription(l.Description, l.LotNo, l.StackNo),
+                FbrInvoiceLayout.BuildFbrProductDescription(
+                    l.ProductDescription ?? l.ItemDescription,
+                    l.LotNo,
+                    l.StackNo),
                 l.HSCode,
                 saleType,
                 Math.Round(l.Quantity, 2),
@@ -1453,19 +1457,13 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var lines = invoice.Lines.Select((l, index) =>
         {
-            var description = companyId == TradeInvoiceLayout.TradeInvoiceCompanyId
-                ? TradeInvoiceLayout.BuildDescription(
-                    l.ProductDescription,
-                    l.ItemDescription,
-                    l.LotNo,
-                    l.StackNo)
-                : !string.IsNullOrWhiteSpace(l.ProductDescription)
-                    ? l.ProductDescription
-                    : (l.ItemDescription ?? "—");
+            var itemDescription = !string.IsNullOrWhiteSpace(l.ProductDescription)
+                ? l.ProductDescription.Trim()
+                : (l.ItemDescription ?? "—");
 
             return new DeliveryChallanPrintLineDto(
                 index + 1,
-                description,
+                itemDescription,
                 l.LotNo,
                 l.StackNo,
                 Math.Round(l.Cartons, 2),
@@ -1848,7 +1846,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         {
             var item = itemLookup.GetValueOrDefault(l.ItemId);
             var productDescription = FbrInvoiceLayout.BuildFbrProductDescription(
-                item?.Description,
+                !string.IsNullOrWhiteSpace(l.ProductDescription) ? l.ProductDescription : item?.Description,
                 l.LotNo,
                 l.StackNo);
             return new FbrSubmissionLineRequest(

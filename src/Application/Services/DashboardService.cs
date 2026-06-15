@@ -22,6 +22,29 @@ public class DashboardService : IDashboardService
         _currentCompany = currentCompany;
     }
 
+    private IQueryable<CustomerBalanceRow> CustomerBalanceQuery(int companyId) =>
+        _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.CompanyId == companyId && c.IsActive)
+            .Select(c => new CustomerBalanceRow(
+                c.Id,
+                c.BuyerId,
+                c.BuyerName,
+                c.OpeningBalance
+                    + c.SalesInvoices
+                        .Where(si => si.Status == InvoiceStatus.Posted)
+                        .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal)
+                    - c.CustomerReceipts
+                        .Where(r => r.Status != CustomerReceiptStatus.Returned
+                                    && (r.PaymentMethod != PaymentMethod.Cheque
+                                        || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null)))
+                        .Sum(r => r.Amount)
+                    + c.WriteChequePayments
+                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                        .Sum(bt => bt.CustomerBalanceEffect)));
+
+    private sealed record CustomerBalanceRow(int Id, string BuyerId, string BuyerName, decimal Balance);
+
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -41,39 +64,10 @@ public class DashboardService : IDashboardService
             .Where(i => i.InvoiceDate >= monthStart && i.InvoiceDate < monthEnd)
             .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
 
-        var postedInvoices = await _unitOfWork.Repository<SalesInvoice>()
-            .Query()
-            .Where(si => si.CompanyId == companyId && si.Status == InvoiceStatus.Posted)
-            .Select(si => new { si.CustomerId, si.InvoiceType, si.NetTotal })
+        var customerBalances = await CustomerBalanceQuery(companyId)
             .ToListAsync(cancellationToken);
 
-        var invoiceTotalsByCustomer = postedInvoices
-            .GroupBy(si => si.CustomerId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.NetTotal : x.NetTotal));
-
-        var receiptTotalsByCustomer = await _unitOfWork.Repository<CustomerReceipt>()
-            .Query()
-            .Where(r => r.CompanyId == companyId)
-            .GroupBy(r => r.CustomerId)
-            .Select(g => new { CustomerId = g.Key, Total = g.Sum(r => r.Amount) })
-            .ToListAsync(cancellationToken);
-
-        var receiptLookup = receiptTotalsByCustomer.ToDictionary(x => x.CustomerId, x => x.Total);
-
-        var customers = await _unitOfWork.Repository<Customer>()
-            .Query()
-            .Where(c => c.CompanyId == companyId && c.IsActive)
-            .Select(c => new { c.Id, c.OpeningBalance })
-            .ToListAsync(cancellationToken);
-
-        var outstandingReceivables = customers.Sum(c =>
-        {
-            invoiceTotalsByCustomer.TryGetValue(c.Id, out var invoiced);
-            receiptLookup.TryGetValue(c.Id, out var receipts);
-            return c.OpeningBalance + invoiced - receipts;
-        });
+        var outstandingReceivables = customerBalances.Sum(c => c.Balance);
 
         var approvedBills = await _unitOfWork.Repository<VendorBill>()
             .Query()
@@ -293,46 +287,14 @@ public class DashboardService : IDashboardService
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
-        var postedInvoices = await _unitOfWork.Repository<SalesInvoice>()
-            .Query()
-            .Where(i => i.CompanyId == companyId && i.Status == InvoiceStatus.Posted)
-            .Select(i => new { i.CustomerId, i.InvoiceType, i.NetTotal })
+        var rows = await CustomerBalanceQuery(companyId)
             .ToListAsync(cancellationToken);
 
-        var invoiceTotalsByCustomer = postedInvoices
-            .GroupBy(i => i.CustomerId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.NetTotal : x.NetTotal));
-
-        var receiptTotalsByCustomer = await _unitOfWork.Repository<CustomerReceipt>()
-            .Query()
-            .Where(r => r.CompanyId == companyId)
-            .GroupBy(r => r.CustomerId)
-            .Select(g => new { CustomerId = g.Key, Total = g.Sum(r => r.Amount) })
-            .ToListAsync(cancellationToken);
-
-        var receiptLookup = receiptTotalsByCustomer.ToDictionary(x => x.CustomerId, x => x.Total);
-
-        var customers = await _unitOfWork.Repository<Customer>()
-            .Query()
-            .Where(c => c.CompanyId == companyId && c.IsActive)
-            .Select(c => new { c.Id, c.BuyerId, c.BuyerName, c.OpeningBalance })
-            .ToListAsync(cancellationToken);
-
-        return customers
-            .Select(c =>
-            {
-                invoiceTotalsByCustomer.TryGetValue(c.Id, out var invoiced);
-                receiptLookup.TryGetValue(c.Id, out var receipts);
-                return new TopCustomerBalanceDto(
-                    c.Id,
-                    c.BuyerName,
-                    c.BuyerId,
-                    c.OpeningBalance + invoiced - receipts);
-            })
-            .Where(c => c.Balance != 0)
-            .OrderBy(c => c.Balance)
+        return rows
+            .Where(c => c.Balance != 0m)
+            .OrderByDescending(c => c.Balance)
+            .Take(10)
+            .Select(c => new TopCustomerBalanceDto(c.Id, c.BuyerName, c.BuyerId, c.Balance))
             .ToList();
     }
 
