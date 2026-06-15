@@ -1351,7 +1351,7 @@ public class GlRepairService : IGlRepairService
             }
 
             arAccount.OpeningBalance = Math.Round(customerObTotal, 2);
-            apAccount.OpeningBalance = Math.Round(-vendorObTotal, 2);
+            apAccount.OpeningBalance = Math.Round(vendorObTotal, 2);
 
             var plug = -accounts
                 .Where(a => a.Id != obeAccount.Id)

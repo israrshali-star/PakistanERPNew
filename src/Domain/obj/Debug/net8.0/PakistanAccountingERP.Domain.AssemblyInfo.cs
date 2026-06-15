@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PakistanAccountingERP.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3d98041a0dc5d426365e94672c99b916e53e41c3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ea5022aff3cc12a4b60defcf455f5b2487f42fb5")]
 [assembly: System.Reflection.AssemblyProductAttribute("PakistanAccountingERP.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PakistanAccountingERP.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -189,7 +189,7 @@ public partial class CustomerService : ICustomerService
             BuyerId = request.BuyerId.Trim(),
             BuyerName = request.BuyerName.Trim(),
             OpeningBalance = request.OpeningBalance,
-            Address = request.Address?.Trim(),
+            Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim()),
             ProvinceId = request.ProvinceId,
             ScenarioId = request.ScenarioId,
             Phone = request.Phone?.Trim(),
@@ -286,7 +286,7 @@ public partial class CustomerService : ICustomerService
         entity.BuyerId = request.BuyerId.Trim();
         entity.BuyerName = request.BuyerName.Trim();
         entity.OpeningBalance = request.OpeningBalance;
-        entity.Address = request.Address?.Trim();
+        entity.Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim());
         entity.ProvinceId = request.ProvinceId;
         entity.ScenarioId = request.ScenarioId;
         entity.Phone = request.Phone?.Trim();

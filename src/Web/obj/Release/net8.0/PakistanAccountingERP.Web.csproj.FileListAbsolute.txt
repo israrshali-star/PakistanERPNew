@@ -222,3 +222,8 @@ C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\Pak
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\PakistanAccountingERP.Web.genruntimeconfig.cache
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\ref\PakistanAccountingERP.Web.dll
 C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\obj\Release\net8.0\PakistanAccountingERP.Web.sourcelink.json
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Release\net8.0\BouncyCastle.Cryptography.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Release\net8.0\MailKit.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Release\net8.0\MimeKit.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Release\net8.0\System.Security.Cryptography.Pkcs.dll
+C:\Users\Muhammad Israr Ali\PakistanAccountingERP\src\Web\bin\Release\net8.0\runtimes\win\lib\net8.0\System.Security.Cryptography.Pkcs.dll

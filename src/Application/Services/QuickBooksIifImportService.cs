@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Import;
@@ -18,6 +19,11 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private const string OpeningStockBillNumber = "OPEN-STOCK-31052026";
     private static readonly DateTime OpeningStockDate = new(2026, 5, 31);
     private const string OpeningStockVendorCode = "OPENING-STOCK";
+
+    private static readonly Dictionary<string, string> ItemCodeAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["W550C"] = "W544C",
+    };
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IItemCartonSyncService _itemCartonSyncService;
@@ -374,7 +380,8 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 continue;
             }
 
-            var address = BuildAddress(
+            var address = CustomerAddressHelper.BuildFromParts(
+                buyerName,
                 record.Get("BADDR1"),
                 record.Get("BADDR2"),
                 record.Get("BADDR3"),
@@ -659,8 +666,16 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static string ResolveItemCodeAlias(string itemCode)
+    {
+        var trimmed = itemCode.Trim();
+        return ItemCodeAliases.TryGetValue(trimmed, out var mapped) ? mapped : trimmed;
+    }
+
     private static Item? FindItemForValuationRow(IReadOnlyList<Item> items, string itemKey)
     {
+        itemKey = ResolveItemCodeAlias(itemKey);
+
         var codeMatches = items
             .Where(i => string.Equals(i.ItemCode, itemKey, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -1062,7 +1077,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
         foreach (var row in rows)
         {
-            var itemCode = row.ItemCode.Trim();
+            var itemCode = ResolveItemCodeAlias(row.ItemCode);
             var item = FindItemForValuationRow(items, itemCode);
             if (item is null)
             {
@@ -1082,6 +1097,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                     HSCode = row.HsCode,
                     Barcode = NormalizeBarcode(row.Barcode),
                     UnitOfMeasureId = unitId,
+                    PurchaseRate = row.UnitPrice is > 0m ? Math.Round(row.UnitPrice.Value, 2) : 0m,
                     IsActive = true,
                     CreatedAt = now,
                     CreatedBy = ImportUser
@@ -1132,13 +1148,24 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                     item.Barcode = barcode;
                 }
 
+                if (row.UnitPrice is > 0m && item.PurchaseRate <= 0m)
+                {
+                    item.PurchaseRate = Math.Round(row.UnitPrice.Value, 2);
+                }
+
                 item.UpdatedAt = now;
                 item.UpdatedBy = ImportUser;
                 _unitOfWork.Repository<Item>().Update(item);
             }
 
             var quantity = Math.Round(row.Weight, 2);
-            var rate = quantityOnly ? 0m : (item.PurchaseRate > 0m ? item.PurchaseRate : 1m);
+            var rate = quantityOnly
+                ? 0m
+                : item.PurchaseRate > 0m
+                    ? Math.Round(item.PurchaseRate, 2)
+                    : row.UnitPrice is > 0m
+                        ? Math.Round(row.UnitPrice.Value, 2)
+                        : 1m;
             var amount = quantityOnly ? 0m : Math.Round(quantity * rate, 2);
             pendingLines.Add((row, item, rate, amount));
             stockByItemCode[itemCode] = stockByItemCode.GetValueOrDefault(itemCode) + quantity;
@@ -1147,6 +1174,12 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             var cartonKey = (itemCode, lotNo);
             cartonsByItemCodeAndLot[cartonKey] =
                 cartonsByItemCodeAndLot.GetValueOrDefault(cartonKey) + Math.Round(row.Cartons, 2);
+        }
+
+        if (!quantityOnly)
+        {
+            var qbAssetByItemCode = TryLoadCompanionValuationAssetValues(filePath);
+            ApplyQbAssetValueAmounts(pendingLines, qbAssetByItemCode);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -1268,6 +1301,95 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             quantityOnly);
 
         return (billLines.Count, 0);
+    }
+
+    private static Dictionary<string, decimal> TryLoadCompanionValuationAssetValues(string stockFilePath)
+    {
+        var directory = Path.GetDirectoryName(stockFilePath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var fileName in new[] { "Inventory Valuation Summary.CSV", "Inventory Valuation Summary.csv" })
+        {
+            var valuationPath = Path.Combine(directory, fileName);
+            if (!File.Exists(valuationPath))
+            {
+                continue;
+            }
+
+            var assetByItemCode = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in QuickBooksReportCsvParser.ParseInventoryValuationReport(valuationPath))
+            {
+                if (string.IsNullOrWhiteSpace(row.ItemName) || row.AssetValue is not > 0m)
+                {
+                    continue;
+                }
+
+                var itemCode = ResolveItemCodeAlias(row.ItemName);
+                assetByItemCode[itemCode] = Math.Round(row.AssetValue.Value, 2);
+            }
+
+            return assetByItemCode;
+        }
+
+        return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ApplyQbAssetValueAmounts(
+        IList<(OpeningStockStackLotRow Row, Item Item, decimal Rate, decimal Amount)> pendingLines,
+        IReadOnlyDictionary<string, decimal> assetByItemCode)
+    {
+        if (assetByItemCode.Count == 0)
+        {
+            return;
+        }
+
+        var indicesByItem = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < pendingLines.Count; i++)
+        {
+            var itemCode = ResolveItemCodeAlias(pendingLines[i].Row.ItemCode);
+            if (!indicesByItem.TryGetValue(itemCode, out var indices))
+            {
+                indices = new List<int>();
+                indicesByItem[itemCode] = indices;
+            }
+
+            indices.Add(i);
+        }
+
+        foreach (var (itemCode, indices) in indicesByItem)
+        {
+            if (!assetByItemCode.TryGetValue(itemCode, out var targetAsset))
+            {
+                continue;
+            }
+
+            var totalQty = indices.Sum(i => Math.Round(pendingLines[i].Row.Weight, 2));
+            if (totalQty <= 0m)
+            {
+                continue;
+            }
+
+            decimal allocated = 0m;
+            for (var j = 0; j < indices.Count; j++)
+            {
+                var index = indices[j];
+                var line = pendingLines[index];
+                var qty = Math.Round(line.Row.Weight, 2);
+                var amount = j == indices.Count - 1
+                    ? Math.Round(targetAsset - allocated, 2)
+                    : Math.Round(targetAsset * qty / totalQty, 2);
+
+                if (j < indices.Count - 1)
+                {
+                    allocated += amount;
+                }
+
+                pendingLines[index] = (line.Row, line.Item, line.Rate, amount);
+            }
+        }
     }
 
     private async Task RollbackPreviousOpeningStockAsync(

@@ -137,13 +137,13 @@ internal static partial class QuickBooksIifImportSupport
         List<JournalEntryLine> lines = openingBalance > 0m
             ?
             [
-                CreateJournalLine(equityAccountId.Value, amount, 0m, "Opening balance offset"),
-                CreateJournalLine(apAccountId.Value, 0m, amount, "Accounts Payable")
+                CreateJournalLine(apAccountId.Value, amount, 0m, "Accounts Payable"),
+                CreateJournalLine(equityAccountId.Value, 0m, amount, "Opening balance offset")
             ]
             :
             [
-                CreateJournalLine(apAccountId.Value, amount, 0m, "Accounts Payable"),
-                CreateJournalLine(equityAccountId.Value, 0m, amount, "Opening balance offset")
+                CreateJournalLine(equityAccountId.Value, amount, 0m, "Opening balance offset"),
+                CreateJournalLine(apAccountId.Value, 0m, amount, "Accounts Payable")
             ];
 
         return await CreatePostedJournalAsync(

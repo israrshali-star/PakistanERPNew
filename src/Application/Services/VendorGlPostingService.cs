@@ -55,13 +55,13 @@ public partial class VendorGlPostingService : IVendorGlPostingService
         var lines = openingBalance > 0m
             ? new List<JournalEntryLine>
             {
-                CreateLine(accounts.EquityAccountId, amount, 0m, "Opening balance offset"),
-                CreateLine(accounts.ApAccountId, 0m, amount, "Accounts Payable")
+                CreateLine(accounts.ApAccountId, amount, 0m, "Accounts Payable"),
+                CreateLine(accounts.EquityAccountId, 0m, amount, "Opening balance offset")
             }
             : new List<JournalEntryLine>
             {
-                CreateLine(accounts.ApAccountId, amount, 0m, "Accounts Payable"),
-                CreateLine(accounts.EquityAccountId, 0m, amount, "Opening balance offset")
+                CreateLine(accounts.EquityAccountId, amount, 0m, "Opening balance offset"),
+                CreateLine(accounts.ApAccountId, 0m, amount, "Accounts Payable")
             };
 
         return await CreatePostedJournalAsync(

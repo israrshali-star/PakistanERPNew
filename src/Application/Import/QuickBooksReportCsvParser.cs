@@ -56,17 +56,21 @@ public sealed class OpeningStockStackLotRow
     public int? UnitOfMeasureId { get; init; }
     public decimal Cartons { get; init; }
     public decimal Weight { get; init; }
+    public decimal? UnitPrice { get; init; }
 }
 
 public static class QuickBooksReportCsvParser
 {
     private static readonly Dictionary<string, string> QbAccountNumberToErp = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["10010"] = "10006",
+        ["10020"] = "10013",
         ["10800"] = "10015",
         ["10900"] = "10016",
         ["12000"] = "10017",
         ["15200"] = "15100",
         ["30800"] = "30020",
+        ["32000"] = "30000",
     };
 
     private static readonly HashSet<string> SkipErpAccountNumbers = new(StringComparer.OrdinalIgnoreCase)
@@ -506,6 +510,7 @@ public static class QuickBooksReportCsvParser
         var uomIndex = FindColumnIndex(headers, ["unitof messure id", "unit of measure id", "unitofmeasureid", "uom id"]);
         var cartonsIndex = FindColumnIndex(headers, ["cartons", "carton", "ctn"]);
         var weightIndex = FindColumnIndex(headers, ["weight", "qty", "quantity"]);
+        var priceIndex = FindColumnIndex(headers, ["price", "rate", "unitprice", "unit price", "purchase rate", "avg cost", "cost"]);
 
         if (itemCodeIndex < 0 || weightIndex < 0)
         {
@@ -530,6 +535,7 @@ public static class QuickBooksReportCsvParser
 
             var weight = ParseDecimal(GetCell(row, weightIndex));
             var cartons = cartonsIndex >= 0 ? ParseDecimal(GetCell(row, cartonsIndex)) : 0m;
+            var unitPrice = priceIndex >= 0 ? ParseNullableDecimal(GetCell(row, priceIndex)) : null;
             if (weight == 0m && cartons == 0m)
             {
                 continue;
@@ -556,7 +562,8 @@ public static class QuickBooksReportCsvParser
                 Barcode = barcodeIndex >= 0 ? NullIfEmpty(GetCell(row, barcodeIndex)) : null,
                 UnitOfMeasureId = unitId,
                 Cartons = cartons,
-                Weight = weight
+                Weight = weight,
+                UnitPrice = unitPrice is > 0m ? unitPrice : null
             });
         }
 

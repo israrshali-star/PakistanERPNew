@@ -18,6 +18,16 @@ if (TryRunQuickBooksImport(args, out var importExitCode))
     Environment.Exit(importExitCode);
 }
 
+if (TryRunImportCustomersExcel(args, out var importCustomersExcelExitCode))
+{
+    Environment.Exit(importCustomersExcelExitCode);
+}
+
+if (TryRunFixCustomerAddresses(args, out var fixCustomerAddressesExitCode))
+{
+    Environment.Exit(fixCustomerAddressesExitCode);
+}
+
 if (TryRunImportOpeningStock(args, out var openingStockExitCode))
 {
     Environment.Exit(openingStockExitCode);
@@ -255,6 +265,81 @@ static bool TryRunQuickBooksImport(string[] args, out int exitCode)
             Console.WriteLine("  --open-bills-csv \"path\\Unpaid Bills.csv\"");
         }
 
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunImportCustomersExcel(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 4
+        || !string.Equals(args[0], "--import-customers-excel", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[2], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[3], out var companyId))
+    {
+        return false;
+    }
+
+    var filePath = Path.GetFullPath(args[1]);
+    var updateExisting = args.Any(arg => string.Equals(arg, "--update-existing", StringComparison.OrdinalIgnoreCase));
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var importer = scope.ServiceProvider.GetRequiredService<ICustomerExcelImportService>();
+        var result = importer.ImportAsync(filePath, companyId, updateExisting).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Imported: {result.Imported}, Updated: {result.Updated}, Skipped: {result.Skipped}");
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunFixCustomerAddresses(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--fix-customer-addresses", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var importer = scope.ServiceProvider.GetRequiredService<ICustomerExcelImportService>();
+        var result = importer.FixDuplicateNameInAddressesAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Updated: {result.Updated}");
         exitCode = result.Success ? 0 : 1;
     }
     finally

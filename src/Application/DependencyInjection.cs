@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<IBankReconciliationService, BankReconciliationService>();
         services.AddScoped<IVendorService, VendorService>();
         services.AddScoped<IQuickBooksIifImportService, QuickBooksIifImportService>();
+        services.AddScoped<ICustomerExcelImportService, CustomerExcelImportService>();
         services.AddScoped<ICustomReportService, CustomReportService>();
         services.AddScoped<IGlRepairService, GlRepairService>();
 
