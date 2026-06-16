@@ -13,6 +13,7 @@ public record DeliveryChallanPrintDto(
     string? BuyerCnic,
     DateTime PrintedAt,
     IReadOnlyList<DeliveryChallanPrintLineDto> Lines,
+    decimal TransportationChargesReceive = 0m,
     int CompanyId = 0);
 
 public record DeliveryChallanPrintLineDto(
@@ -23,4 +24,6 @@ public record DeliveryChallanPrintLineDto(
     decimal Cartons,
     decimal Quantity,
     string? Unit,
-    string? CartonDescription = null);
+    string? CartonDescription = null,
+    decimal? Amount = null,
+    bool IsTransportation = false);

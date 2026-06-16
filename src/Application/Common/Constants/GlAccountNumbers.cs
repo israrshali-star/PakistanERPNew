@@ -13,6 +13,9 @@ public static class GlAccountNumbers
     public const string AccountsReceivable = "11110";
     public const string InventoryAsset = "12110";
     public const string PrepaidSalesTax = "12910";
+    public const string PrepaidIncomeTax = "12920";
+    public const string IncomeTaxVendorWithholding = "12810";
+    public const string IncomeTax236G = "12820";
     public const string FixedAssets = "1500";
     public const string AccountsPayable = "20000";
     public const string AccruedLiabilities = "2300";

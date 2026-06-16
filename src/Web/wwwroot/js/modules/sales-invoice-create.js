@@ -104,10 +104,10 @@
             }
             var disc = parseFloat($row.find('.line-discount').val()) || 0;
 
-            var lineSub = qty * price;
-            var taxable = Math.max(0, lineSub - disc);
-            var lineTax = taxable * taxRate / 100;
-            var lineTotal = taxable + lineTax;
+            var lineSub = Math.round(qty * price * 100) / 100;
+            var taxable = Math.max(0, Math.round((lineSub - disc) * 100) / 100);
+            var lineTax = Math.round(taxable * taxRate / 100 * 100) / 100;
+            var lineTotal = Math.round((taxable + lineTax) * 100) / 100;
 
             $row.find('.line-total').text(formatCurrency(lineTotal));
 
@@ -175,6 +175,13 @@
     }
 
     function onScenarioChange() {
+        var rate = getScenarioTaxRate();
+        $('#invoice-lines-body tr').each(function () {
+            var $row = $(this);
+            if ($row.data('is-taxable') !== false) {
+                $row.find('.line-tax').val(rate.toFixed(2));
+            }
+        });
         recalcTotals();
     }
 

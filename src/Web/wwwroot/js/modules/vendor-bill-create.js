@@ -6,6 +6,13 @@
     var warehouses = [];
     var lineCounter = 0;
     var pendingAttachments = [];
+    var purchaseTaxSettings = {
+        supportsPurchaseWithholdingTax: false,
+        purchaseWithholdingTaxRate: 1,
+        defaultIncomeTax236GRate: 0.10
+    };
+    var whtAmountManual = false;
+    var it236gAmountManual = false;
     var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
     var MAX_ATTACHMENT_COUNT = 10;
     var ALLOWED_ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.pdf'];
@@ -66,9 +73,42 @@
         // Tax rate is resolved on the server from vendor/company settings.
     }
 
+    function getTaxableSubtotal() {
+        var taxableSubtotal = 0;
+
+        $('#bill-lines-body tr').each(function () {
+            var $row = $(this);
+            var qty = parseFloat($row.find('.line-qty').val()) || 0;
+            var rate = parseFloat($row.find('.line-rate').val()) || 0;
+            var amount = qty * rate;
+            if ($row.data('is-taxable') !== false) {
+                taxableSubtotal += amount;
+            }
+        });
+
+        return taxableSubtotal;
+    }
+
+    function suggestPurchaseTaxAmounts() {
+        if (!purchaseTaxSettings.supportsPurchaseWithholdingTax) {
+            return;
+        }
+
+        var taxableSubtotal = getTaxableSubtotal();
+        var whtRate = parseFloat($('#wht-rate').val()) || 0;
+        var it236gRate = parseFloat($('#it236g-rate').val()) || 0;
+
+        if (!whtAmountManual) {
+            $('#wht-amount').val((taxableSubtotal * whtRate / 100).toFixed(2));
+        }
+
+        if (!it236gAmountManual) {
+            $('#it236g-amount').val((taxableSubtotal * it236gRate / 100).toFixed(2));
+        }
+    }
+
     function recalcTotals() {
         var subtotal = 0;
-        var taxableSubtotal = 0;
         var taxRate = getBillTaxRate();
 
         $('#bill-lines-body tr').each(function () {
@@ -76,17 +116,21 @@
             var qty = parseFloat($row.find('.line-qty').val()) || 0;
             var rate = parseFloat($row.find('.line-rate').val()) || 0;
             var amount = qty * rate;
-            var isTaxable = $row.data('is-taxable') !== false;
 
             $row.find('.line-amount').text(formatCurrency(amount));
             subtotal += amount;
-            if (isTaxable) {
-                taxableSubtotal += amount;
-            }
         });
 
-        var tax = taxableSubtotal * taxRate / 100;
-        var net = subtotal + tax;
+        suggestPurchaseTaxAmounts();
+
+        var tax = getTaxableSubtotal() * taxRate / 100;
+        var wht = purchaseTaxSettings.supportsPurchaseWithholdingTax
+            ? (parseFloat($('#wht-amount').val()) || 0)
+            : 0;
+        var it236g = purchaseTaxSettings.supportsPurchaseWithholdingTax
+            ? (parseFloat($('#it236g-amount').val()) || 0)
+            : 0;
+        var net = subtotal + tax - wht - it236g;
 
         updateTaxRateLabel();
         $('#total-subtotal').text(formatCurrency(subtotal));
@@ -170,6 +214,23 @@
             $('#tax-rate').val(((taxAmount / subTotal) * 100).toFixed(2));
         }
 
+        if (bill.withholdingTaxRate != null || bill.WithholdingTaxRate != null) {
+            $('#wht-rate').val(bill.withholdingTaxRate != null ? bill.withholdingTaxRate : bill.WithholdingTaxRate);
+            whtAmountManual = true;
+        }
+        if (bill.withholdingTaxAmount != null || bill.WithholdingTaxAmount != null) {
+            $('#wht-amount').val(bill.withholdingTaxAmount != null ? bill.withholdingTaxAmount : bill.WithholdingTaxAmount);
+            whtAmountManual = true;
+        }
+        if (bill.incomeTax236GRate != null || bill.IncomeTax236GRate != null) {
+            $('#it236g-rate').val(bill.incomeTax236GRate != null ? bill.incomeTax236GRate : bill.IncomeTax236GRate);
+            it236gAmountManual = true;
+        }
+        if (bill.incomeTax236GAmount != null || bill.IncomeTax236GAmount != null) {
+            $('#it236g-amount').val(bill.incomeTax236GAmount != null ? bill.incomeTax236GAmount : bill.IncomeTax236GAmount);
+            it236gAmountManual = true;
+        }
+
         $('#bill-lines-body').empty();
         (bill.lines || bill.Lines || []).forEach(function (line) {
             var itemCode = line.itemCode || line.ItemCode || '';
@@ -227,8 +288,9 @@
             $.getJSON('/api/vendor-bills/items'),
             $.getJSON('/api/vendor-bills/warehouses'),
             $.getJSON('/api/sales-invoices/tax-rates'),
+            $.getJSON('/api/vendor-bills/purchase-tax-settings'),
             window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, taxRatesRes) {
+        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, taxRatesRes, purchaseTaxRes) {
             if (!editId) {
                 $('#bill-number').val(numberRes[0].billNumber || numberRes[0].BillNumber);
             }
@@ -241,6 +303,42 @@
                 : (taxRates.RegisteredSalesTaxRate || 18);
             if (!$('#tax-rate').val() || parseFloat($('#tax-rate').val()) <= 0) {
                 $('#tax-rate').val(companyTaxRate);
+            }
+
+            var purchaseTax = purchaseTaxRes[0] || {};
+            purchaseTaxSettings.supportsPurchaseWithholdingTax =
+                purchaseTax.supportsPurchaseWithholdingTax === true
+                || purchaseTax.SupportsPurchaseWithholdingTax === true;
+            purchaseTaxSettings.purchaseWithholdingTaxRate =
+                purchaseTax.purchaseWithholdingTaxRate != null
+                    ? purchaseTax.purchaseWithholdingTaxRate
+                    : (purchaseTax.PurchaseWithholdingTaxRate || 1);
+            purchaseTaxSettings.defaultIncomeTax236GRate =
+                purchaseTax.defaultIncomeTax236GRate != null
+                    ? purchaseTax.defaultIncomeTax236GRate
+                    : (purchaseTax.DefaultIncomeTax236GRate || 0.10);
+
+            if (purchaseTaxSettings.supportsPurchaseWithholdingTax) {
+                var sectionLabel = purchaseTax.withholdingTaxSectionLabel
+                    || purchaseTax.WithholdingTaxSectionLabel
+                    || 'Payment for Goods u/s 153(1)(a)';
+                var it236gLabel = purchaseTax.incomeTax236GSectionLabel
+                    || purchaseTax.IncomeTax236GSectionLabel
+                    || 'Income Tax u/s 236G';
+                $('#wht-section-label').text('W/H Tax — ' + sectionLabel);
+                $('#it236g-section-label').text(it236gLabel);
+                $('#wht-nature').text(
+                    'Nature: ' + (purchaseTax.natureOfPayment || purchaseTax.NatureOfPayment || 'Withheld income tax adjustable') + ' (GL 12810)'
+                );
+                if (!$('#wht-rate').val() || parseFloat($('#wht-rate').val()) <= 0) {
+                    $('#wht-rate').val(purchaseTaxSettings.purchaseWithholdingTaxRate);
+                }
+                if (!$('#it236g-rate').val() || parseFloat($('#it236g-rate').val()) <= 0) {
+                    $('#it236g-rate').val(purchaseTaxSettings.defaultIncomeTax236GRate);
+                }
+                $('#purchase-tax-section').removeClass('d-none');
+            } else {
+                $('#purchase-tax-section').addClass('d-none');
             }
 
             var $vendor = $('#vendor-id');
@@ -453,6 +551,10 @@
             billDate: billDate,
             refNo: $('#ref-no').val().trim() || null,
             taxRate: getBillTaxRate(),
+            withholdingTaxRate: parseFloat($('#wht-rate').val()) || 0,
+            withholdingTaxAmount: parseFloat($('#wht-amount').val()) || 0,
+            incomeTax236GRate: parseFloat($('#it236g-rate').val()) || 0,
+            incomeTax236GAmount: parseFloat($('#it236g-amount').val()) || 0,
             lines: lines
         };
 
@@ -516,6 +618,22 @@
         $('#bill-lines-body').on('input', '.line-qty, .line-rate', recalcTotals);
         $('#bill-lines-body').on('input', '.line-stack, .line-qty, .line-cartons', function () {
             window.LotStackLine.updateStackHint($(this).closest('tr'), lineOptions());
+        });
+        $('#wht-rate').on('input', function () {
+            whtAmountManual = false;
+            recalcTotals();
+        });
+        $('#wht-amount').on('input', function () {
+            whtAmountManual = true;
+            recalcTotals();
+        });
+        $('#it236g-rate').on('input', function () {
+            it236gAmountManual = false;
+            recalcTotals();
+        });
+        $('#it236g-amount').on('input', function () {
+            it236gAmountManual = true;
+            recalcTotals();
         });
         $('#bill-lines-body').on('click', '.btn-remove-line', function () {
             var $row = $(this).closest('tr');

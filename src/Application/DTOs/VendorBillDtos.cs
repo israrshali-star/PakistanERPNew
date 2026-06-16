@@ -40,6 +40,11 @@ public record VendorBillDetailDto(
     string? WarehouseName,
     decimal SubTotal,
     decimal TaxAmount,
+    decimal WithholdingTaxRate,
+    decimal WithholdingTaxAmount,
+    decimal IncomeTax236GRate,
+    decimal IncomeTax236GAmount,
+    decimal GrossAmount,
     decimal NetAmount,
     decimal TotalQuantity,
     decimal TotalCartons,
@@ -69,6 +74,10 @@ public class VendorBillSaveRequest
     public DateTime BillDate { get; set; }
     public string? RefNo { get; set; }
     public decimal? TaxRate { get; set; }
+    public decimal? WithholdingTaxRate { get; set; }
+    public decimal? WithholdingTaxAmount { get; set; }
+    public decimal? IncomeTax236GRate { get; set; }
+    public decimal? IncomeTax236GAmount { get; set; }
     public List<VendorBillLineSaveRequest> Lines { get; set; } = new();
 }
 
@@ -94,3 +103,13 @@ public record VendorBillItemLookupDto(
     decimal PurchaseRate);
 
 public record VendorBillWarehouseLookupDto(int Id, string Code, string Name);
+
+public record VendorBillPurchaseTaxSettingsDto(
+    bool SupportsPurchaseWithholdingTax,
+    decimal PurchaseWithholdingTaxRate,
+    string WithholdingTaxSection,
+    string WithholdingTaxSectionLabel,
+    string NatureOfPayment,
+    decimal DefaultIncomeTax236GRate,
+    string IncomeTax236GSection,
+    string IncomeTax236GSectionLabel);

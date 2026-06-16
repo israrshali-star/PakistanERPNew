@@ -14,6 +14,10 @@ public class VendorBill : CompanyAuditableEntity
     public decimal TotalQuantity { get; set; }
     public decimal TotalCartons { get; set; }
     public decimal TaxAmount { get; set; }
+    public decimal WithholdingTaxRate { get; set; }
+    public decimal WithholdingTaxAmount { get; set; }
+    public decimal IncomeTax236GRate { get; set; }
+    public decimal IncomeTax236GAmount { get; set; }
     public decimal NetAmount { get; set; }
     public BillStatus Status { get; set; } = BillStatus.Draft;
     public int? JournalEntryId { get; set; }

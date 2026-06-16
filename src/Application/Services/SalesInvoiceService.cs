@@ -1440,6 +1440,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 {
                     l.ProductDescription,
                     ItemDescription = l.Item.Description,
+                    ItemCode = l.Item.ItemCode,
+                    l.LineTotal,
                     l.CartonDescription,
                     l.LotNo,
                     l.StackNo,
@@ -1455,7 +1457,17 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return null;
         }
 
-        var lines = invoice.Lines.Select((l, index) =>
+        var goodsLines = invoice.Lines
+            .Where(l => !string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var transportationChargesReceive = Math.Round(
+            invoice.Lines
+                .Where(l => string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+                .Sum(l => l.LineTotal),
+            2);
+
+        var lines = goodsLines.Select((l, index) =>
         {
             var itemDescription = !string.IsNullOrWhiteSpace(l.ProductDescription)
                 ? l.ProductDescription.Trim()
@@ -1472,6 +1484,29 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 l.CartonDescription);
         }).ToList();
 
+        if (transportationChargesReceive > 0m)
+        {
+            var transportDescription = invoice.Lines
+                .Where(l => string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+                .Select(l => !string.IsNullOrWhiteSpace(l.ProductDescription)
+                    ? l.ProductDescription.Trim()
+                    : l.ItemDescription)
+                .FirstOrDefault(description => !string.IsNullOrWhiteSpace(description))
+                ?? "Transportation Charges Receive";
+
+            lines.Add(new DeliveryChallanPrintLineDto(
+                lines.Count + 1,
+                transportDescription,
+                null,
+                null,
+                0m,
+                0m,
+                null,
+                null,
+                transportationChargesReceive,
+                true));
+        }
+
         return new DeliveryChallanPrintDto(
             invoice.InvoiceNumber,
             invoice.InvoiceDate,
@@ -1485,6 +1520,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.BuyerCnic,
             DateTime.Now,
             lines,
+            transportationChargesReceive,
             companyId);
     }
 

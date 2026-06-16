@@ -142,8 +142,30 @@
                     <td colspan="6" class="text-end">Sales Tax</td>
                     <td class="text-end text-currency">@Model.TaxAmount.ToString("N2")</td>
                 </tr>
+                @if (Model.WithholdingTaxAmount > 0 || Model.WithholdingTaxRate > 0)
+                {
+                    <tr>
+                        <td colspan="6" class="text-end">W/H Tax u/s 153(1)(a) @@ @Model.WithholdingTaxRate.ToString("0.##")%</td>
+                        <td class="text-end text-currency">@Model.WithholdingTaxAmount.ToString("N2")</td>
+                    </tr>
+                    <tr>
+                        <td colspan="6" class="text-end text-muted small">Nature of payment (GL 12810)</td>
+                        <td class="text-end small text-muted">Withheld income tax adjustable</td>
+                    </tr>
+                }
+                @if (Model.IncomeTax236GAmount > 0 || Model.IncomeTax236GRate > 0)
+                {
+                    <tr>
+                        <td colspan="6" class="text-end">Income Tax u/s 236G @@ @Model.IncomeTax236GRate.ToString("0.##")%</td>
+                        <td class="text-end text-currency">@Model.IncomeTax236GAmount.ToString("N2")</td>
+                    </tr>
+                    <tr>
+                        <td colspan="6" class="text-end text-muted small">GL 12820</td>
+                        <td class="text-end small text-muted">—</td>
+                    </tr>
+                }
                 <tr class="fw-bold">
-                    <td colspan="6" class="text-end">Net Total</td>
+                    <td colspan="6" class="text-end">Payable to Vendor</td>
                     <td class="text-end text-currency">@Model.NetAmount.ToString("N2")</td>
                 </tr>
             </tfoot>

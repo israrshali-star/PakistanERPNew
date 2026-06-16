@@ -171,9 +171,9 @@
 
     function initDefaultDateFilters() {
         var today = new Date();
-        var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        $('#filter-from').val(toInputDate(monthStart));
-        $('#filter-to').val(toInputDate(today));
+        var todayStr = toInputDate(today);
+        $('#filter-from').val(todayStr);
+        $('#filter-to').val(todayStr);
     }
 
     function reloadDataTable() {

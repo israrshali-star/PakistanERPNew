@@ -98,12 +98,13 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         {
             table.ColumnsDefinition(columns =>
             {
-                columns.RelativeColumn(1.4f);
-                columns.ConstantColumn(38);
-                columns.ConstantColumn(68);
                 columns.RelativeColumn(1.5f);
-                columns.ConstantColumn(52);
-                columns.ConstantColumn(52);
+                columns.ConstantColumn(34);
+                columns.ConstantColumn(58);
+                columns.RelativeColumn(1.3f);
+                columns.ConstantColumn(46);
+                columns.ConstantColumn(46);
+                columns.ConstantColumn(58);
             });
 
             table.Header(header =>
@@ -114,16 +115,23 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
                 header.Cell().Element(TradeHeaderCell).Text("CTN Description");
                 header.Cell().Element(TradeHeaderCell).AlignRight().Text("No of CTN");
                 header.Cell().Element(TradeHeaderCell).AlignRight().Text("QTY");
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text("Amount");
             });
 
             foreach (var line in model.Lines)
             {
                 table.Cell().Element(TradeBodyCell).Text(line.ItemDescription);
-                table.Cell().Element(TradeBodyCell).Text(line.LotNo ?? "—");
-                table.Cell().Element(TradeBodyCell).Text(line.StackNo ?? "—");
-                table.Cell().Element(TradeBodyCell).Text(line.CartonDescription ?? "—");
-                table.Cell().Element(TradeBodyCell).AlignRight().Text(FormatQty(line.Cartons, true));
-                table.Cell().Element(TradeBodyCell).AlignRight().Text(FormatQty(line.Quantity, false));
+                table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.LotNo ?? "—"));
+                table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.StackNo ?? "—"));
+                table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.CartonDescription ?? "—"));
+                table.Cell().Element(TradeBodyCell).AlignRight().Text(
+                    line.IsTransportation ? "—" : FormatQty(line.Cartons, true));
+                table.Cell().Element(TradeBodyCell).AlignRight().Text(
+                    line.IsTransportation ? "—" : FormatQty(line.Quantity, false));
+                table.Cell().Element(TradeBodyCell).AlignRight().Text(
+                    line.IsTransportation && line.Amount is > 0m
+                        ? FormatAmount(line.Amount.Value)
+                        : "—");
             }
         });
     }
@@ -195,13 +203,14 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         {
             table.ColumnsDefinition(columns =>
             {
-                columns.ConstantColumn(22);
-                columns.RelativeColumn(1.8f);
+                columns.ConstantColumn(20);
+                columns.RelativeColumn(1.55f);
+                columns.ConstantColumn(34);
+                columns.ConstantColumn(56);
                 columns.ConstantColumn(38);
-                columns.ConstantColumn(68);
                 columns.ConstantColumn(42);
-                columns.ConstantColumn(48);
-                columns.ConstantColumn(30);
+                columns.ConstantColumn(24);
+                columns.ConstantColumn(52);
             });
 
             table.Header(header =>
@@ -213,17 +222,24 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
                 header.Cell().Element(HeaderCell).AlignRight().Text("Cartons");
                 header.Cell().Element(HeaderCell).AlignRight().Text("Qty");
                 header.Cell().Element(HeaderCell).Text("UoM");
+                header.Cell().Element(HeaderCell).AlignRight().Text("Amount");
             });
 
             foreach (var line in model.Lines)
             {
                 table.Cell().Element(BodyCell).Text(line.LineNo.ToString());
                 table.Cell().Element(BodyCell).Text(line.ItemDescription);
-                table.Cell().Element(BodyCell).Text(line.LotNo ?? "—");
-                table.Cell().Element(BodyCell).Text(line.StackNo ?? "—");
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatQty(line.Cartons, true));
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatQty(line.Quantity, false));
-                table.Cell().Element(BodyCell).Text(line.Unit ?? "—");
+                table.Cell().Element(BodyCell).Text(line.IsTransportation ? "—" : (line.LotNo ?? "—"));
+                table.Cell().Element(BodyCell).Text(line.IsTransportation ? "—" : (line.StackNo ?? "—"));
+                table.Cell().Element(BodyCell).AlignRight().Text(
+                    line.IsTransportation ? "—" : FormatQty(line.Cartons, true));
+                table.Cell().Element(BodyCell).AlignRight().Text(
+                    line.IsTransportation ? "—" : FormatQty(line.Quantity, false));
+                table.Cell().Element(BodyCell).Text(line.IsTransportation ? "—" : (line.Unit ?? "—"));
+                table.Cell().Element(BodyCell).AlignRight().Text(
+                    line.IsTransportation && line.Amount is > 0m
+                        ? FormatAmount(line.Amount.Value)
+                        : "—");
             }
         });
     }
@@ -266,6 +282,9 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
     private static IContainer BodyCell(IContainer container) =>
         container.Border(0.5f).BorderColor(BorderGray).PaddingVertical(3).PaddingHorizontal(3)
             .DefaultTextStyle(x => x.FontSize(7));
+
+    private static string FormatAmount(decimal value) =>
+        value.ToString("N2", NumberCulture);
 
     private static string FormatQty(decimal value, bool wholeNumber) =>
         wholeNumber

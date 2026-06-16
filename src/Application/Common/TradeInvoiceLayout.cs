@@ -41,11 +41,44 @@ public static class TradeInvoiceLayout
 
     public static decimal ResolveTaxRateDisplay(decimal taxableTotal, decimal taxAmount, IReadOnlyList<decimal> lineTaxRates)
     {
+        var uniformRate = TryGetUniformPositiveTaxRate(lineTaxRates);
+        if (uniformRate.HasValue)
+        {
+            return Math.Round(uniformRate.Value, 1);
+        }
+
         if (taxableTotal > 0m)
         {
             return Math.Round(taxAmount / taxableTotal * 100m, 1);
         }
 
         return lineTaxRates.Count > 0 ? lineTaxRates[0] : 0m;
+    }
+
+    /// <summary>
+    /// When goods and cartage/service lines share one positive tax rate (e.g. 22% goods, 0% cartage),
+    /// show the statutory rate instead of a diluted effective rate from invoice totals.
+    /// </summary>
+    private static decimal? TryGetUniformPositiveTaxRate(IReadOnlyList<decimal> lineTaxRates)
+    {
+        decimal? rate = null;
+        foreach (var lineRate in lineTaxRates)
+        {
+            if (lineRate <= 0m)
+            {
+                continue;
+            }
+
+            if (rate is null)
+            {
+                rate = lineRate;
+            }
+            else if (rate.Value != lineRate)
+            {
+                return null;
+            }
+        }
+
+        return rate;
     }
 }

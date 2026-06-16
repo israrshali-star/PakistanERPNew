@@ -3023,6 +3023,16 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
+    "Method": "PurchaseTaxSettings",
+    "RelativePath": "api/vendor-bills/purchase-tax-settings",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
     "Method": "Vendors",
     "RelativePath": "api/vendor-bills/vendors",
     "HttpMethod": "GET",

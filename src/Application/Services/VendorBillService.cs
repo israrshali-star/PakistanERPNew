@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using PakistanAccountingERP.Application.DTOs;
@@ -121,7 +122,12 @@ public partial class VendorBillService : IVendorBillService
                 WarehouseCode = b.Warehouse != null ? b.Warehouse.Code : null,
                 WarehouseName = b.Warehouse != null ? b.Warehouse.Name : null,
                 b.TaxAmount,
+                b.WithholdingTaxRate,
+                b.WithholdingTaxAmount,
+                b.IncomeTax236GRate,
+                b.IncomeTax236GAmount,
                 b.NetAmount,
+                SubTotal = b.Lines.Sum(l => l.Amount),
                 b.TotalQuantity,
                 b.TotalCartons,
                 b.Status,
@@ -154,7 +160,8 @@ public partial class VendorBillService : IVendorBillService
             return null;
         }
 
-        var subTotal = Math.Round(bill.NetAmount - bill.TaxAmount, 2);
+        var subTotal = Math.Round(bill.SubTotal, 2);
+        var grossAmount = Math.Round(subTotal + bill.TaxAmount, 2);
 
         return new VendorBillDetailDto(
             bill.Id,
@@ -169,6 +176,11 @@ public partial class VendorBillService : IVendorBillService
             bill.WarehouseName,
             subTotal,
             bill.TaxAmount,
+            bill.WithholdingTaxRate,
+            bill.WithholdingTaxAmount,
+            bill.IncomeTax236GRate,
+            bill.IncomeTax236GAmount,
+            grossAmount,
             bill.NetAmount,
             bill.TotalQuantity,
             bill.TotalCartons,
@@ -254,6 +266,23 @@ public partial class VendorBillService : IVendorBillService
             .ToListAsync(cancellationToken);
     }
 
+    public Task<VendorBillPurchaseTaxSettingsDto> GetPurchaseTaxSettingsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var supports = PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId);
+
+        return Task.FromResult(new VendorBillPurchaseTaxSettingsDto(
+            supports,
+            supports ? PurchaseWithholdingTaxLayout.DefaultWithholdingTaxRate : 0m,
+            PurchaseWithholdingTaxLayout.SectionCode,
+            PurchaseWithholdingTaxLayout.SectionLabel,
+            PurchaseWithholdingTaxLayout.NatureOfPayment,
+            supports ? PurchaseWithholdingTaxLayout.DefaultIncomeTax236GRate : 0m,
+            PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode,
+            PurchaseWithholdingTaxLayout.IncomeTax236GSectionLabel));
+    }
+
     public async Task<VendorBillSaveResult> CreateAsync(
         VendorBillSaveRequest request,
         CancellationToken cancellationToken = default)
@@ -313,8 +342,7 @@ public partial class VendorBillService : IVendorBillService
 
         var subTotal = Math.Round(lineBuild.Lines.Sum(l => l.Amount), 2);
         var taxRate = ResolveBillTaxRate(request.TaxRate, vendor.DefaultSalesTaxRate);
-        var taxAmount = Math.Round(lineBuild.TaxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
-        var netAmount = Math.Round(subTotal + taxAmount, 2);
+        var billAmounts = CalculateBillAmounts(companyId, subTotal, lineBuild.TaxableSubTotal, taxRate, request);
         var now = DateTime.UtcNow;
 
         var entity = new VendorBill
@@ -327,8 +355,12 @@ public partial class VendorBillService : IVendorBillService
             BillDate = request.BillDate.Date,
             TotalQuantity = lineBuild.Lines.Sum(l => l.Quantity),
             TotalCartons = lineBuild.Lines.Sum(l => l.Cartons),
-            TaxAmount = taxAmount,
-            NetAmount = netAmount,
+            TaxAmount = billAmounts.TaxAmount,
+            WithholdingTaxRate = billAmounts.WithholdingTaxRate,
+            WithholdingTaxAmount = billAmounts.WithholdingTaxAmount,
+            IncomeTax236GRate = billAmounts.IncomeTax236GRate,
+            IncomeTax236GAmount = billAmounts.IncomeTax236GAmount,
+            NetAmount = billAmounts.NetAmount,
             Status = BillStatus.Draft,
             CreatedAt = now,
             CreatedBy = _currentUser.UserName ?? "system"
@@ -455,8 +487,7 @@ public partial class VendorBillService : IVendorBillService
 
         var subTotal = Math.Round(lineBuild.Lines.Sum(l => l.Amount), 2);
         var taxRate = ResolveBillTaxRate(request.TaxRate, vendor.DefaultSalesTaxRate);
-        var taxAmount = Math.Round(lineBuild.TaxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
-        var netAmount = Math.Round(subTotal + taxAmount, 2);
+        var billAmounts = CalculateBillAmounts(companyId, subTotal, lineBuild.TaxableSubTotal, taxRate, request);
         var now = DateTime.UtcNow;
 
         entity.VendorId = vendor.Id;
@@ -466,8 +497,12 @@ public partial class VendorBillService : IVendorBillService
         entity.BillDate = request.BillDate.Date;
         entity.TotalQuantity = lineBuild.Lines.Sum(l => l.Quantity);
         entity.TotalCartons = lineBuild.Lines.Sum(l => l.Cartons);
-        entity.TaxAmount = taxAmount;
-        entity.NetAmount = netAmount;
+        entity.TaxAmount = billAmounts.TaxAmount;
+        entity.WithholdingTaxRate = billAmounts.WithholdingTaxRate;
+        entity.WithholdingTaxAmount = billAmounts.WithholdingTaxAmount;
+        entity.IncomeTax236GRate = billAmounts.IncomeTax236GRate;
+        entity.IncomeTax236GAmount = billAmounts.IncomeTax236GAmount;
+        entity.NetAmount = billAmounts.NetAmount;
         entity.UpdatedAt = now;
         entity.UpdatedBy = _currentUser.UserName ?? "system";
 
@@ -528,17 +563,23 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillActionResult(false, "Bill has no line items.", null);
         }
 
-        var accounts = await ResolvePostingAccountsAsync(companyId, cancellationToken);
+        var accounts = await ResolvePostingAccountsAsync(
+            companyId,
+            bill.WithholdingTaxAmount,
+            bill.IncomeTax236GAmount,
+            cancellationToken);
         if (!accounts.Success)
         {
             return new VendorBillActionResult(false, accounts.Message, null);
         }
 
-        var subTotal = Math.Round(bill.NetAmount - bill.TaxAmount, 2);
+        var subTotal = Math.Round(bill.Lines.Sum(l => l.Amount), 2);
         var taxAmount = Math.Round(bill.TaxAmount, 2);
+        var withholdingTaxAmount = Math.Round(bill.WithholdingTaxAmount, 2);
+        var incomeTax236GAmount = Math.Round(bill.IncomeTax236GAmount, 2);
         var netAmount = Math.Round(bill.NetAmount, 2);
 
-        if (subTotal + taxAmount != netAmount)
+        if (subTotal + taxAmount != netAmount + withholdingTaxAmount + incomeTax236GAmount)
         {
             return new VendorBillActionResult(false, "Bill totals are inconsistent. Cannot approve.", null);
         }
@@ -595,6 +636,26 @@ public partial class VendorBillService : IVendorBillService
         var journalLines = new List<JournalEntryLine>();
         AddJournalLine(journalLines, accounts.InventoryAccountId, subTotal, 0m, "Inventory Asset");
         AddJournalLine(journalLines, accounts.InputTaxAccountId, taxAmount, 0m, "Pre Paid Sales Tax");
+        if (withholdingTaxAmount > 0m)
+        {
+            AddJournalLine(
+                journalLines,
+                accounts.WithholdingTaxAccountId,
+                withholdingTaxAmount,
+                0m,
+                $"W/H Tax u/s {PurchaseWithholdingTaxLayout.SectionCode}");
+        }
+
+        if (incomeTax236GAmount > 0m)
+        {
+            AddJournalLine(
+                journalLines,
+                accounts.IncomeTax236GAccountId,
+                incomeTax236GAmount,
+                0m,
+                $"Income Tax u/s {PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode}");
+        }
+
         AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Account Payable");
 
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
@@ -932,29 +993,82 @@ public partial class VendorBillService : IVendorBillService
             : (false, "Selected warehouse is invalid or inactive.");
     }
 
-    private async Task<(bool Success, string? Message, int PayableAccountId, int InputTaxAccountId, int InventoryAccountId)>
-        ResolvePostingAccountsAsync(int companyId, CancellationToken cancellationToken)
+    private async Task<(
+        bool Success,
+        string? Message,
+        int PayableAccountId,
+        int InputTaxAccountId,
+        int InventoryAccountId,
+        int WithholdingTaxAccountId,
+        int IncomeTax236GAccountId)> ResolvePostingAccountsAsync(
+        int companyId,
+        decimal withholdingTaxAmount,
+        decimal incomeTax236GAmount,
+        CancellationToken cancellationToken)
     {
         var payable = await GetAccountIdAsync(companyId, AccountsPayable, cancellationToken);
         var inputTax = await GetAccountIdAsync(companyId, PrepaidSalesTax, cancellationToken);
         var inventory = await GetAccountIdAsync(companyId, InventoryAsset, cancellationToken);
+        int? withholdingTax = null;
+        int? incomeTax236G = null;
+
+        if (withholdingTaxAmount > 0m)
+        {
+            withholdingTax = await GetAccountIdAsync(companyId, IncomeTaxVendorWithholding, cancellationToken);
+
+            if (withholdingTax is null)
+            {
+                return (
+                    false,
+                    $"Chart of account {IncomeTaxVendorWithholding} (Income Tax - Vendor W/H Tax) not found.",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
+            }
+        }
+
+        if (incomeTax236GAmount > 0m)
+        {
+            incomeTax236G = await GetAccountIdAsync(companyId, IncomeTax236G, cancellationToken);
+
+            if (incomeTax236G is null)
+            {
+                return (
+                    false,
+                    $"Chart of account {IncomeTax236G} (Income Tax u/s 236G) not found.",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
+            }
+        }
 
         if (payable is null)
         {
-            return (false, $"Chart of account {AccountsPayable} (Account Payable) not found.", 0, 0, 0);
+            return (false, $"Chart of account {AccountsPayable} (Account Payable) not found.", 0, 0, 0, 0, 0);
         }
 
         if (inputTax is null)
         {
-            return (false, $"Chart of account {PrepaidSalesTax} (Pre Paid Sales Tax) not found.", 0, 0, 0);
+            return (false, $"Chart of account {PrepaidSalesTax} (Pre Paid Sales Tax) not found.", 0, 0, 0, 0, 0);
         }
 
         if (inventory is null)
         {
-            return (false, $"Chart of account {InventoryAsset} (Inventory Asset) not found.", 0, 0, 0);
+            return (false, $"Chart of account {InventoryAsset} (Inventory Asset) not found.", 0, 0, 0, 0, 0);
         }
 
-        return (true, null, payable.Value, inputTax.Value, inventory.Value);
+        return (
+            true,
+            null,
+            payable.Value,
+            inputTax.Value,
+            inventory.Value,
+            withholdingTax ?? 0,
+            incomeTax236G ?? 0);
     }
 
     private static void AddJournalLine(
@@ -1051,6 +1165,49 @@ public partial class VendorBillService : IVendorBillService
             4 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
             _ => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate)
         };
+    }
+
+    private sealed record VendorBillAmounts(
+        decimal TaxAmount,
+        decimal WithholdingTaxRate,
+        decimal WithholdingTaxAmount,
+        decimal IncomeTax236GRate,
+        decimal IncomeTax236GAmount,
+        decimal NetAmount);
+
+    private static VendorBillAmounts CalculateBillAmounts(
+        int companyId,
+        decimal subTotal,
+        decimal taxableSubTotal,
+        decimal taxRate,
+        VendorBillSaveRequest request)
+    {
+        var taxAmount = Math.Round(taxableSubTotal * Math.Max(0m, taxRate) / 100m, 2);
+
+        if (!PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId))
+        {
+            return new VendorBillAmounts(
+                taxAmount,
+                0m,
+                0m,
+                0m,
+                0m,
+                Math.Round(subTotal + taxAmount, 2));
+        }
+
+        var withholdingTaxRate = Math.Max(0m, request.WithholdingTaxRate ?? 0m);
+        var withholdingTaxAmount = Math.Max(0m, Math.Round(request.WithholdingTaxAmount ?? 0m, 2));
+        var incomeTax236GRate = Math.Max(0m, request.IncomeTax236GRate ?? 0m);
+        var incomeTax236GAmount = Math.Max(0m, Math.Round(request.IncomeTax236GAmount ?? 0m, 2));
+        var netAmount = Math.Round(subTotal + taxAmount - withholdingTaxAmount - incomeTax236GAmount, 2);
+
+        return new VendorBillAmounts(
+            taxAmount,
+            withholdingTaxRate,
+            withholdingTaxAmount,
+            incomeTax236GRate,
+            incomeTax236GAmount,
+            netAmount);
     }
 
     private static decimal ResolveBillTaxRate(decimal? requestTaxRate, decimal vendorDefaultTaxRate)

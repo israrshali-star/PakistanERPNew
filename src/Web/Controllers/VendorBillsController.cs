@@ -208,6 +208,20 @@ public class VendorBillsApiController : ControllerBase
         }
     }
 
+    [HttpGet("purchase-tax-settings")]
+    [RequirePermission("Purchase.Create")]
+    public async Task<IActionResult> PurchaseTaxSettings(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _vendorBillService.GetPurchaseTaxSettingsAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost]
     [RequirePermission("Purchase.Create")]
     [IgnoreAntiforgeryToken]

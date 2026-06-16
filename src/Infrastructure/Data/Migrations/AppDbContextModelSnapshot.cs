@@ -2031,6 +2031,12 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("DeletedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal>("IncomeTax236GAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("IncomeTax236GRate")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2067,6 +2073,12 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 
                     b.Property<int?>("WarehouseId")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("WithholdingTaxAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("WithholdingTaxRate")
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 

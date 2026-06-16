@@ -23,6 +23,9 @@ public interface IVendorBillService
     Task<IReadOnlyList<VendorBillWarehouseLookupDto>> GetWarehouseLookupsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<VendorBillPurchaseTaxSettingsDto> GetPurchaseTaxSettingsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<VendorBillSaveResult> CreateAsync(
         VendorBillSaveRequest request,
         CancellationToken cancellationToken = default);
