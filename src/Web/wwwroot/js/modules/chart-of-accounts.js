@@ -10,6 +10,8 @@
 
     var ledgerAccountId = null;
 
+    var ledgerAccountNumber = null;
+
     var accountTypes = [];
 
 
@@ -323,6 +325,8 @@
 
         var account = ledger.account;
 
+        ledgerAccountNumber = account.accountNumber;
+
         $('#accountLedgerModalLabel').text('Account Ledger');
 
         $('#account-ledger-subtitle').html(
@@ -381,19 +385,7 @@
 
 
 
-    function loadAccountLedger() {
-
-        if (!ledgerAccountId) {
-
-            return;
-
-        }
-
-
-
-        $('#account-ledger-body').html('<tr><td colspan="6" class="text-muted text-center">Loading...</td></tr>');
-
-
+    function getLedgerFilterParams() {
 
         var params = {};
 
@@ -412,6 +404,40 @@
             params.toDate = toDate;
 
         }
+
+        return params;
+
+    }
+
+
+
+    function buildLedgerExportUrl(suffix) {
+
+        var url = '/api/chart-of-accounts/' + ledgerAccountId + '/ledger/' + suffix;
+
+        var query = $.param(getLedgerFilterParams());
+
+        return query ? url + '?' + query : url;
+
+    }
+
+
+
+    function loadAccountLedger() {
+
+        if (!ledgerAccountId) {
+
+            return;
+
+        }
+
+
+
+        $('#account-ledger-body').html('<tr><td colspan="6" class="text-muted text-center">Loading...</td></tr>');
+
+
+
+        var params = getLedgerFilterParams();
 
 
 
@@ -1430,6 +1456,34 @@
             $('#account-ledger-to').val('');
 
             loadAccountLedger();
+
+        });
+
+
+
+        $('#btn-ledger-export-pdf').on('click', function () {
+
+            if (!ledgerAccountId) {
+
+                return;
+
+            }
+
+            window.open(buildLedgerExportUrl('pdf'), '_blank');
+
+        });
+
+
+
+        $('#btn-ledger-export-excel').on('click', function () {
+
+            if (!ledgerAccountId) {
+
+                return;
+
+            }
+
+            window.location.href = buildLedgerExportUrl('export');
 
         });
 

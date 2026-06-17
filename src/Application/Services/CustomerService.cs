@@ -137,6 +137,7 @@ public partial class CustomerService : ICustomerService
                 c.STRN,
                 c.CustomerType,
                 c.InvoiceType,
+                c.FurtherTaxRate,
                 c.IsActive,
                 c.SalesInvoices.Any()))
             .FirstOrDefaultAsync(cancellationToken);
@@ -200,6 +201,7 @@ public partial class CustomerService : ICustomerService
             STRN = request.STRN?.Trim(),
             CustomerType = request.CustomerType,
             InvoiceType = request.InvoiceType,
+            FurtherTaxRate = request.FurtherTaxRate,
             IsActive = request.IsActive,
             CreatedAt = now,
             CreatedBy = _currentUser.UserName ?? "system"
@@ -297,6 +299,7 @@ public partial class CustomerService : ICustomerService
         entity.STRN = request.STRN?.Trim();
         entity.CustomerType = request.CustomerType;
         entity.InvoiceType = request.InvoiceType;
+        entity.FurtherTaxRate = request.FurtherTaxRate;
         entity.IsActive = request.IsActive;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedBy = _currentUser.UserName;

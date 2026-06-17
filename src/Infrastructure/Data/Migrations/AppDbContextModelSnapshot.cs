@@ -631,11 +631,57 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<int?>("ProvinceId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("SmtpEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SmtpFromEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SmtpFromName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SmtpHost")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SmtpPassword")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SmtpPort")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(587);
+
+                    b.Property<bool>("SmtpUseSsl")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("SmtpUsername")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WhatsAppAccessToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WhatsAppApiUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("WhatsAppEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("WhatsAppPhoneNumberId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
 
@@ -687,6 +733,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("FurtherTaxRate")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("InvoiceType")
                         .HasColumnType("int");

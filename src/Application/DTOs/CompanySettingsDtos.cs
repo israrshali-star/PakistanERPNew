@@ -16,7 +16,9 @@ public record CompanySettingsDto(
     int? TaxSettingId,
     string TaxGroupName,
     decimal SalesTaxRate,
-    decimal UnregisteredSalesTaxRate);
+    decimal UnregisteredSalesTaxRate,
+    CompanyEmailSettingsDto EmailSettings,
+    CompanyWhatsAppSettingsDto WhatsAppSettings);
 
 public class CompanySettingsSaveRequest
 {
@@ -32,6 +34,22 @@ public class CompanySettingsSaveRequest
     public bool ClearApiToken { get; set; }
     public decimal SalesTaxRate { get; set; } = 18m;
     public decimal UnregisteredSalesTaxRate { get; set; } = 18m;
+
+    public bool? SmtpEnabled { get; set; }
+    public string? SmtpHost { get; set; }
+    public int? SmtpPort { get; set; }
+    public bool? SmtpUseSsl { get; set; }
+    public string? SmtpUsername { get; set; }
+    public string? SmtpPassword { get; set; }
+    public bool ClearSmtpPassword { get; set; }
+    public string? SmtpFromEmail { get; set; }
+    public string? SmtpFromName { get; set; }
+
+    public bool? WhatsAppEnabled { get; set; }
+    public string? WhatsAppApiUrl { get; set; }
+    public string? WhatsAppAccessToken { get; set; }
+    public bool ClearWhatsAppAccessToken { get; set; }
+    public string? WhatsAppPhoneNumberId { get; set; }
 }
 
 public record CompanySettingsSaveResult(bool Success, string? Message, CompanySettingsDto? Settings);

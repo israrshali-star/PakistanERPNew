@@ -20,6 +20,8 @@ public class Customer : CompanyAuditableEntity
     public string? STRN { get; set; }
     public CustomerType CustomerType { get; set; } = CustomerType.Registered;
     public InvoiceType InvoiceType { get; set; } = InvoiceType.SalesInvoice;
+    /// <summary>When set, overrides company default further tax % (e.g. 2 for reduced-rate customers).</summary>
+    public decimal? FurtherTaxRate { get; set; }
     public bool IsActive { get; set; } = true;
 
     public Province? Province { get; set; }

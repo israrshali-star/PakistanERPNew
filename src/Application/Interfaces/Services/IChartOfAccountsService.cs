@@ -54,4 +54,18 @@ public interface IChartOfAccountsService
         DateTime? fromDate = null,
         DateTime? toDate = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Exports account ledger entries to an Excel workbook.</summary>
+    Task<byte[]?> ExportLedgerToExcelAsync(
+        int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Exports account ledger entries to a PDF document.</summary>
+    Task<byte[]?> ExportLedgerToPdfAsync(
+        int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default);
 }

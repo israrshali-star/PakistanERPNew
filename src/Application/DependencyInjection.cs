@@ -11,6 +11,7 @@ public static class DependencyInjection
         services.AddScoped<ILookupService, LookupService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<ICompanySettingsService, CompanySettingsService>();
+        services.AddScoped<ICompanyMessagingSettingsService, CompanyMessagingSettingsService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IDashboardService, DashboardService>();

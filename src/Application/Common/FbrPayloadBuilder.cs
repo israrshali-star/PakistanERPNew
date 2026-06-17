@@ -57,7 +57,10 @@ public static class FbrPayloadBuilder
     private static FbrInvoiceItemPayload MapLine(FbrSubmissionLineRequest line)
     {
         var valueExcludingSt = Math.Round(Math.Max(0m, line.Quantity * line.Price - line.Discount), 2);
-        var salesTax = Math.Round(line.TaxAmount, 2);
+        var salesTax = line.FurtherTaxAmount > 0m
+            ? Math.Round(line.SalesTaxAmount, 2)
+            : Math.Round(line.TaxAmount, 2);
+        var furtherTax = Math.Round(line.FurtherTaxAmount, 2);
         var totalValues = Math.Round(line.LineTotal, 2);
 
         return new FbrInvoiceItemPayload
@@ -73,7 +76,7 @@ public static class FbrPayloadBuilder
             SalesTaxApplicable = salesTax,
             SalesTaxWithheldAtSource = 0m,
             ExtraTax = string.Empty,
-            FurtherTax = 0m,
+            FurtherTax = furtherTax,
             SroScheduleNo = null,
             FedPayable = 0m,
             Discount = Math.Round(line.Discount, 2),

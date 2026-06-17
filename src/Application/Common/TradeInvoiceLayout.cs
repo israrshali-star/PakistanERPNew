@@ -6,6 +6,9 @@ public static class TradeInvoiceLayout
 {
     public const int TradeInvoiceCompanyId = 3;
 
+    /// <summary>Companies that post SN002 sales tax to 25520 (18%) and 25510 (4%) with 25500 as parent total.</summary>
+    public static readonly int[] SplitTaxGlCompanyIds = [2, 3, 4, 5, 6, 7];
+
     /// <summary>Companies that support bulk PDF print of FBR-submitted invoices from the list page.</summary>
     public static readonly int[] BulkInvoicePrintCompanyIds = [2, 4, 5, 6, 7];
 
@@ -14,6 +17,13 @@ public static class TradeInvoiceLayout
 
     public static bool SupportsGodownChallanEmail(int companyId) =>
         companyId == TradeInvoiceCompanyId;
+
+    /// <summary>Company 3: unregistered SN002 tax split (18% + 4%) at invoice footer, not per line.</summary>
+    public static bool UsesUnregisteredBillLevelTaxSplit(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
+    public static bool UsesSplitTaxSubAccounts(int companyId) =>
+        SplitTaxGlCompanyIds.Contains(companyId);
 
     public static CultureInfo NumberCulture { get; } = CultureInfo.GetCultureInfo("en-PK");
 

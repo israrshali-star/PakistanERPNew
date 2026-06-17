@@ -6,6 +6,18 @@ public interface IGlRepairService
 {
     Task<GlRepairResult> RepairHistoricalEntriesAsync(CancellationToken cancellationToken = default);
 
+    Task<GlRepairResult> RepairHistoricalEntriesForCompanyAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Success, string? Message, int InvoicesUpdated)> RepairCompany3SalesTaxGlAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Success, string? Message, decimal AmountMoved)> ReallocateSalesTaxOpeningBalanceAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
     Task<CutoverReconcileResult> ReconcileToOpeningBalancesAsync(
         int companyId,
         DateTime removeTransactionsOnOrAfter,

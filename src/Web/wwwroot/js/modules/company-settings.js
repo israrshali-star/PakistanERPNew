@@ -4,7 +4,10 @@
     var canCreate = false;
     var canEdit = false;
     var canDelete = false;
+    var isSuperAdmin = false;
     var hasExistingToken = false;
+    var hasExistingSmtpPassword = false;
+    var hasExistingWhatsAppToken = false;
     var companyModal = null;
     var provinces = [];
 
@@ -66,6 +69,106 @@
         );
     }
 
+    function updateSmtpStatus(emailSettings) {
+        var $badge = $('#smtp-status-badge');
+        if (!emailSettings) {
+            $badge.empty();
+            return;
+        }
+
+        if (emailSettings.smtpConfigured) {
+            $badge.html('<span class="badge bg-success">Email Ready</span>');
+        } else if (emailSettings.smtpEnabled) {
+            $badge.html('<span class="badge bg-warning text-dark">Incomplete</span>');
+        } else {
+            $badge.html('<span class="badge bg-secondary">Disabled</span>');
+        }
+
+        hasExistingSmtpPassword = emailSettings.hasSmtpPassword === true;
+        $('#smtp-password-hint').text(
+            hasExistingSmtpPassword
+                ? 'A password is stored. Enter a new value to replace it, or check "Clear" to remove.'
+                : 'No SMTP password stored yet.'
+        );
+    }
+
+    function updateWhatsAppStatus(whatsAppSettings) {
+        var $badge = $('#whatsapp-status-badge');
+        if (!whatsAppSettings) {
+            $badge.empty();
+            return;
+        }
+
+        if (whatsAppSettings.whatsAppConfigured) {
+            $badge.html('<span class="badge bg-success">API Ready</span>');
+        } else if (whatsAppSettings.whatsAppEnabled) {
+            $badge.html('<span class="badge bg-warning text-dark">Incomplete</span>');
+        } else {
+            $badge.html('<span class="badge bg-secondary">Disabled</span>');
+        }
+
+        hasExistingWhatsAppToken = whatsAppSettings.hasWhatsAppAccessToken === true;
+        $('#whatsapp-token-hint').text(
+            hasExistingWhatsAppToken
+                ? 'A token is stored. Enter a new value to replace it, or check "Clear" to remove.'
+                : 'No access token stored yet.'
+        );
+    }
+
+    function populateMessagingForm(settings) {
+        var emailSettings = settings.emailSettings || {};
+        var whatsAppSettings = settings.whatsAppSettings || {};
+
+        $('#smtp-enabled').prop('checked', emailSettings.smtpEnabled === true);
+        $('#smtp-host').val(emailSettings.smtpHost || '');
+        $('#smtp-port').val(emailSettings.smtpPort || 587);
+        $('#smtp-use-ssl').prop('checked', emailSettings.smtpUseSsl !== false);
+        $('#smtp-username').val(emailSettings.smtpUsername || '');
+        $('#smtp-password').val('');
+        $('#clear-smtp-password').prop('checked', false);
+        $('#smtp-from-email').val(emailSettings.smtpFromEmail || '');
+        $('#smtp-from-name').val(emailSettings.smtpFromName || '');
+        updateSmtpStatus(emailSettings);
+
+        $('#whatsapp-enabled').prop('checked', whatsAppSettings.whatsAppEnabled === true);
+        $('#whatsapp-api-url').val(whatsAppSettings.whatsAppApiUrl || 'https://graph.facebook.com/v21.0/');
+        $('#whatsapp-phone-number-id').val(whatsAppSettings.whatsAppPhoneNumberId || '');
+        $('#whatsapp-access-token').val('');
+        $('#clear-whatsapp-token').prop('checked', false);
+        updateWhatsAppStatus(whatsAppSettings);
+    }
+
+    function buildMessagingPayload() {
+        if (!isSuperAdmin) {
+            return {};
+        }
+
+        return {
+            smtpEnabled: $('#smtp-enabled').is(':checked'),
+            smtpHost: $('#smtp-host').val().trim() || null,
+            smtpPort: parseInt($('#smtp-port').val(), 10) || 587,
+            smtpUseSsl: $('#smtp-use-ssl').is(':checked'),
+            smtpUsername: $('#smtp-username').val().trim() || null,
+            smtpPassword: $('#smtp-password').val().trim() || null,
+            clearSmtpPassword: $('#clear-smtp-password').is(':checked'),
+            smtpFromEmail: $('#smtp-from-email').val().trim() || null,
+            smtpFromName: $('#smtp-from-name').val().trim() || null,
+            whatsAppEnabled: $('#whatsapp-enabled').is(':checked'),
+            whatsAppApiUrl: $('#whatsapp-api-url').val().trim() || null,
+            whatsAppPhoneNumberId: $('#whatsapp-phone-number-id').val().trim() || null,
+            whatsAppAccessToken: $('#whatsapp-access-token').val().trim() || null,
+            clearWhatsAppAccessToken: $('#clear-whatsapp-token').is(':checked')
+        };
+    }
+
+    function applySuperAdminSections() {
+        if (isSuperAdmin) {
+            $('#email-settings-section, #whatsapp-settings-section').removeClass('d-none');
+        } else {
+            $('#email-settings-section, #whatsapp-settings-section').remove();
+        }
+    }
+
     function toggleGodownEmailField(companyId) {
         if (companyId === 3) {
             $('#godown-email-group').removeClass('d-none');
@@ -90,6 +193,7 @@
         $('#sales-tax-rate').val(settings.salesTaxRate);
         $('#unreg-tax-rate').val(settings.unregisteredSalesTaxRate);
         updateFbrStatus(settings);
+        populateMessagingForm(settings);
     }
 
     function populateProvinceSelects() {
@@ -314,6 +418,8 @@
             unregisteredSalesTaxRate: parseFloat($('#unreg-tax-rate').val()) || 0
         };
 
+        Object.assign(payload, buildMessagingPayload());
+
         var $btn = $('#btn-save-settings');
         $btn.prop('disabled', true);
 
@@ -359,6 +465,9 @@
         canCreate = $('#settings-permissions').data('can-create') === true;
         canEdit = $('#settings-permissions').data('can-edit') === true;
         canDelete = $('#settings-permissions').data('can-delete') === true;
+        isSuperAdmin = $('#settings-permissions').data('is-super-admin') === true;
+
+        applySuperAdminSections();
 
         companyModal = new bootstrap.Modal(document.getElementById('companyModal'));
 
@@ -404,6 +513,22 @@
                 $('#api-token').val('').prop('disabled', true);
             } else {
                 $('#api-token').prop('disabled', false);
+            }
+        });
+
+        $('#clear-smtp-password').on('change', function () {
+            if ($(this).is(':checked')) {
+                $('#smtp-password').val('').prop('disabled', true);
+            } else {
+                $('#smtp-password').prop('disabled', false);
+            }
+        });
+
+        $('#clear-whatsapp-token').on('change', function () {
+            if ($(this).is(':checked')) {
+                $('#whatsapp-access-token').val('').prop('disabled', true);
+            } else {
+                $('#whatsapp-access-token').prop('disabled', false);
             }
         });
 

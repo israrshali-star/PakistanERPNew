@@ -93,6 +93,16 @@ if (TryRunCopyItems(args, out var copyItemsExitCode))
     Environment.Exit(copyItemsExitCode);
 }
 
+if (TryRunRepairGlHistorical(args, out var repairGlHistoricalExitCode))
+{
+    Environment.Exit(repairGlHistoricalExitCode);
+}
+
+if (TryRunReallocateSalesTaxOpening(args, out var reallocateSalesTaxOpeningExitCode))
+{
+    Environment.Exit(reallocateSalesTaxOpeningExitCode);
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
@@ -938,6 +948,80 @@ static bool TryRunRecalculateItemStock(string[] args, out int exitCode)
         Console.WriteLine($"Items updated: {result.ItemsUpdated}");
         Console.WriteLine($"Sum item CurrentStock: {result.SumItemStock:N2}");
         Console.WriteLine($"Sum inventory transactions: {result.SumTransactionStock:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairGlHistorical(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--repair-gl-historical", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairCompany3SalesTaxGlAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Invoices updated: {result.InvoicesUpdated}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunReallocateSalesTaxOpening(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--reallocate-sales-tax-opening", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.ReallocateSalesTaxOpeningBalanceAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Amount moved: {result.AmountMoved:N2}");
 
         exitCode = result.Success ? 0 : 1;
     }

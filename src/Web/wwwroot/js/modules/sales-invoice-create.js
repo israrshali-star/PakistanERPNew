@@ -4,8 +4,13 @@
     var customers = [];
     var items = [];
     var scenarios = [];
-    var taxRates = { registered: 18, unregistered: 22 };
+    var taxRates = { registered: 18, unregistered: 22, defaultFurther: 4 };
     var SN002_CODE = 'SN002';
+    var TRADE_INVOICE_COMPANY_ID = 3;
+    var supportsBillLevelTaxSplit = false;
+    var currentCompanyId = 0;
+    var furtherTaxAmountManual = false;
+    var suppressScenarioTaxReset = false;
     var lineCounter = 0;
     var pendingAttachments = [];
     var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -74,8 +79,14 @@
 
     function getSelectedScenarioCode() {
         var scenarioId = parseInt($('#scenario-id').val(), 10);
-        var scenario = scenarios.find(function (s) { return s.id === scenarioId; });
-        return scenario ? (scenario.code || '').toUpperCase() : '';
+        if (!scenarioId) {
+            return '';
+        }
+
+        var scenario = scenarios.find(function (s) {
+            return parseInt(s.id || s.Id, 10) === scenarioId;
+        });
+        return scenario ? String(scenario.code || scenario.Code || '').toUpperCase() : '';
     }
 
     function getScenarioTaxRate() {
@@ -84,10 +95,79 @@
             : taxRates.registered;
     }
 
+    function isUnregisteredScenario() {
+        return getSelectedScenarioCode() === SN002_CODE;
+    }
+
+    function usesBillLevelTaxSplit() {
+        return supportsBillLevelTaxSplit && isUnregisteredScenario();
+    }
+
+    function getDefaultFurtherTaxRate() {
+        return taxRates.defaultFurther != null
+            ? taxRates.defaultFurther
+            : Math.max(0, taxRates.unregistered - taxRates.registered);
+    }
+
+    function getFurtherTaxRateInput() {
+        var rate = parseFloat($('#further-tax-rate').val());
+        return isNaN(rate) ? getDefaultFurtherTaxRate() : Math.max(0, rate);
+    }
+
+    function initFurtherTaxFields(forceDefaultRate) {
+        if (!$('#further-tax-rate').length) {
+            return;
+        }
+
+        if (forceDefaultRate || !$('#further-tax-rate').val()) {
+            $('#further-tax-rate').val(getDefaultFurtherTaxRate().toFixed(2));
+        }
+        if (!furtherTaxAmountManual && (!$('#further-tax-amount').val() || forceDefaultRate)) {
+            $('#further-tax-amount').val('0.00');
+        }
+    }
+
+    function resolveCompanyId(company) {
+        var fromApi = parseInt(company && (company.id || company.Id), 10);
+        if (fromApi > 0) {
+            return fromApi;
+        }
+
+        var fromForm = parseInt($('#sales-invoice-form').data('company-id'), 10);
+        return fromForm > 0 ? fromForm : 0;
+    }
+
+    function initPageCompanyContext(company) {
+        var $form = $('#sales-invoice-form');
+        TRADE_INVOICE_COMPANY_ID = parseInt($form.data('trade-invoice-company-id'), 10) || 3;
+        currentCompanyId = resolveCompanyId(company);
+        if (!supportsBillLevelTaxSplit && currentCompanyId === TRADE_INVOICE_COMPANY_ID) {
+            supportsBillLevelTaxSplit = true;
+        }
+    }
+
+    function updateTaxSummaryVisibility() {
+        var split = usesBillLevelTaxSplit();
+        $('.tax-line-col').toggleClass('d-none', split);
+        $('#total-tax-row').toggleClass('d-none', split);
+        $('#total-st-tax-row, #total-ft-tax-row').toggleClass('d-none', !split);
+
+        var registeredRate = taxRates.registered;
+        $('#total-st-tax-label').text('Sales Tax (' + registeredRate.toFixed(0) + '%)');
+        $('#total-ft-tax-label').text('Further Tax');
+        if (split) {
+            initFurtherTaxFields(false);
+        }
+    }
+
     function recalcTotals() {
         var subtotal = 0;
         var discount = 0;
         var tax = 0;
+        var taxableGoods = 0;
+        var split = usesBillLevelTaxSplit();
+        var registeredRate = taxRates.registered;
+        var furtherRate = getFurtherTaxRateInput();
 
         $('#invoice-lines-body tr').each(function () {
             var $row = $(this);
@@ -95,30 +175,56 @@
             var price = parseFloat($row.find('.line-price').val()) || 0;
             var isTaxable = $row.data('is-taxable') !== false;
             var taxRate = parseFloat($row.find('.line-tax').val());
-            if (!isTaxable) {
-                taxRate = 0;
-                $row.find('.line-tax').val('0.00');
-            } else if (isNaN(taxRate)) {
-                taxRate = getScenarioTaxRate();
-                $row.find('.line-tax').val(taxRate.toFixed(2));
-            }
             var disc = parseFloat($row.find('.line-discount').val()) || 0;
 
             var lineSub = Math.round(qty * price * 100) / 100;
             var taxable = Math.max(0, Math.round((lineSub - disc) * 100) / 100);
-            var lineTax = Math.round(taxable * taxRate / 100 * 100) / 100;
-            var lineTotal = Math.round((taxable + lineTax) * 100) / 100;
+            var lineTax = 0;
+
+            if (!isTaxable) {
+                taxRate = 0;
+                $row.find('.line-tax').val('0.00');
+            } else if (split) {
+                taxRate = getScenarioTaxRate();
+                $row.find('.line-tax').val(taxRate.toFixed(2));
+                taxableGoods += taxable;
+            } else {
+                if (isNaN(taxRate)) {
+                    taxRate = getScenarioTaxRate();
+                    $row.find('.line-tax').val(taxRate.toFixed(2));
+                }
+                lineTax = Math.round(taxable * taxRate / 100 * 100) / 100;
+                tax += lineTax;
+            }
+
+            var lineTotal = split && isTaxable
+                ? taxable
+                : Math.round((taxable + lineTax) * 100) / 100;
 
             $row.find('.line-total').text(formatCurrency(lineTotal));
 
             subtotal += lineSub;
             discount += disc;
-            tax += lineTax;
         });
+
+        var salesTax = 0;
+        var furtherTax = 0;
+        if (split) {
+            salesTax = Math.round(taxableGoods * registeredRate / 100 * 100) / 100;
+            if (furtherTaxAmountManual) {
+                furtherTax = Math.round((parseFloat($('#further-tax-amount').val()) || 0) * 100) / 100;
+            } else {
+                furtherTax = Math.round(taxableGoods * furtherRate / 100 * 100) / 100;
+                $('#further-tax-amount').val(furtherTax.toFixed(2));
+            }
+            tax = salesTax + furtherTax;
+            $('#total-st-tax').text(formatCurrency(salesTax));
+        } else {
+            $('#total-tax').text(formatCurrency(tax));
+        }
 
         $('#total-subtotal').text(formatCurrency(subtotal));
         $('#total-discount').text(formatCurrency(discount));
-        $('#total-tax').text(formatCurrency(tax));
         $('#total-net').text(formatCurrency(subtotal - discount + tax));
     }
 
@@ -139,7 +245,7 @@
             '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td class="text-muted line-unit">—</td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="0" required /></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
+            '<td class="tax-line-col"><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-discount" min="0" step="0.01" value="0" /></td>' +
             '<td class="text-end text-currency line-total">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
@@ -165,6 +271,7 @@
             }
         }
 
+        updateTaxSummaryVisibility();
         recalcTotals();
     }
 
@@ -176,12 +283,17 @@
 
     function onScenarioChange() {
         var rate = getScenarioTaxRate();
+        if (!suppressScenarioTaxReset) {
+            furtherTaxAmountManual = false;
+            initFurtherTaxFields(true);
+        }
         $('#invoice-lines-body tr').each(function () {
             var $row = $(this);
             if ($row.data('is-taxable') !== false) {
                 $row.find('.line-tax').val(rate.toFixed(2));
             }
         });
+        updateTaxSummaryVisibility();
         recalcTotals();
     }
 
@@ -237,6 +349,16 @@
             pickCustomerField(customer, 'scenarioId', 'ScenarioId')
         )).trigger('change');
         updateBuyerDetails(customer);
+        if (usesBillLevelTaxSplit()) {
+            var customerFurther = pickCustomerField(customer, 'furtherTaxRate', 'FurtherTaxRate');
+            furtherTaxAmountManual = false;
+            if (customerFurther !== '' && customerFurther != null) {
+                $('#further-tax-rate').val(parseFloat(customerFurther).toFixed(2));
+            } else {
+                $('#further-tax-rate').val(getDefaultFurtherTaxRate().toFixed(2));
+            }
+            recalcTotals();
+        }
         $('#invoice-type').val(String(
             pickCustomerField(customer, 'invoiceType', 'InvoiceType') || 1
         ));
@@ -270,6 +392,7 @@
         }
 
         var invoice = JSON.parse($data.text());
+        suppressScenarioTaxReset = true;
         if (!isCopyMode()) {
             $('#invoice-number').val(invoice.invoiceNumber || invoice.InvoiceNumber);
         }
@@ -291,6 +414,11 @@
         }
         if (invoice.buyerCNIC || invoice.BuyerCNIC) {
             $('#buyer-cnic').val(invoice.buyerCNIC || invoice.BuyerCNIC);
+        }
+        if (invoice.furtherTax != null || invoice.FurtherTax != null) {
+            var ftAmount = invoice.furtherTax != null ? invoice.furtherTax : invoice.FurtherTax;
+            $('#further-tax-amount').val(Number(ftAmount).toFixed(2));
+            furtherTaxAmountManual = Number(ftAmount) > 0;
         }
 
         $('#invoice-lines-body').empty();
@@ -342,6 +470,8 @@
             }
             window.LotStackLine.onLotChange($row, $.extend({}, lineOptions(), { preserveLineFields: true }));
         });
+        suppressScenarioTaxReset = false;
+        updateTaxSummaryVisibility();
         recalcTotals();
     }
 
@@ -376,6 +506,13 @@
                 taxRates.unregistered = taxRatesRes[0].unregisteredSalesTaxRate != null
                     ? taxRatesRes[0].unregisteredSalesTaxRate
                     : (taxRatesRes[0].UnregisteredSalesTaxRate || 22);
+                taxRates.defaultFurther = taxRatesRes[0].defaultFurtherTaxRate != null
+                    ? taxRatesRes[0].defaultFurtherTaxRate
+                    : (taxRatesRes[0].DefaultFurtherTaxRate != null
+                        ? taxRatesRes[0].DefaultFurtherTaxRate
+                        : Math.max(0, taxRates.unregistered - taxRates.registered));
+                supportsBillLevelTaxSplit = taxRatesRes[0].supportsBillLevelTaxSplit === true
+                    || taxRatesRes[0].SupportsBillLevelTaxSplit === true;
             }
 
             var $customer = $('#customer-id');
@@ -387,7 +524,9 @@
             var $scenario = $('#scenario-id');
             $scenario.empty();
             scenarios.forEach(function (s) {
-                $scenario.append($('<option></option>').val(s.id).text(s.code + ' — ' + (s.description || '')));
+                $scenario.append($('<option></option>')
+                    .val(s.id || s.Id)
+                    .text((s.code || s.Code) + ' — ' + (s.description || s.Description || '')));
             });
 
             if ($.fn.select2) {
@@ -430,6 +569,9 @@
             if (customers.length === 0) {
                 showError('No active customers found. Add a customer under Sales → Customers first.');
             }
+
+            updateTaxSummaryVisibility();
+            recalcTotals();
         });
     }
 
@@ -577,7 +719,9 @@
                 cartons: parseFloat($row.find('.line-cartons').val()) || 0,
                 quantity: parseFloat($row.find('.line-qty').val()) || 0,
                 price: parseFloat($row.find('.line-price').val()) || 0,
-                taxRate: parseFloat($row.find('.line-tax').val()) || 0,
+                taxRate: usesBillLevelTaxSplit()
+                    ? getScenarioTaxRate()
+                    : (parseFloat($row.find('.line-tax').val()) || 0),
                 discount: parseFloat($row.find('.line-discount').val()) || 0
             });
         });
@@ -603,6 +747,10 @@
             shippingAddress: shippingAddress,
             buyerNTN: $('#buyer-ntn').val().trim() || null,
             buyerCNIC: $('#buyer-cnic').val().trim() || null,
+            furtherTaxRate: usesBillLevelTaxSplit() ? getFurtherTaxRateInput() : null,
+            furtherTaxAmount: usesBillLevelTaxSplit()
+                ? (parseFloat($('#further-tax-amount').val()) || 0)
+                : null,
             lines: lines
         };
 
@@ -667,7 +815,8 @@
         }
 
         ensureCompanySelected()
-            .done(function () {
+            .done(function (company) {
+                initPageCompanyContext(company);
                 loadLookups().fail(function () {
                     showError('Failed to load invoice data.');
                 });
@@ -678,6 +827,14 @@
 
         $('#customer-id').on('change', onCustomerChange);
         $('#scenario-id').on('change', onScenarioChange);
+        $('#further-tax-rate').on('input change', function () {
+            furtherTaxAmountManual = false;
+            recalcTotals();
+        });
+        $('#further-tax-amount').on('input change', function () {
+            furtherTaxAmountManual = true;
+            recalcTotals();
+        });
         $('#invoice-type').on('change', refreshAllStockHints);
         $('#invoice-lines-body').on('change', '.line-lot', function () {
             window.LotStackLine.onLotChange($(this).closest('tr'), lineOptions());

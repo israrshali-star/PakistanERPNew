@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.Import;
 using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
@@ -49,6 +50,13 @@ public class GlRepairService : IGlRepairService
     public async Task<GlRepairResult> RepairHistoricalEntriesAsync(CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
+        return await RepairHistoricalEntriesForCompanyAsync(companyId, cancellationToken);
+    }
+
+    public async Task<GlRepairResult> RepairHistoricalEntriesForCompanyAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
         var now = DateTime.UtcNow;
         var userName = _currentUser.UserName ?? "gl-repair";
 
@@ -60,6 +68,10 @@ public class GlRepairService : IGlRepairService
             var parentArConsolidated = await ConsolidateParentArAccountAsync(companyId, cancellationToken);
             var (cartageAdded, cartageAdjusted) = await FixCartageJournalLinesAsync(companyId, cancellationToken);
             var cogsAdded = await BackfillSalesInvoiceCogsLinesAsync(companyId, now, userName, cancellationToken);
+            var furtherTaxSplit = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+                ? 0
+                : await BackfillSalesInvoiceFurtherTaxLinesAsync(companyId, now, userName, cancellationToken);
+            var salesTaxSplit = await BackfillSalesTaxSplitGlAsync(companyId, now, userName, cancellationToken);
             var duplicatesRemoved = await SoftDeleteDuplicateReferenceJournalsAsync(companyId, now, userName, cancellationToken);
             var duplicateReceiptsRemoved = await SoftDeleteDuplicateCustomerReceiptJournalsAsync(companyId, now, userName, cancellationToken);
             var duplicateBankTxRemoved = await SoftDeleteDuplicateBankTransactionJournalsAsync(companyId, now, userName, cancellationToken);
@@ -74,9 +86,20 @@ public class GlRepairService : IGlRepairService
 
             var arBalance = await GetAccountBalanceAsync(companyId, AccountsReceivable, cancellationToken);
 
+            var messageParts = new List<string> { "Historical GL entries repaired successfully." };
+            if (furtherTaxSplit > 0)
+            {
+                messageParts.Add($"Split further tax on {furtherTaxSplit} posted invoice(s) to {FurtherTaxPayable}.");
+            }
+
+            if (salesTaxSplit > 0)
+            {
+                messageParts.Add($"Split sales tax on {salesTaxSplit} posted SN002 invoice(s) to {SalesTaxPayable18} (18%) and {FurtherTaxPayable} (4%); {SalesTaxPayable} shows the rolled-up total.");
+            }
+
             return new GlRepairResult(
                 true,
-                "Historical GL entries repaired successfully.",
+                string.Join(" ", messageParts),
                 legacyRemapped,
                 cartageAdded,
                 cartageAdjusted,
@@ -95,6 +118,81 @@ public class GlRepairService : IGlRepairService
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "GL repair failed for company {CompanyId}", companyId);
             return new GlRepairResult(false, ex.Message, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m);
+        }
+    }
+
+    public async Task<(bool Success, string? Message, int InvoicesUpdated)> RepairCompany3SalesTaxGlAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return (false, $"Sales tax GL split repair is only available for companies {string.Join(", ", TradeInvoiceLayout.SplitTaxGlCompanyIds)}.", 0);
+        }
+
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "gl-repair";
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+            var updated = await BackfillSalesTaxSplitGlAsync(companyId, now, userName, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return (
+                true,
+                $"Updated sales tax GL on {updated} posted invoice(s). {SalesTaxPayable18}=18%, {FurtherTaxPayable}=4%, {SalesTaxPayable} shows rolled-up total.",
+                updated);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Sales tax GL repair failed for company {CompanyId}", companyId);
+            return (false, ex.Message, 0);
+        }
+    }
+
+    public async Task<(bool Success, string? Message, decimal AmountMoved)> ReallocateSalesTaxOpeningBalanceAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return (
+                false,
+                $"Sales tax opening balance relocation is only available for companies {string.Join(", ", TradeInvoiceLayout.SplitTaxGlCompanyIds)}.",
+                0m);
+        }
+
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "gl-repair";
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+            var amountMoved = await ReallocateSalesTaxOpeningBalanceCoreAsync(
+                companyId,
+                now,
+                userName,
+                cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return (
+                true,
+                amountMoved == 0m
+                    ? $"No sales tax opening balance on {SalesTaxPayable} to move to {SalesTaxPayable18}."
+                    : $"Moved sales tax opening balance {amountMoved:N2} from {SalesTaxPayable} to {SalesTaxPayable18}.",
+                amountMoved);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Sales tax opening balance relocation failed for company {CompanyId}", companyId);
+            return (false, ex.Message, 0m);
         }
     }
 
@@ -1201,15 +1299,22 @@ public class GlRepairService : IGlRepairService
 
             foreach (var row in parsedRows)
             {
+                var erpAccountNumber = row.ErpAccountNumber;
+                if (TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+                    && string.Equals(erpAccountNumber, SalesTaxPayable, StringComparison.OrdinalIgnoreCase))
+                {
+                    erpAccountNumber = SalesTaxPayable18;
+                }
+
                 var account = accounts.FirstOrDefault(a =>
-                    string.Equals(a.AccountNumber, row.ErpAccountNumber, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(a.AccountNumber, erpAccountNumber, StringComparison.OrdinalIgnoreCase));
 
                 if (account is null)
                 {
                     skipped++;
                     _logger.LogWarning(
                         "Trial balance account {AccountNumber} not found in company {CompanyId}",
-                        row.ErpAccountNumber,
+                        erpAccountNumber,
                         companyId);
                     continue;
                 }
@@ -1221,7 +1326,7 @@ public class GlRepairService : IGlRepairService
                 updated++;
             }
 
-            foreach (var accountNumber in new[] { AccountsReceivable, AccountsPayable })
+            foreach (var accountNumber in new[] { AccountsReceivable, AccountsPayable, SalesTaxPayable })
             {
                 var controlAccount = accounts.FirstOrDefault(a =>
                     string.Equals(a.AccountNumber, accountNumber, StringComparison.OrdinalIgnoreCase));
@@ -1236,6 +1341,8 @@ public class GlRepairService : IGlRepairService
                 controlAccount.UpdatedBy = userName;
                 _unitOfWork.Repository<ChartOfAccount>().Update(controlAccount);
             }
+
+            await ReallocateSalesTaxOpeningBalanceCoreAsync(companyId, now, userName, cancellationToken);
 
             var banksSynced = 0;
             var banks = await _unitOfWork.Repository<Bank>()
@@ -2006,6 +2113,511 @@ public class GlRepairService : IGlRepairService
         return linesAdded;
     }
 
+    private async Task<int> BackfillSalesInvoiceFurtherTaxLinesAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var taxAccountId = await GetAccountIdAsync(companyId, SalesTaxPayable, cancellationToken);
+        if (!taxAccountId.HasValue)
+        {
+            return 0;
+        }
+
+        var furtherTaxAccountId = await EnsureFurtherTaxPayableAccountAsync(
+            companyId,
+            now,
+            userName,
+            cancellationToken);
+        if (!furtherTaxAccountId.HasValue)
+        {
+            return 0;
+        }
+
+        var invoices = await _unitOfWork.Repository<SalesInvoice>()
+            .Query(asNoTracking: false)
+            .Where(si =>
+                si.CompanyId == companyId
+                && si.Status == InvoiceStatus.Posted
+                && si.JournalEntryId != null
+                && si.FurtherTax > 0m)
+            .ToListAsync(cancellationToken);
+
+        if (invoices.Count == 0)
+        {
+            return 0;
+        }
+
+        var adjusted = 0;
+
+        foreach (var invoice in invoices)
+        {
+            var journalId = invoice.JournalEntryId!.Value;
+            var furtherTaxAmount = Math.Round(invoice.FurtherTax, 2);
+            if (furtherTaxAmount <= 0m)
+            {
+                continue;
+            }
+
+            var alreadySplit = await _unitOfWork.Repository<JournalEntryLine>()
+                .Query()
+                .AnyAsync(l =>
+                    l.JournalEntryId == journalId
+                    && l.ChartOfAccountId == furtherTaxAccountId.Value,
+                    cancellationToken);
+
+            if (alreadySplit)
+            {
+                continue;
+            }
+
+            var taxLines = await _unitOfWork.Repository<JournalEntryLine>()
+                .Query(asNoTracking: false)
+                .Where(l =>
+                    l.JournalEntryId == journalId
+                    && l.ChartOfAccountId == taxAccountId.Value)
+                .ToListAsync(cancellationToken);
+
+            if (taxLines.Count == 0)
+            {
+                continue;
+            }
+
+            var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+            var taxLine = taxLines
+                .OrderByDescending(l => isCreditNote ? l.Debit : l.Credit)
+                .First();
+
+            if (isCreditNote)
+            {
+                if (taxLine.Debit < furtherTaxAmount)
+                {
+                    continue;
+                }
+
+                taxLine.Debit = Math.Round(taxLine.Debit - furtherTaxAmount, 2);
+                await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                {
+                    JournalEntryId = journalId,
+                    ChartOfAccountId = furtherTaxAccountId.Value,
+                    Debit = furtherTaxAmount,
+                    Credit = 0m,
+                    Memo = "Further Tax Payable"
+                }, cancellationToken);
+            }
+            else
+            {
+                if (taxLine.Credit < furtherTaxAmount)
+                {
+                    continue;
+                }
+
+                taxLine.Credit = Math.Round(taxLine.Credit - furtherTaxAmount, 2);
+                await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                {
+                    JournalEntryId = journalId,
+                    ChartOfAccountId = furtherTaxAccountId.Value,
+                    Debit = 0m,
+                    Credit = furtherTaxAmount,
+                    Memo = "Further Tax Payable"
+                }, cancellationToken);
+            }
+
+            _unitOfWork.Repository<JournalEntryLine>().Update(taxLine);
+
+            var journal = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(j => j.Id == journalId && j.CompanyId == companyId, cancellationToken);
+
+            if (journal is not null)
+            {
+                journal.UpdatedAt = now;
+                journal.UpdatedBy = userName;
+                _unitOfWork.Repository<JournalEntry>().Update(journal);
+            }
+
+            adjusted++;
+        }
+
+        return adjusted;
+    }
+
+    private async Task<int> BackfillSalesTaxSplitGlAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return 0;
+        }
+
+        await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+
+        var totalTaxAccountId = await GetAccountIdAsync(companyId, SalesTaxPayable, cancellationToken);
+        var salesTax18AccountId = await EnsureSalesTaxPayable18AccountAsync(
+            companyId,
+            now,
+            userName,
+            cancellationToken);
+        var furtherTaxAccountId = await EnsureFurtherTaxPayableAccountAsync(
+            companyId,
+            now,
+            userName,
+            cancellationToken);
+        if (!totalTaxAccountId.HasValue || !salesTax18AccountId.HasValue || !furtherTaxAccountId.HasValue)
+        {
+            return 0;
+        }
+
+        var taxRates = await _unitOfWork.Repository<TaxSetting>()
+            .Query()
+            .Where(t => t.CompanyId == companyId)
+            .Select(t => new { t.SalesTaxRate, t.UnregisteredSalesTaxRate })
+            .FirstOrDefaultAsync(cancellationToken);
+        var registeredRate = taxRates?.SalesTaxRate ?? 18m;
+        var unregisteredRate = taxRates?.UnregisteredSalesTaxRate ?? 22m;
+
+        var scenarioCodes = await _unitOfWork.Repository<ScenarioType>()
+            .Query()
+            .ToDictionaryAsync(s => s.ScenarioId, s => s.Code, cancellationToken);
+
+        var invoices = await _unitOfWork.Repository<SalesInvoice>()
+            .Query(asNoTracking: false)
+            .Where(si =>
+                si.CompanyId == companyId
+                && si.Status == InvoiceStatus.Posted
+                && si.JournalEntryId != null
+                && si.TaxAmount + si.FurtherTax > 0m)
+            .ToListAsync(cancellationToken);
+
+        if (invoices.Count == 0)
+        {
+            return 0;
+        }
+
+        var invoiceIds = invoices.Select(i => i.Id).ToList();
+        var invoiceLineRows = await _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query()
+            .Where(l => invoiceIds.Contains(l.SalesInvoiceId))
+            .Select(l => new
+            {
+                l.SalesInvoiceId,
+                l.Quantity,
+                l.Price,
+                l.Discount,
+                ItemType = l.Item.ItemType,
+                ItemCode = l.Item.ItemCode
+            })
+            .ToListAsync(cancellationToken);
+
+        var goodsTaxableByInvoice = invoiceLineRows
+            .GroupBy(l => l.SalesInvoiceId)
+            .ToDictionary(
+                g => g.Key,
+                g => SalesTaxSplit.ComputeGoodsTaxable(
+                    g.Where(l => !SalesTaxSplit.IsCartageOrService(l.ItemType, l.ItemCode))
+                        .Select(l => (l.Quantity, l.Price, l.Discount))));
+
+        var customerIds = invoices.Select(i => i.CustomerId).Distinct().ToList();
+        var customerFurtherRates = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.CompanyId == companyId && customerIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.FurtherTaxRate })
+            .ToDictionaryAsync(c => c.Id, c => c.FurtherTaxRate, cancellationToken);
+
+        var arAccountId = await GetAccountIdAsync(companyId, AccountsReceivable, cancellationToken);
+
+        var adjusted = 0;
+
+        foreach (var invoice in invoices)
+        {
+            if (!invoice.ScenarioId.HasValue
+                || !scenarioCodes.TryGetValue(invoice.ScenarioId.Value, out var scenarioCode)
+                || !SalesTaxSplit.IsUnregisteredScenario(scenarioCode))
+            {
+                continue;
+            }
+
+            if (!goodsTaxableByInvoice.TryGetValue(invoice.Id, out var goodsTaxable) || goodsTaxable <= 0m)
+            {
+                continue;
+            }
+
+            var journalId = invoice.JournalEntryId!.Value;
+            customerFurtherRates.TryGetValue(invoice.CustomerId, out var customerFurtherTaxRate);
+            var (salesTaxAmount, furtherTaxAmount, _) = SalesTaxSplit.CalculateInvoiceTax(
+                goodsTaxable,
+                registeredRate,
+                unregisteredRate,
+                isUnregisteredScenario: true,
+                customerFurtherTaxRate);
+
+            var newNetTotal = Math.Round(
+                invoice.SubTotal - invoice.DiscountAmount + salesTaxAmount + furtherTaxAmount,
+                2);
+
+            var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+                .Query(asNoTracking: false)
+                .Where(l => l.JournalEntryId == journalId)
+                .ToListAsync(cancellationToken);
+
+            var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+            decimal LineAmount(JournalEntryLine line) => isCreditNote ? line.Debit : line.Credit;
+
+            var existingSalesTax = journalLines
+                .Where(l => l.ChartOfAccountId == salesTax18AccountId.Value)
+                .Sum(LineAmount);
+            var existingFurtherTax = journalLines
+                .Where(l => l.ChartOfAccountId == furtherTaxAccountId.Value)
+                .Sum(LineAmount);
+            var existingTotalTaxAccount = journalLines
+                .Where(l => l.ChartOfAccountId == totalTaxAccountId.Value)
+                .Sum(LineAmount);
+
+            var headerMatches = Math.Abs(invoice.TaxAmount - salesTaxAmount) < 0.01m
+                && Math.Abs(invoice.FurtherTax - furtherTaxAmount) < 0.01m
+                && Math.Abs(invoice.NetTotal - newNetTotal) < 0.01m;
+
+            if (headerMatches
+                && Math.Abs(existingSalesTax - salesTaxAmount) < 0.01m
+                && Math.Abs(existingFurtherTax - furtherTaxAmount) < 0.01m
+                && existingTotalTaxAccount <= 0.01m)
+            {
+                continue;
+            }
+
+            var taxAccountIds = new HashSet<int>
+            {
+                totalTaxAccountId.Value,
+                salesTax18AccountId.Value,
+                furtherTaxAccountId.Value
+            };
+
+            foreach (var line in journalLines.Where(l => taxAccountIds.Contains(l.ChartOfAccountId)))
+            {
+                _unitOfWork.Repository<JournalEntryLine>().Remove(line);
+            }
+
+            if (salesTaxAmount > 0m)
+            {
+                await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                {
+                    JournalEntryId = journalId,
+                    ChartOfAccountId = salesTax18AccountId.Value,
+                    Debit = isCreditNote ? salesTaxAmount : 0m,
+                    Credit = isCreditNote ? 0m : salesTaxAmount,
+                    Memo = "Sales Tax Payable (18%)"
+                }, cancellationToken);
+            }
+
+            if (furtherTaxAmount > 0m)
+            {
+                await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                {
+                    JournalEntryId = journalId,
+                    ChartOfAccountId = furtherTaxAccountId.Value,
+                    Debit = isCreditNote ? furtherTaxAmount : 0m,
+                    Credit = isCreditNote ? 0m : furtherTaxAmount,
+                    Memo = "Further Tax Payable"
+                }, cancellationToken);
+            }
+
+            if (arAccountId.HasValue)
+            {
+                foreach (var arLine in journalLines.Where(l => l.ChartOfAccountId == arAccountId.Value))
+                {
+                    arLine.Debit = isCreditNote ? newNetTotal : 0m;
+                    arLine.Credit = isCreditNote ? 0m : newNetTotal;
+                    _unitOfWork.Repository<JournalEntryLine>().Update(arLine);
+                }
+            }
+
+            invoice.TaxAmount = salesTaxAmount;
+            invoice.FurtherTax = furtherTaxAmount;
+            invoice.NetTotal = newNetTotal;
+            invoice.UpdatedAt = now;
+            invoice.UpdatedBy = userName;
+            _unitOfWork.Repository<SalesInvoice>().Update(invoice);
+
+            var journal = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(j => j.Id == journalId && j.CompanyId == companyId, cancellationToken);
+
+            if (journal is not null)
+            {
+                journal.UpdatedAt = now;
+                journal.UpdatedBy = userName;
+                _unitOfWork.Repository<JournalEntry>().Update(journal);
+            }
+
+            adjusted++;
+        }
+
+        return adjusted;
+    }
+
+    private async Task EnsureSalesTaxAccountHierarchyAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return;
+        }
+
+        var parent = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable, cancellationToken);
+
+        if (parent is null)
+        {
+            return;
+        }
+
+        var childNumbers = new[] { SalesTaxPayable18, FurtherTaxPayable };
+        foreach (var childNumber in childNumbers)
+        {
+            var child = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.AccountNumber == childNumber, cancellationToken);
+
+            if (child is null)
+            {
+                continue;
+            }
+
+            if (child.ParentAccountId != parent.Id)
+            {
+                child.ParentAccountId = parent.Id;
+                child.UpdatedAt = now;
+                child.UpdatedBy = userName;
+                _unitOfWork.Repository<ChartOfAccount>().Update(child);
+            }
+        }
+
+        await ReallocateSalesTaxOpeningBalanceCoreAsync(companyId, now, userName, cancellationToken);
+    }
+
+    private async Task<decimal> ReallocateSalesTaxOpeningBalanceCoreAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return 0m;
+        }
+
+        var parent = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable && !a.IsDeleted,
+                cancellationToken);
+
+        var salesTax18 = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable18 && !a.IsDeleted,
+                cancellationToken);
+
+        if (parent is null || salesTax18 is null || parent.OpeningBalance == 0m)
+        {
+            return 0m;
+        }
+
+        var amountToMove = parent.OpeningBalance;
+        salesTax18.OpeningBalance = Math.Round(salesTax18.OpeningBalance + amountToMove, 2);
+        parent.OpeningBalance = 0m;
+
+        salesTax18.UpdatedAt = now;
+        salesTax18.UpdatedBy = userName;
+        parent.UpdatedAt = now;
+        parent.UpdatedBy = userName;
+
+        _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18);
+        _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+
+        return amountToMove;
+    }
+
+    private async Task<int?> EnsureSalesTaxPayable18AccountAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var existing = await GetAccountIdAsync(companyId, SalesTaxPayable18, cancellationToken);
+        if (existing.HasValue)
+        {
+            return existing;
+        }
+
+        var salesTax = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable)
+            .Select(a => new { a.TypeId, a.SubTypeId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var account = new ChartOfAccount
+        {
+            CompanyId = companyId,
+            AccountNumber = SalesTaxPayable18,
+            AccountName = "Sales Tax Payable (18%)",
+            TypeId = salesTax?.TypeId ?? 2,
+            SubTypeId = salesTax?.SubTypeId ?? 10,
+            IsActive = true,
+            OpeningBalance = 0m,
+            CreatedAt = now,
+            CreatedBy = userName
+        };
+
+        await _unitOfWork.Repository<ChartOfAccount>().AddAsync(account, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return account.Id;
+    }
+
+    private async Task<int?> EnsureFurtherTaxPayableAccountAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var existing = await GetAccountIdAsync(companyId, FurtherTaxPayable, cancellationToken);
+        if (existing.HasValue)
+        {
+            return existing;
+        }
+
+        var salesTax = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable)
+            .Select(a => new { a.TypeId, a.SubTypeId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var account = new ChartOfAccount
+        {
+            CompanyId = companyId,
+            AccountNumber = FurtherTaxPayable,
+            AccountName = "Further Tax Payable",
+            TypeId = salesTax?.TypeId ?? 2,
+            SubTypeId = salesTax?.SubTypeId ?? 10,
+            IsActive = true,
+            OpeningBalance = 0m,
+            CreatedAt = now,
+            CreatedBy = userName
+        };
+
+        await _unitOfWork.Repository<ChartOfAccount>().AddAsync(account, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return account.Id;
+    }
+
     private async Task<int> SoftDeleteDuplicateReferenceJournalsAsync(
         int companyId,
         DateTime now,
@@ -2021,17 +2633,19 @@ public class GlRepairService : IGlRepairService
             .ToListAsync(cancellationToken);
         var keepInvoice = invoiceJournalIds.ToHashSet();
 
-        var duplicateInvoiceJournals = await _unitOfWork.Repository<JournalEntry>()
+        var invoiceJournals = await _unitOfWork.Repository<JournalEntry>()
             .Query(asNoTracking: false)
             .Where(j =>
                 j.CompanyId == companyId
                 && !j.IsDeleted
                 && j.ReferenceType == ReferenceTypes.SalesInvoice
                 && j.Status == JournalStatus.Posted)
+            .ToListAsync(cancellationToken);
+
+        var duplicateInvoiceJournals = invoiceJournals
             .GroupBy(j => j.ReferenceId)
             .Where(g => g.Count() > 1)
-            .SelectMany(g => g)
-            .ToListAsync(cancellationToken);
+            .SelectMany(g => g);
 
         foreach (var journal in duplicateInvoiceJournals)
         {

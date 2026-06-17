@@ -52,6 +52,7 @@
         $('#customer-type').val('1');
         $('#invoice-type').val('1');
         $('#opening-balance').val('0');
+        $('#further-tax-rate').val('');
         $('#ntn, #cnic, #strn, #phone, #mobile, #email, #address').val('');
         $('#customer-active').prop('checked', true);
         $('#province-id').val('').trigger('change');
@@ -196,6 +197,7 @@
                 $('#scenario-id').val(c.scenarioId).trigger('change');
                 $('#province-id').val(c.provinceId || '').trigger('change');
                 $('#opening-balance').val(c.openingBalance);
+                $('#further-tax-rate').val(c.furtherTaxRate != null ? c.furtherTaxRate : '');
                 $('#ntn').val(c.ntn || '');
                 $('#cnic').val(c.cnic || '');
                 $('#strn').val(c.strn || '');
@@ -255,6 +257,7 @@
             strn: $('#strn').val().trim() || null,
             customerType: parseInt($('#customer-type').val(), 10),
             invoiceType: parseInt($('#invoice-type').val(), 10),
+            furtherTaxRate: $('#further-tax-rate').val() === '' ? null : parseFloat($('#further-tax-rate').val()),
             isActive: $('#customer-active').is(':checked')
         };
 

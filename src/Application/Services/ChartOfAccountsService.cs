@@ -26,6 +26,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly ILedgerPdfService _ledgerPdfService;
     private readonly ILogger<ChartOfAccountsService> _logger;
 
     public ChartOfAccountsService(
@@ -33,12 +34,14 @@ public class ChartOfAccountsService : IChartOfAccountsService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        ILedgerPdfService ledgerPdfService,
         ILogger<ChartOfAccountsService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _ledgerPdfService = ledgerPdfService;
         _logger = logger;
     }
 
@@ -634,6 +637,78 @@ public class ChartOfAccountsService : IChartOfAccountsService
             closingBalance);
     }
 
+    public async Task<byte[]?> ExportLedgerToExcelAsync(
+        int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var ledger = await GetLedgerAsync(id, fromDate, toDate, cancellationToken);
+        if (ledger is null)
+        {
+            return null;
+        }
+
+        var companyName = await GetCompanyNameAsync(cancellationToken);
+        var periodLabel = BuildLedgerPeriodLabel(ledger.FromDate, ledger.ToDate);
+
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add("Account Ledger");
+
+        sheet.Cell(1, 1).Value = companyName;
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(2, 1).Value = "Account Ledger";
+        sheet.Cell(3, 1).Value = $"Account: {ledger.Account.AccountNumber} — {ledger.Account.AccountName}";
+        sheet.Cell(4, 1).Value = periodLabel;
+        sheet.Cell(5, 1).Value = "Opening Balance:";
+        sheet.Cell(5, 2).Value = ledger.OpeningBalance;
+        sheet.Cell(5, 2).Style.NumberFormat.Format = "#,##0.00";
+        sheet.Cell(5, 4).Value = "Closing Balance:";
+        sheet.Cell(5, 5).Value = ledger.ClosingBalance;
+        sheet.Cell(5, 5).Style.NumberFormat.Format = "#,##0.00";
+
+        var headers = new[] { "Date", "Reference", "Description", "Debit", "Credit", "Balance" };
+        const int headerRow = 7;
+        for (var col = 0; col < headers.Length; col++)
+        {
+            sheet.Cell(headerRow, col + 1).Value = headers[col];
+            sheet.Cell(headerRow, col + 1).Style.Font.Bold = true;
+        }
+
+        var rowIndex = headerRow + 1;
+        foreach (var entry in ledger.Entries)
+        {
+            sheet.Cell(rowIndex, 1).Value = entry.Date == DateTime.MinValue
+                ? string.Empty
+                : entry.Date.ToString("dd/MM/yyyy");
+            sheet.Cell(rowIndex, 2).Value = entry.Reference;
+            sheet.Cell(rowIndex, 3).Value = entry.Description;
+            sheet.Cell(rowIndex, 4).Value = entry.Debit;
+            sheet.Cell(rowIndex, 5).Value = entry.Credit;
+            sheet.Cell(rowIndex, 6).Value = entry.Balance;
+            sheet.Cell(rowIndex, 4).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(rowIndex, 5).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(rowIndex, 6).Style.NumberFormat.Format = "#,##0.00";
+            rowIndex++;
+        }
+
+        sheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    public async Task<byte[]?> ExportLedgerToPdfAsync(
+        int id,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var pdfModel = await BuildAccountLedgerPdfModelAsync(id, fromDate, toDate, cancellationToken);
+        return pdfModel is null ? null : _ledgerPdfService.GeneratePdf(pdfModel);
+    }
+
     public async Task<byte[]> ExportToExcelAsync(CancellationToken cancellationToken = default)
     {
         var tree = await GetTreeAsync(cancellationToken);
@@ -1137,4 +1212,53 @@ public class ChartOfAccountsService : IChartOfAccountsService
             _logger.LogWarning(ex, "Audit log failed for chart of account {RecordId}", recordId);
         }
     }
+
+    private async Task<PartyLedgerPdfDto?> BuildAccountLedgerPdfModelAsync(
+        int id,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        var ledger = await GetLedgerAsync(id, fromDate, toDate, cancellationToken);
+        if (ledger is null)
+        {
+            return null;
+        }
+
+        var companyName = await GetCompanyNameAsync(cancellationToken);
+        var periodLabel = BuildLedgerPeriodLabel(ledger.FromDate, ledger.ToDate);
+
+        return new PartyLedgerPdfDto(
+            "Account Ledger",
+            ledger.Account.AccountName,
+            ledger.Account.AccountNumber,
+            null,
+            companyName,
+            periodLabel,
+            ledger.OpeningBalance,
+            ledger.ClosingBalance,
+            false,
+            ledger.Entries.Select(e => new PartyLedgerPdfLineDto(
+                e.Date,
+                e.Reference,
+                e.Description,
+                e.Debit,
+                e.Credit,
+                e.Balance)).ToList());
+    }
+
+    private async Task<string> GetCompanyNameAsync(CancellationToken cancellationToken)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        return await _unitOfWork.Repository<Company>()
+            .Query()
+            .Where(c => c.Id == companyId)
+            .Select(c => c.CompanyName)
+            .FirstAsync(cancellationToken);
+    }
+
+    private static string BuildLedgerPeriodLabel(DateTime? fromDate, DateTime? toDate) =>
+        fromDate.HasValue && toDate.HasValue
+            ? $"Period: {fromDate.Value:dd/MM/yyyy} to {toDate.Value:dd/MM/yyyy}"
+            : $"Full ledger as of {DateTime.Today:dd/MM/yyyy}";
 }

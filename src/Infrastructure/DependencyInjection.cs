@@ -24,7 +24,6 @@ public static class DependencyInjection
         services.Configure<BackupOptions>(configuration.GetSection("Backup"));
         services.Configure<ExportOptions>(configuration.GetSection("Export"));
         services.Configure<AttachmentOptions>(configuration.GetSection("Attachments"));
-        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
 
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>
             {

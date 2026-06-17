@@ -63,6 +63,7 @@ public record SalesInvoiceDetailDto(
     decimal SubTotal,
     decimal DiscountAmount,
     decimal TaxAmount,
+    decimal FurtherTax,
     decimal NetTotal,
     InvoiceStatus Status,
     string? FbrInvoiceNumber,
@@ -88,7 +89,8 @@ public record SalesInvoiceCustomerLookupDto(
     string? Address,
     string? NTN,
     string? CNIC,
-    InvoiceType InvoiceType);
+    InvoiceType InvoiceType,
+    decimal? FurtherTaxRate);
 
 public record SalesInvoiceItemLookupDto(
     int Id,
@@ -105,7 +107,11 @@ public record SalesInvoiceItemLookupDto(
 
 public record NextInvoiceNumberDto(string InvoiceNumber);
 
-public record SalesInvoiceTaxRatesDto(decimal RegisteredSalesTaxRate, decimal UnregisteredSalesTaxRate);
+public record SalesInvoiceTaxRatesDto(
+    decimal RegisteredSalesTaxRate,
+    decimal UnregisteredSalesTaxRate,
+    bool SupportsBillLevelTaxSplit,
+    decimal DefaultFurtherTaxRate);
 
 public class SalesInvoiceLineSaveRequest
 {
@@ -134,6 +140,8 @@ public class SalesInvoiceSaveRequest
     public string ShippingAddress { get; set; } = string.Empty;
     public string? BuyerNTN { get; set; }
     public string? BuyerCNIC { get; set; }
+    public decimal? FurtherTaxRate { get; set; }
+    public decimal? FurtherTaxAmount { get; set; }
     public List<SalesInvoiceLineSaveRequest> Lines { get; set; } = new();
 }
 

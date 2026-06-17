@@ -13,6 +13,14 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.Property(x => x.CompanyName).HasMaxLength(450).IsRequired();
         builder.Property(x => x.IsDefault).HasDefaultValue(false);
         builder.Property(x => x.IsDeleted).HasDefaultValue(false);
+        builder.Property(x => x.SmtpHost).HasMaxLength(200);
+        builder.Property(x => x.SmtpUsername).HasMaxLength(200);
+        builder.Property(x => x.SmtpFromEmail).HasMaxLength(200);
+        builder.Property(x => x.SmtpFromName).HasMaxLength(200);
+        builder.Property(x => x.SmtpPort).HasDefaultValue(587);
+        builder.Property(x => x.SmtpUseSsl).HasDefaultValue(true);
+        builder.Property(x => x.WhatsAppApiUrl).HasMaxLength(500);
+        builder.Property(x => x.WhatsAppPhoneNumberId).HasMaxLength(100);
         builder.HasOne(x => x.Province).WithMany().HasForeignKey(x => x.ProvinceId);
     }
 }

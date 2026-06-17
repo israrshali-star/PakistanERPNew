@@ -15,6 +15,8 @@ public static class DefaultChartOfAccounts
         Create(companyId, GlAccountNumbers.FixedAssets, "Fixed Assets", 1, 5, createdBy, createdAt),
         Create(companyId, GlAccountNumbers.AccountsPayable, "Account Payable", 2, 8, createdBy, createdAt),
         Create(companyId, GlAccountNumbers.SalesTaxPayable, "Sales Tax Payable", 2, 10, createdBy, createdAt),
+        Create(companyId, GlAccountNumbers.FurtherTaxPayable, "Further Tax Payable", 2, 10, createdBy, createdAt),
+        Create(companyId, GlAccountNumbers.SalesTaxPayable18, "Sales Tax Payable (18%)", 2, 10, createdBy, createdAt),
         Create(companyId, GlAccountNumbers.AccruedLiabilities, "Accrued Liabilities", 2, 9, createdBy, createdAt),
         Create(companyId, GlAccountNumbers.CartagePayable, "Cartage Payable", 2, 9, createdBy, createdAt),
         Create(companyId, GlAccountNumbers.OwnersCapital, "Owner's Capital", 3, 14, createdBy, createdAt),

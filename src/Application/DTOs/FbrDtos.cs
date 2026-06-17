@@ -38,6 +38,8 @@ public record FbrSubmissionLineRequest(
     decimal Cartons,
     decimal Price,
     decimal TaxRate,
+    decimal SalesTaxAmount,
+    decimal FurtherTaxAmount,
     decimal TaxAmount,
     decimal Discount,
     decimal LineTotal,

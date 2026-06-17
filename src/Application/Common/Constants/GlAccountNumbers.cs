@@ -20,6 +20,8 @@ public static class GlAccountNumbers
     public const string AccountsPayable = "20000";
     public const string AccruedLiabilities = "2300";
     public const string SalesTaxPayable = "25500";
+    public const string FurtherTaxPayable = "25510";
+    public const string SalesTaxPayable18 = "25520";
     public const string CartagePayable = "26100";
     public const string OwnersCapital = "3100";
     public const string OpeningBalanceEquity = "30000";

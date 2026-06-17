@@ -130,6 +130,89 @@ public class ChartOfAccountsApiController : ControllerBase
         }
     }
 
+    [HttpGet("{id:int}/ledger/export")]
+    [RequirePermission("ChartOfAccounts.View")]
+    public async Task<IActionResult> LedgerExport(
+        int id,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+            {
+                return BadRequest(new { message = "From date cannot be after to date." });
+            }
+
+            var account = await _chartOfAccountsService.GetByIdAsync(id, cancellationToken);
+            if (account is null || account.IsGroupAccount)
+            {
+                return NotFound();
+            }
+
+            var bytes = await _chartOfAccountsService.ExportLedgerToExcelAsync(
+                id,
+                fromDate?.Date,
+                toDate?.Date,
+                cancellationToken);
+            if (bytes is null)
+            {
+                return NotFound();
+            }
+
+            var fileName = $"AccountLedger_{account.AccountNumber}_{DateTime.Now:yyyyMMdd}.xlsx";
+            return File(
+                bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/ledger/pdf")]
+    [RequirePermission("ChartOfAccounts.View")]
+    public async Task<IActionResult> LedgerPdf(
+        int id,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+            {
+                return BadRequest(new { message = "From date cannot be after to date." });
+            }
+
+            var account = await _chartOfAccountsService.GetByIdAsync(id, cancellationToken);
+            if (account is null || account.IsGroupAccount)
+            {
+                return NotFound();
+            }
+
+            var bytes = await _chartOfAccountsService.ExportLedgerToPdfAsync(
+                id,
+                fromDate?.Date,
+                toDate?.Date,
+                cancellationToken);
+            if (bytes is null)
+            {
+                return NotFound();
+            }
+
+            var fileName = $"AccountLedger_{account.AccountNumber}_{DateTime.Now:yyyyMMdd}.pdf";
+            return File(bytes, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost]
     [RequirePermission("ChartOfAccounts.Create")]
     [IgnoreAntiforgeryToken]

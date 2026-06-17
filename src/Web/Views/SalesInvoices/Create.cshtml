@@ -1,4 +1,5 @@
 @using System.Text.Json
+@using PakistanAccountingERP.Application.Common
 @using PakistanAccountingERP.Application.DTOs
 @model SalesInvoiceDetailDto?
 @{
@@ -38,7 +39,9 @@
 
 <form id="sales-invoice-form" class="invoice-create-compact"
       data-edit-id="@(isEdit ? Model!.Id : "")"
-      data-copy-mode="@(isCopy ? "true" : "")">
+      data-copy-mode="@(isCopy ? "true" : "")"
+      data-company-id="@(Model?.CompanyId ?? 0)"
+      data-trade-invoice-company-id="@TradeInvoiceLayout.TradeInvoiceCompanyId">
     <input type="hidden" id="province-id" />
     <input type="hidden" id="buyer-ntn" />
     <input type="hidden" id="buyer-cnic" />
@@ -103,7 +106,7 @@
                         <th class="text-end">Qty</th>
                         <th>U/M</th>
                         <th class="text-end">Price</th>
-                        <th class="text-end">Tax%</th>
+                        <th class="tax-line-col text-end">Tax%</th>
                         <th class="text-end">Disc</th>
                         <th class="text-end">Total</th>
                         <th></th>
@@ -138,9 +141,25 @@
                     <span>Discount</span>
                     <span class="text-currency" id="total-discount">0.00</span>
                 </div>
-                <div class="d-flex justify-content-between mb-2">
+                <div class="d-flex justify-content-between mb-2" id="total-tax-row">
                     <span>Tax</span>
                     <span class="text-currency" id="total-tax">0.00</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2 d-none" id="total-st-tax-row">
+                    <span id="total-st-tax-label">Sales Tax (18%)</span>
+                    <span class="text-currency" id="total-st-tax">0.00</span>
+                </div>
+                <div class="d-none mb-2" id="total-ft-tax-row">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span id="total-ft-tax-label" class="flex-shrink-0">Further Tax</span>
+                        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                            <div class="d-flex align-items-center gap-1">
+                                <input type="number" id="further-tax-rate" class="form-control form-control-xs text-end" style="width:4.5rem" step="0.01" min="0" max="100" title="Further tax rate %" />
+                                <span class="text-muted">%</span>
+                            </div>
+                            <input type="number" id="further-tax-amount" class="form-control form-control-xs text-end" style="width:6.5rem" step="0.01" min="0" title="Further tax amount" />
+                        </div>
+                    </div>
                 </div>
                 <hr class="my-2" />
                 <div class="d-flex justify-content-between fw-semibold">

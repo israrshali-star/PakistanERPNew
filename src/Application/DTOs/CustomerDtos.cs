@@ -21,6 +21,7 @@ public record CustomerDto(
     string? STRN,
     CustomerType CustomerType,
     InvoiceType InvoiceType,
+    decimal? FurtherTaxRate,
     bool IsActive,
     bool HasInvoices);
 
@@ -53,6 +54,8 @@ public class CustomerSaveRequest
     public string? STRN { get; set; }
     public CustomerType CustomerType { get; set; } = CustomerType.Registered;
     public InvoiceType InvoiceType { get; set; } = InvoiceType.SalesInvoice;
+    /// <summary>Optional override for SN002 further tax % (e.g. 2). Leave null for company default.</summary>
+    public decimal? FurtherTaxRate { get; set; }
     public bool IsActive { get; set; } = true;
 }
 

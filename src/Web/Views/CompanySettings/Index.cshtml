@@ -1,22 +1,26 @@
+@using PakistanAccountingERP.Application.Interfaces
 @using PakistanAccountingERP.Application.Interfaces.Services
 @inject IPermissionService PermissionService
+@inject ICurrentUserService CurrentUser
 @{
     ViewData["Title"] = "Company & FBR Settings";
     var canCreate = await PermissionService.HasPermissionAsync("Settings.Create");
     var canEdit = await PermissionService.HasPermissionAsync("Settings.Edit");
     var canDelete = await PermissionService.HasPermissionAsync("Settings.Delete");
+    var isSuperAdmin = CurrentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 }
 
 <div id="settings-permissions" class="d-none"
      data-can-create="@canCreate.ToString().ToLower()"
      data-can-edit="@canEdit.ToString().ToLower()"
-     data-can-delete="@canDelete.ToString().ToLower()"></div>
+     data-can-delete="@canDelete.ToString().ToLower()"
+     data-is-super-admin="@isSuperAdmin.ToString().ToLower()"></div>
 <div id="settings-company-warning" class="alert alert-warning d-none mb-3"></div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="text-primary mb-0">Company & FBR Settings</h4>
-        <p class="text-muted small mb-0">Manage companies, profile, FBR e-invoicing API, and default tax rates</p>
+        <p class="text-muted small mb-0">Manage companies, profile, FBR e-invoicing, email/WhatsApp messaging, and default tax rates</p>
     </div>
     <div id="fbr-status-badge"></div>
 </div>
@@ -129,6 +133,92 @@
                     </div>
                 </div>
                 <p class="text-muted small mb-0 mt-2">Default rates used when creating sales invoices and items.</p>
+            </div>
+        </div>
+
+        <div class="col-lg-6 d-none" id="email-settings-section">
+            <div class="card p-3 h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h6 class="text-primary mb-0"><i class="fa-solid fa-envelope me-1"></i>Email Settings (SMTP)</h6>
+                    <span id="smtp-status-badge"></span>
+                </div>
+                <p class="text-muted small">Configure outbound email for invoice sharing, ledgers, and delivery challans. SuperAdmin only.</p>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="smtp-enabled" />
+                    <label class="form-check-label" for="smtp-enabled">Enable email sending</label>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label" for="smtp-host">SMTP Host</label>
+                        <input type="text" class="form-control" id="smtp-host" maxlength="200" placeholder="smtp.gmail.com" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="smtp-port">Port</label>
+                        <input type="number" class="form-control" id="smtp-port" min="1" max="65535" value="587" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="smtp-username">Username</label>
+                        <input type="text" class="form-control" id="smtp-username" maxlength="200" autocomplete="off" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="smtp-password">Password / App Password</label>
+                        <input type="password" class="form-control" id="smtp-password" placeholder="Enter new password to update" autocomplete="new-password" />
+                        <div class="form-text" id="smtp-password-hint"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="smtp-from-email">From Email</label>
+                        <input type="email" class="form-control" id="smtp-from-email" maxlength="200" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="smtp-from-name">From Name</label>
+                        <input type="text" class="form-control" id="smtp-from-name" maxlength="200" placeholder="Pakistan Accounting ERP" />
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="smtp-use-ssl" checked />
+                            <label class="form-check-label" for="smtp-use-ssl">Use SSL / STARTTLS (recommended for port 587)</label>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="clear-smtp-password" />
+                            <label class="form-check-label" for="clear-smtp-password">Clear stored SMTP password</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 d-none" id="whatsapp-settings-section">
+            <div class="card p-3 h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h6 class="text-primary mb-0"><i class="fa-brands fa-whatsapp me-1"></i>WhatsApp Settings</h6>
+                    <span id="whatsapp-status-badge"></span>
+                </div>
+                <p class="text-muted small">WhatsApp Business Cloud API credentials for server-side messaging. Manual share via WhatsApp Web still works without this. SuperAdmin only.</p>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="whatsapp-enabled" />
+                    <label class="form-check-label" for="whatsapp-enabled">Enable WhatsApp Business API</label>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="whatsapp-api-url">API Base URL</label>
+                        <input type="url" class="form-control" id="whatsapp-api-url" maxlength="500" placeholder="https://graph.facebook.com/v21.0/" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="whatsapp-phone-number-id">Phone Number ID</label>
+                        <input type="text" class="form-control" id="whatsapp-phone-number-id" maxlength="100" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="whatsapp-access-token">Access Token</label>
+                        <input type="password" class="form-control" id="whatsapp-access-token" placeholder="Enter new token to update" autocomplete="new-password" />
+                        <div class="form-text" id="whatsapp-token-hint"></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="clear-whatsapp-token" />
+                            <label class="form-check-label" for="clear-whatsapp-token">Clear stored access token</label>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
