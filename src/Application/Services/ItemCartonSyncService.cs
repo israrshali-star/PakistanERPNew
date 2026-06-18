@@ -19,6 +19,12 @@ public class ItemCartonSyncService : IItemCartonSyncService
     public Task SyncCompanyItemsAsync(int companyId, CancellationToken cancellationToken = default) =>
         SyncItemsAsync(companyId, itemIds: null, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<int, decimal>> GetCartonsOnHandByItemAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        CancellationToken cancellationToken = default) =>
+        await BuildCartonsOnHandByItemAsync(companyId, itemIds, cancellationToken);
+
     public async Task SyncItemsAsync(
         int companyId,
         IEnumerable<int>? itemIds,
@@ -42,30 +48,16 @@ public class ItemCartonSyncService : IItemCartonSyncService
         }
 
         var targetItemIds = items.Select(i => i.Id).ToList();
-        var onHandStacks = await BuildOnHandStacksAsync(companyId, targetItemIds, cancellationToken);
-        var purchaseCartonsByStack = await BuildPurchaseCartonsByStackAsync(companyId, targetItemIds, cancellationToken);
-        var salesCartonsByStack = await BuildSalesCartonsByStackAsync(companyId, targetItemIds, cancellationToken);
+        var cartonsByItem = await BuildCartonsOnHandByItemAsync(companyId, targetItemIds, cancellationToken);
 
         var now = DateTime.UtcNow;
         var changed = false;
         foreach (var item in items)
         {
-            var stacks = onHandStacks
+            var cartons = cartonsByItem.GetValueOrDefault(item.Id, 0m);
+            var stacks = (await BuildOnHandStacksAsync(companyId, [item.Id], cancellationToken))
                 .Where(s => s.ItemId == item.Id)
                 .ToList();
-
-            var cartons = Math.Round(stacks.Sum(stack =>
-            {
-                var key = StackKey(stack.ItemId, stack.StackNo);
-                var purchased = purchaseCartonsByStack.GetValueOrDefault(key);
-                var sold = salesCartonsByStack.GetValueOrDefault(key);
-                return Math.Round(purchased - sold, 2);
-            }), 2);
-
-            if (cartons < 0m)
-            {
-                cartons = 0m;
-            }
 
             string? stackNo = null;
             if (stacks.Count == 1)
@@ -92,6 +84,39 @@ public class ItemCartonSyncService : IItemCartonSyncService
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    private async Task<Dictionary<int, decimal>> BuildCartonsOnHandByItemAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var onHandStacks = await BuildOnHandStacksAsync(companyId, itemIds, cancellationToken);
+        var purchaseCartonsByStack = await BuildPurchaseCartonsByStackAsync(companyId, itemIds, cancellationToken);
+        var salesCartonsByStack = await BuildSalesCartonsByStackAsync(companyId, itemIds, cancellationToken);
+
+        var cartonsByItem = itemIds.ToDictionary(id => id, _ => 0m);
+
+        foreach (var stack in onHandStacks)
+        {
+            var key = StackKey(stack.ItemId, stack.StackNo);
+            var purchased = purchaseCartonsByStack.GetValueOrDefault(key);
+            var sold = salesCartonsByStack.GetValueOrDefault(key);
+            var remaining = Math.Round(purchased - sold, 2);
+            if (remaining < 0m)
+            {
+                remaining = 0m;
+            }
+
+            cartonsByItem[stack.ItemId] = Math.Round(cartonsByItem[stack.ItemId] + remaining, 2);
+        }
+
+        return cartonsByItem;
     }
 
     private async Task<List<OnHandStack>> BuildOnHandStacksAsync(

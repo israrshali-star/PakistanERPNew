@@ -21,6 +21,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private readonly IAuditService _auditService;
     private readonly IFbrSubmissionService _fbrSubmissionService;
     private readonly IStackLotInventoryService _stackLotInventory;
+    private readonly IInventoryCostingService _inventoryCosting;
+    private readonly IItemCartonSyncService _itemCartonSyncService;
     private readonly ISalesInvoicePdfService _salesInvoicePdfService;
     private readonly ILogger<SalesInvoiceService> _logger;
 
@@ -33,6 +35,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         IAuditService auditService,
         IFbrSubmissionService fbrSubmissionService,
         IStackLotInventoryService stackLotInventory,
+        IInventoryCostingService inventoryCosting,
+        IItemCartonSyncService itemCartonSyncService,
         ISalesInvoicePdfService salesInvoicePdfService,
         ILogger<SalesInvoiceService> logger)
     {
@@ -42,6 +46,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         _auditService = auditService;
         _fbrSubmissionService = fbrSubmissionService;
         _stackLotInventory = stackLotInventory;
+        _inventoryCosting = inventoryCosting;
+        _itemCartonSyncService = itemCartonSyncService;
         _salesInvoicePdfService = salesInvoicePdfService;
         _logger = logger;
     }
@@ -570,6 +576,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         decimal subTotal = 0m;
         decimal discountTotal = 0m;
         decimal goodsTaxableTotal = 0m;
+        decimal salesTaxTotal = 0m;
+        decimal furtherTaxTotal = 0m;
 
         foreach (var line in lines)
         {
@@ -602,13 +610,32 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             if (!isCartageOrService)
             {
-                taxRate = taxContext.IsUnregisteredScenario
-                    ? taxContext.UnregisteredRate
-                    : Math.Max(0m, line.TaxRate > 0m ? line.TaxRate : taxContext.RegisteredRate);
+                taxRate = Math.Max(0m, line.TaxRate > 0m
+                    ? line.TaxRate
+                    : (taxContext.IsUnregisteredScenario
+                        ? taxContext.UnregisteredRate
+                        : taxContext.RegisteredRate));
 
                 if (taxContext.UseBillLevelTaxSplit)
                 {
                     goodsTaxableTotal += taxable;
+                }
+                else if (taxContext.UseSplitTaxGl && taxContext.IsUnregisteredScenario)
+                {
+                    var applyFurtherTax = SalesTaxSplit.ApplyFurtherTaxForLine(
+                        true,
+                        taxRate,
+                        taxContext.RegisteredRate);
+                    var (salesTax, furtherTax, lineTaxTotal) = SalesTaxSplit.CalculateLineTax(
+                        taxable,
+                        taxContext.RegisteredRate,
+                        taxContext.UnregisteredRate,
+                        applyFurtherTax,
+                        billTaxInput.FurtherTaxRate,
+                        taxRate);
+                    lineTax = lineTaxTotal;
+                    salesTaxTotal += salesTax;
+                    furtherTaxTotal += furtherTax;
                 }
                 else
                 {
@@ -650,8 +677,6 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             });
         }
 
-        decimal salesTaxTotal;
-        decimal furtherTaxTotal;
         decimal taxTotal;
         if (taxContext.UseBillLevelTaxSplit)
         {
@@ -664,6 +689,12 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 defaultFurtherRate,
                 billTaxInput.FurtherTaxRate,
                 billTaxInput.FurtherTaxAmount);
+        }
+        else if (taxContext.UseSplitTaxGl && taxContext.IsUnregisteredScenario)
+        {
+            salesTaxTotal = Math.Round(salesTaxTotal, 2);
+            furtherTaxTotal = Math.Round(furtherTaxTotal, 2);
+            taxTotal = salesTaxTotal + furtherTaxTotal;
         }
         else
         {
@@ -701,6 +732,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private sealed record InvoiceTaxContext(
         bool IsUnregisteredScenario,
         bool UseBillLevelTaxSplit,
+        bool UseSplitTaxGl,
         decimal RegisteredRate,
         decimal UnregisteredRate);
 
@@ -712,7 +744,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var rates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
         if (!scenarioId.HasValue)
         {
-            return new InvoiceTaxContext(false, false, rates.Registered, rates.Unregistered);
+            return new InvoiceTaxContext(false, false, false, rates.Registered, rates.Unregistered);
         }
 
         var scenarioCode = await _unitOfWork.Repository<ScenarioType>()
@@ -722,9 +754,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             .FirstOrDefaultAsync(cancellationToken);
 
         var isUnregistered = SalesTaxSplit.IsUnregisteredScenario(scenarioCode);
+        var useSplitTaxGl = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId);
         return new InvoiceTaxContext(
             isUnregistered,
             isUnregistered && TradeInvoiceLayout.UsesUnregisteredBillLevelTaxSplit(companyId),
+            isUnregistered && useSplitTaxGl,
             rates.Registered,
             rates.Unregistered);
     }
@@ -961,22 +995,13 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             : null;
         var isUnregisteredScenario = SalesTaxSplit.IsUnregisteredScenario(scenarioCode);
         var useSplitTaxGl = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId) && isUnregisteredScenario;
-        var customerFurtherTaxRate = await _unitOfWork.Repository<Customer>()
-            .Query()
-            .Where(c => c.Id == invoice.CustomerId)
-            .Select(c => c.FurtherTaxRate)
-            .FirstOrDefaultAsync(cancellationToken);
 
         decimal salesTaxAmount;
         decimal furtherTaxAmount;
         if (useSplitTaxGl && goodsSalesAmount > 0m)
         {
-            (salesTaxAmount, furtherTaxAmount, _) = SalesTaxSplit.CalculateInvoiceTax(
-                goodsSalesAmount,
-                taxRates.Registered,
-                taxRates.Unregistered,
-                isUnregisteredScenario: true,
-                customerFurtherTaxRate);
+            salesTaxAmount = Math.Round(invoice.TaxAmount, 2);
+            furtherTaxAmount = Math.Round(invoice.FurtherTax, 2);
         }
         else
         {
@@ -1031,6 +1056,9 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 .ToDictionaryAsync(i => i.Id, cancellationToken)
             : new Dictionary<int, Item>();
 
+        var costingBatch = await _inventoryCosting.CreateBatchAsync(companyId, inventoryItemIds, cancellationToken);
+        var lineCosts = new Dictionary<int, InventoryLineCostResult>();
+
         decimal cogsAmount = 0m;
         foreach (var line in invoice.Lines)
         {
@@ -1051,7 +1079,23 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 continue;
             }
 
-            cogsAmount += Math.Round(quantity * Math.Round(item.PurchaseRate, 2), 2);
+            var costResult = costingBatch.Calculate(new InventoryLineCostRequest(
+                item.Id,
+                line.StackNo,
+                line.LotNo,
+                item.StackNo,
+                item.LotNo,
+                quantity,
+                item.CostingMethod,
+                item.PurchaseRate));
+
+            if (!costResult.Success)
+            {
+                return new SalesInvoiceActionResult(false, costResult.Message, null);
+            }
+
+            lineCosts[line.Id] = costResult;
+            cogsAmount += costResult.TotalCost;
         }
 
         cogsAmount = Math.Round(cogsAmount, 2);
@@ -1162,7 +1206,12 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                                 null);
                         }
 
-                        var unitCost = Math.Round(item.PurchaseRate, 2);
+                        var unitCost = lineCosts.TryGetValue(line.Id, out var lineCost)
+                            ? lineCost.UnitCost
+                            : Math.Round(item.PurchaseRate, 2);
+                        var lineTotalCost = lineCosts.TryGetValue(line.Id, out var lineCostTotal)
+                            ? lineCostTotal.TotalCost
+                            : Math.Round(quantity * unitCost, 2);
                         var transactionType = isCreditNote
                             ? InventoryTransactionType.StockIn
                             : InventoryTransactionType.StockOut;
@@ -1177,7 +1226,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                             LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
                             Quantity = quantity,
                             UnitCost = unitCost,
-                            TotalCost = Math.Round(quantity * unitCost, 2),
+                            TotalCost = lineTotalCost,
                             TransactionDate = invoice.InvoiceDate,
                             ReferenceNo = invoice.InvoiceNumber,
                             Notes = $"Sales invoice {invoice.InvoiceNumber}",
@@ -1209,6 +1258,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             _unitOfWork.Repository<SalesInvoice>().Update(invoice);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (inventoryItemIds.Count > 0)
+            {
+                await _itemCartonSyncService.SyncItemsAsync(companyId, inventoryItemIds, cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
@@ -1542,12 +1596,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             }
             else
             {
+                var applyFurtherTax = SalesTaxSplit.ApplyFurtherTaxForLine(
+                    isUnregistered && l.TaxRate > 0m,
+                    l.TaxRate,
+                    taxRates.Registered);
                 (salesTax, furtherTax, _) = SalesTaxSplit.CalculateLineTax(
                     valueExcludingSt,
                     taxRates.Registered,
                     taxRates.Unregistered,
-                    isUnregistered && l.TaxRate > 0m);
-                displayRate = isUnregistered && l.TaxRate > 0m ? taxRates.Registered : l.TaxRate;
+                    applyFurtherTax,
+                    null,
+                    l.TaxRate);
+                displayRate = applyFurtherTax ? taxRates.Registered : l.TaxRate;
             }
 
             return new SalesInvoicePrintLineDto(
@@ -2101,11 +2161,17 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             }
             else
             {
+                var applyFurtherTax = SalesTaxSplit.ApplyFurtherTaxForLine(
+                    taxContext.IsUnregisteredScenario && x.IsTaxableLine,
+                    l.TaxRate,
+                    taxContext.RegisteredRate);
                 (salesTax, furtherTax, _) = SalesTaxSplit.CalculateLineTax(
                     x.Taxable,
                     taxContext.RegisteredRate,
                     taxContext.UnregisteredRate,
-                    taxContext.IsUnregisteredScenario && x.IsTaxableLine);
+                    applyFurtherTax,
+                    null,
+                    l.TaxRate);
             }
 
             var fbrRate = taxContext.UseBillLevelTaxSplit && x.IsTaxableLine

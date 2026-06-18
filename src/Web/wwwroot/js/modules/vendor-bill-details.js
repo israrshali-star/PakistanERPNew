@@ -49,6 +49,17 @@
             });
         }
 
+        if ($detail.data('can-revert-to-draft') === true) {
+            $('#btn-revert-bill').on('click', function () {
+                if (!confirm('Reopen this bill as a draft? GL posting and inventory from this bill will be reversed so you can edit it again.')) {
+                    return;
+                }
+                postAction('/revert-to-draft', 'POST', 'Bill reopened as draft.', function () {
+                    window.location.href = '/VendorBills/Edit/' + $detail.data('id');
+                });
+            });
+        }
+
         if ($detail.data('can-delete') === true) {
             $('#btn-delete-bill').on('click', function () {
                 if (!confirm('Delete this draft bill? It cannot be undone.')) {
@@ -110,4 +121,4 @@
         });
     });
 })();
-
+

@@ -14,6 +14,14 @@ public interface IGlRepairService
         int companyId,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Success, string? Message, int InvoicesFixed, decimal AccountsReceivableBalance)> RepairAccountsReceivableGlAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<OpeningBalanceEquityReplugResult> ReplugOpeningBalanceEquityAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Success, string? Message, decimal AmountMoved)> ReallocateSalesTaxOpeningBalanceAsync(
         int companyId,
         CancellationToken cancellationToken = default);
@@ -57,5 +65,15 @@ public interface IGlRepairService
 
     Task<RecalculateItemStockResult> RecalculateItemStockAsync(
         int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<InventoryAssetAlignResult> AlignInventoryAssetToQuickBooksAsync(
+        int companyId,
+        decimal quickBooksClosingBalance,
+        CancellationToken cancellationToken = default);
+
+    Task<InventoryAssetRepairResult> RepairInventoryAssetFromQuickBooksAsync(
+        int companyId,
+        string quickBooksLedgerFilePath,
         CancellationToken cancellationToken = default);
 }

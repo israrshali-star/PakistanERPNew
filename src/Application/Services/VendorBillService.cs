@@ -727,7 +727,6 @@ public partial class VendorBillService : IVendorBillService
                         });
 
                         item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
-                        item.PurchaseRate = unitCost;
                         item.UpdatedAt = now;
                         item.UpdatedBy = userName;
                         _unitOfWork.Repository<Item>().Update(item);
@@ -778,6 +777,128 @@ public partial class VendorBillService : IVendorBillService
 
         var detail = await GetDetailAsync(id, cancellationToken);
         return new VendorBillActionResult(true, "Vendor bill approved and posted to the general ledger.", detail);
+    }
+
+    public async Task<VendorBillActionResult> RevertToDraftAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return ToActionError(companyError!);
+        }
+
+        var bill = await _unitOfWork.Repository<VendorBill>()
+            .Query(asNoTracking: false)
+            .Include(b => b.Lines)
+            .FirstOrDefaultAsync(b => b.Id == id && b.CompanyId == companyId, cancellationToken);
+
+        if (bill is null)
+        {
+            return new VendorBillActionResult(false, "Vendor bill not found.", null);
+        }
+
+        if (bill.Status != BillStatus.Approved)
+        {
+            return new VendorBillActionResult(false, "Only approved bills can be reopened for editing.", null);
+        }
+
+        var inventoryTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber)
+            .ToListAsync(cancellationToken);
+
+        var affectedItemIds = inventoryTransactions.Select(t => t.ItemId).Distinct().ToList();
+        if (affectedItemIds.Count > 0)
+        {
+            var stockByItemId = await BuildStockByItemIdAsync(companyId, affectedItemIds, cancellationToken);
+            var billQtyByItemId = inventoryTransactions
+                .GroupBy(t => t.ItemId)
+                .ToDictionary(g => g.Key, g => g.Sum(t => t.Quantity));
+
+            foreach (var itemId in affectedItemIds)
+            {
+                var stockWithoutBill = stockByItemId.GetValueOrDefault(itemId)
+                    - billQtyByItemId.GetValueOrDefault(itemId);
+                if (stockWithoutBill < -0.01m)
+                {
+                    return new VendorBillActionResult(
+                        false,
+                        "Inventory from this bill has already been sold or used. Cannot reopen for editing.",
+                        null);
+                }
+            }
+        }
+
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "system";
+
+        if (bill.JournalEntryId.HasValue)
+        {
+            var journal = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(j => j.Id == bill.JournalEntryId.Value, cancellationToken);
+
+            if (journal is not null && !journal.IsDeleted)
+            {
+                journal.IsDeleted = true;
+                journal.DeletedAt = now;
+                journal.DeletedBy = userName;
+                _unitOfWork.Repository<JournalEntry>().Update(journal);
+            }
+        }
+
+        foreach (var transaction in inventoryTransactions)
+        {
+            _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+        }
+
+        bill.Status = BillStatus.Draft;
+        bill.JournalEntryId = null;
+        bill.UpdatedAt = now;
+        bill.UpdatedBy = userName;
+        _unitOfWork.Repository<VendorBill>().Update(bill);
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (affectedItemIds.Count > 0)
+            {
+                await RecalculateItemStockFromTransactionsAsync(
+                    companyId,
+                    affectedItemIds,
+                    now,
+                    userName,
+                    cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _itemCartonSyncService.SyncItemsAsync(companyId, affectedItemIds, cancellationToken);
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to reopen vendor bill {BillId}", id);
+            return new VendorBillActionResult(false, "Could not reopen bill for editing.", null);
+        }
+
+        try
+        {
+            await _auditService.LogAsync(
+                "RevertToDraft",
+                "VendorBills",
+                id.ToString(),
+                BillStatus.Approved.ToString(),
+                BillStatus.Draft.ToString(),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit log failed for vendor bill {BillId}", id);
+        }
+
+        var detail = await GetDetailAsync(id, cancellationToken);
+        return new VendorBillActionResult(
+            true,
+            "Bill reopened as draft. You can edit it and approve again when ready.",
+            detail);
     }
 
     public async Task<VendorBillActionResult> CancelAsync(int id, CancellationToken cancellationToken = default)
@@ -1218,6 +1339,56 @@ public partial class VendorBillService : IVendorBillService
         }
 
         return vendorDefaultTaxRate > 0m ? vendorDefaultTaxRate : 18m;
+    }
+
+    private async Task RecalculateItemStockFromTransactionsAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return;
+        }
+
+        var items = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+            .ToListAsync(cancellationToken);
+
+        var stockByItemId = await BuildStockByItemIdAsync(companyId, itemIds, cancellationToken);
+
+        foreach (var item in items)
+        {
+            item.CurrentStock = stockByItemId.GetValueOrDefault(item.Id);
+            item.UpdatedAt = now;
+            item.UpdatedBy = userName;
+            _unitOfWork.Repository<Item>().Update(item);
+        }
+    }
+
+    private async Task<Dictionary<int, decimal>> BuildStockByItemIdAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId && itemIds.Contains(t.ItemId))
+            .GroupBy(t => t.ItemId)
+            .Select(g => new
+            {
+                ItemId = g.Key,
+                Stock = g.Sum(t =>
+                    t.TransactionType == InventoryTransactionType.StockOut
+                        ? -t.Quantity
+                        : t.TransactionType == InventoryTransactionType.Adjustment
+                            ? t.Quantity
+                            : t.Quantity)
+            })
+            .ToDictionaryAsync(x => x.ItemId, x => Math.Round(x.Stock, 2), cancellationToken);
     }
 
     [GeneratedRegex(@"^BILL-(\d+)$", RegexOptions.IgnoreCase)]

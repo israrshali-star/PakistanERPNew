@@ -287,6 +287,22 @@ public class VendorBillsApiController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/revert-to-draft")]
+    [RequirePermission("Purchase.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> RevertToDraft(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _vendorBillService.RevertToDraftAsync(id, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new VendorBillActionResult(false, ex.Message, null));
+        }
+    }
+
     [HttpPost("{id:int}/cancel")]
     [RequirePermission("Purchase.Edit")]
     [IgnoreAntiforgeryToken]

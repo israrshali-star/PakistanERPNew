@@ -32,15 +32,22 @@ public class InventoryReportService : IInventoryReportService
 
     private readonly ICurrentCompanyService _currentCompany;
 
+    private readonly IItemCartonSyncService _itemCartonSyncService;
 
 
-    public InventoryReportService(IUnitOfWork unitOfWork, ICurrentCompanyService currentCompany)
+
+    public InventoryReportService(
+        IUnitOfWork unitOfWork,
+        ICurrentCompanyService currentCompany,
+        IItemCartonSyncService itemCartonSyncService)
 
     {
 
         _unitOfWork = unitOfWork;
 
         _currentCompany = currentCompany;
+
+        _itemCartonSyncService = itemCartonSyncService;
 
     }
 
@@ -130,6 +137,11 @@ public class InventoryReportService : IInventoryReportService
 
 
 
+        var cartonsOnHandByItem = await _itemCartonSyncService.GetCartonsOnHandByItemAsync(
+            companyId,
+            items.Select(i => i.Id).ToList(),
+            cancellationToken);
+
         Dictionary<int, decimal>? postAsOfDeltas = null;
 
         Dictionary<int, decimal>? postAsOfCartonDeltas = null;
@@ -194,7 +206,7 @@ public class InventoryReportService : IInventoryReportService
 
                 }
 
-                var cartonsOnHand = i.Cartons;
+                var cartonsOnHand = cartonsOnHandByItem.GetValueOrDefault(i.Id, 0m);
 
                 if (postAsOfCartonDeltas != null && postAsOfCartonDeltas.TryGetValue(i.Id, out var cartonDelta))
 
@@ -202,6 +214,11 @@ public class InventoryReportService : IInventoryReportService
 
                     cartonsOnHand = Math.Round(cartonsOnHand - cartonDelta, 2);
 
+                }
+
+                if (cartonsOnHand < 0m)
+                {
+                    cartonsOnHand = 0m;
                 }
 
 

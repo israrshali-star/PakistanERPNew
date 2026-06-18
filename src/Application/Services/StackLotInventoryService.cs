@@ -182,6 +182,7 @@ public class StackLotInventoryService : IStackLotInventoryService
                 ItemType = l.Item.ItemType,
                 UnitSymbol = l.Item.UnitOfMeasure.Symbol,
                 l.Item.SaleRate,
+                l.Rate,
                 l.Item.PurchaseRate
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -202,7 +203,7 @@ public class StackLotInventoryService : IStackLotInventoryService
                 purchaseLine.ItemHsCode,
                 InventoryUnitDisplay.Format(purchaseLine.ItemCode, purchaseLine.UnitSymbol),
                 purchaseLine.SaleRate,
-                purchaseLine.PurchaseRate,
+                purchaseLine.Rate > 0m ? purchaseLine.Rate : purchaseLine.PurchaseRate,
                 defaultStack,
                 stackNos,
                 purchaseLine.ItemType);

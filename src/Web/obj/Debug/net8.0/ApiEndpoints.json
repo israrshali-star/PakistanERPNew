@@ -3013,6 +3013,22 @@
   },
   {
     "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
+    "Method": "RevertToDraft",
+    "RelativePath": "api/vendor-bills/{id}/revert-to-draft",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "PakistanAccountingERP.Web.Controllers.VendorBillsApiController",
     "Method": "DeleteAttachment",
     "RelativePath": "api/vendor-bills/attachments/{attachmentId}",
     "HttpMethod": "DELETE",

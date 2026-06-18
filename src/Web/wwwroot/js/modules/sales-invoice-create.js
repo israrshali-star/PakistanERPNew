@@ -211,12 +211,7 @@
         var furtherTax = 0;
         if (split) {
             salesTax = Math.round(taxableGoods * registeredRate / 100 * 100) / 100;
-            if (furtherTaxAmountManual) {
-                furtherTax = Math.round((parseFloat($('#further-tax-amount').val()) || 0) * 100) / 100;
-            } else {
-                furtherTax = Math.round(taxableGoods * furtherRate / 100 * 100) / 100;
-                $('#further-tax-amount').val(furtherTax.toFixed(2));
-            }
+            furtherTax = Math.round((parseFloat($('#further-tax-amount').val()) || 0) * 100) / 100;
             tax = salesTax + furtherTax;
             $('#total-st-tax').text(formatCurrency(salesTax));
         } else {
@@ -829,6 +824,21 @@
         $('#scenario-id').on('change', onScenarioChange);
         $('#further-tax-rate').on('input change', function () {
             furtherTaxAmountManual = false;
+            var taxableGoods = 0;
+            $('#invoice-lines-body tr').each(function () {
+                var $row = $(this);
+                if ($row.data('is-taxable') === false) {
+                    return;
+                }
+                var qty = parseFloat($row.find('.line-qty').val()) || 0;
+                var price = parseFloat($row.find('.line-price').val()) || 0;
+                var disc = parseFloat($row.find('.line-discount').val()) || 0;
+                var lineSub = Math.round(qty * price * 100) / 100;
+                taxableGoods += Math.max(0, Math.round((lineSub - disc) * 100) / 100);
+            });
+            var rate = getFurtherTaxRateInput();
+            var amount = Math.round(taxableGoods * rate / 100 * 100) / 100;
+            $('#further-tax-amount').val(amount.toFixed(2));
             recalcTotals();
         });
         $('#further-tax-amount').on('input change', function () {

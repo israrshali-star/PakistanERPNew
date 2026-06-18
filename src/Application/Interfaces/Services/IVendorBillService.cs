@@ -36,6 +36,8 @@ public interface IVendorBillService
 
     Task<VendorBillActionResult> ApproveAsync(int id, CancellationToken cancellationToken = default);
 
+    Task<VendorBillActionResult> RevertToDraftAsync(int id, CancellationToken cancellationToken = default);
+
     Task<VendorBillActionResult> CancelAsync(int id, CancellationToken cancellationToken = default);
 
     Task<VendorBillActionResult> DeleteAsync(int id, CancellationToken cancellationToken = default);

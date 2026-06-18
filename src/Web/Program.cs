@@ -103,6 +103,21 @@ if (TryRunReallocateSalesTaxOpening(args, out var reallocateSalesTaxOpeningExitC
     Environment.Exit(reallocateSalesTaxOpeningExitCode);
 }
 
+if (TryRunRepairArGl(args, out var repairArGlExitCode))
+{
+    Environment.Exit(repairArGlExitCode);
+}
+
+if (TryRunReplugOpeningBalanceEquity(args, out var replugObeExitCode))
+{
+    Environment.Exit(replugObeExitCode);
+}
+
+if (TryRunRepairInventoryAssetFromQuickBooks(args, out var repairInventoryAssetExitCode))
+{
+    Environment.Exit(repairInventoryAssetExitCode);
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
@@ -1022,6 +1037,126 @@ static bool TryRunReallocateSalesTaxOpening(string[] args, out int exitCode)
 
         Console.WriteLine(result.Message);
         Console.WriteLine($"Amount moved: {result.AmountMoved:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairArGl(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--repair-ar-gl", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairAccountsReceivableGlAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Invoices fixed: {result.InvoicesFixed}");
+        Console.WriteLine($"AR (11110) balance: {result.AccountsReceivableBalance:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunReplugOpeningBalanceEquity(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--replug-obe", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.ReplugOpeningBalanceEquityAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"OBE: {result.PreviousOpeningBalanceEquity:N2} -> {result.NewOpeningBalanceEquity:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairInventoryAssetFromQuickBooks(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 4
+        || !string.Equals(args[0], "--repair-inventory-asset-qb", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var filePath = Path.GetFullPath(args[3]);
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairInventoryAssetFromQuickBooksAsync(companyId, filePath).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Vendor bills updated: {result.VendorBillsUpdated}");
+        Console.WriteLine($"Sales invoices updated: {result.SalesInvoicesUpdated}");
+        Console.WriteLine($"QuickBooks closing: {result.QuickBooksClosingBalance:N2}");
+        Console.WriteLine($"ERP closing (12110): {result.ErpClosingBalance:N2}");
+        Console.WriteLine($"Difference: {result.DifferenceVsQuickBooks:N2}");
 
         exitCode = result.Success ? 0 : 1;
     }

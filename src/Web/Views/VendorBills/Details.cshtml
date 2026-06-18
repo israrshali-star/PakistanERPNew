@@ -9,12 +9,14 @@
     var canDelete = await PermissionService.HasPermissionAsync("Purchase.Delete");
     var canApprove = canEdit && Model.Status == BillStatus.Draft;
     var canDeleteBill = canDelete && Model.Status == BillStatus.Draft;
+    var canRevertToDraft = canEdit && Model.Status == BillStatus.Approved;
 }
 
 <div id="bill-detail"
      data-id="@Model.Id"
      data-can-approve="@canApprove.ToString().ToLower()"
      data-can-delete="@canDeleteBill.ToString().ToLower()"
+     data-can-revert-to-draft="@canRevertToDraft.ToString().ToLower()"
      data-can-edit-attachments="@(canEdit && Model.Status == BillStatus.Draft).ToString().ToLower()"></div>
 
 <div id="bill-action-message" class="alert d-none mb-3"></div>
@@ -35,6 +37,12 @@
             </a>
             <button type="button" class="btn btn-success btn-sm" id="btn-approve-bill">
                 <i class="fa-solid fa-check me-1"></i>Approve & Post to GL
+            </button>
+        }
+        @if (canRevertToDraft)
+        {
+            <button type="button" class="btn btn-outline-warning btn-sm" id="btn-revert-bill">
+                <i class="fa-solid fa-rotate-left me-1"></i>Reopen for Editing
             </button>
         }
         @if (canDeleteBill)

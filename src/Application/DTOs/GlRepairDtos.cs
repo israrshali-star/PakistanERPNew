@@ -95,10 +95,38 @@ public record TrialBalanceGapChaseResult(
     decimal QuickBooksTotalDebits,
     decimal RemainingGapDebits);
 
+public record OpeningBalanceEquityReplugResult(
+    bool Success,
+    string? Message,
+    decimal PreviousOpeningBalanceEquity,
+    decimal NewOpeningBalanceEquity,
+    decimal TrialBalanceDebits,
+    decimal TrialBalanceCredits);
+
 public record RecalculateItemStockResult(
     bool Success,
     string? Message,
     int ItemsUpdated,
     decimal SumItemStock,
     decimal SumTransactionStock);
+
+public record InventoryAssetAlignResult(
+    bool Success,
+    string? Message,
+    decimal QuickBooksClosingBalance,
+    decimal OldOpeningBalance,
+    decimal NewOpeningBalance,
+    decimal JournalNet,
+    decimal ErpClosingBalance,
+    decimal ItemValuation,
+    decimal DifferenceVsQuickBooks);
+
+public record InventoryAssetRepairResult(
+    bool Success,
+    string? Message,
+    int VendorBillsUpdated,
+    int SalesInvoicesUpdated,
+    decimal QuickBooksClosingBalance,
+    decimal ErpClosingBalance,
+    decimal DifferenceVsQuickBooks);
 

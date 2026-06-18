@@ -4,6 +4,7 @@ using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Entities;
 using PakistanAccountingERP.Domain.Enums;
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 
 namespace PakistanAccountingERP.Application.Services;
 
@@ -101,10 +102,7 @@ public class DashboardService : IDashboardService
             return v.OpeningBalance + billed - paid;
         });
 
-        var inventoryValue = await _unitOfWork.Repository<Item>()
-            .Query()
-            .Where(i => i.CompanyId == companyId && i.IsActive)
-            .SumAsync(i => (decimal?)(i.CurrentStock * i.PurchaseRate), cancellationToken) ?? 0m;
+        var inventoryValue = await GetInventoryAssetBalanceAsync(companyId, cancellationToken);
 
         return new DashboardSummaryDto(
             todaySales,
@@ -385,6 +383,32 @@ public class DashboardService : IDashboardService
             topCustomers,
             lowStock,
             recent);
+    }
+
+    private async Task<decimal> GetInventoryAssetBalanceAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == InventoryAsset)
+            .Select(a => new { a.Id, a.OpeningBalance })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (account is null)
+        {
+            return 0m;
+        }
+
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.ChartOfAccountId == account.Id
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
+            .SumAsync(l => (decimal?)(l.Debit - l.Credit), cancellationToken) ?? 0m;
+
+        return Math.Round(account.OpeningBalance + journalNet, 2);
     }
 
     private static string GetInvoiceStatusBadgeClass(InvoiceStatus status) =>
