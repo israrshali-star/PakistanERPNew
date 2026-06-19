@@ -25,6 +25,8 @@ public record ChartOfAccountTreeAccountDto(
     string AccountName,
     decimal OpeningBalance,
     decimal RunningBalance,
+    decimal PeriodDebit,
+    decimal PeriodCredit,
     bool IsActive,
     bool IsGroupAccount,
     int? ParentAccountId,
@@ -79,4 +81,6 @@ public record ChartOfAccountLedgerDto(
     DateTime? ToDate,
     decimal OpeningBalance,
     IReadOnlyList<ChartOfAccountLedgerEntryDto> Entries,
-    decimal ClosingBalance);
+    decimal ClosingBalance,
+    decimal PeriodDebitTotal,
+    decimal PeriodCreditTotal);

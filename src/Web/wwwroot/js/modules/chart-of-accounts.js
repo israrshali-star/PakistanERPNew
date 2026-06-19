@@ -12,6 +12,8 @@
 
     var ledgerAccountNumber = null;
 
+    var coaPeriodActive = false;
+
     var accountTypes = [];
 
 
@@ -337,6 +339,10 @@
 
         $('#account-ledger-opening').text(formatCurrency(ledger.openingBalance));
 
+        $('#account-ledger-period-debit').text(formatCurrency(ledger.periodDebitTotal || 0));
+
+        $('#account-ledger-period-credit').text(formatCurrency(ledger.periodCreditTotal || 0));
+
         $('#account-ledger-closing').text(formatCurrency(ledger.closingBalance));
 
 
@@ -465,13 +471,27 @@
 
         ledgerAccountId = id;
 
-        var today = new Date();
+        var coaFrom = $('#coa-period-from').val();
 
-        var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        var coaTo = $('#coa-period-to').val();
 
-        $('#account-ledger-from').val(firstOfMonth.toISOString().slice(0, 10));
+        if (coaFrom && coaTo) {
 
-        $('#account-ledger-to').val(today.toISOString().slice(0, 10));
+            $('#account-ledger-from').val(coaFrom);
+
+            $('#account-ledger-to').val(coaTo);
+
+        } else {
+
+            var today = new Date();
+
+            var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+            $('#account-ledger-from').val(firstOfMonth.toISOString().slice(0, 10));
+
+            $('#account-ledger-to').val(today.toISOString().slice(0, 10));
+
+        }
 
         accountLedgerModal.show();
 
@@ -592,6 +612,11 @@
                 '<td>' + nameHtml + '</td>' +
 
                 '<td class="text-end text-currency' + openingClass + '">' + formatCurrency(acc.openingBalance) + '</td>' +
+
+                (coaPeriodActive
+                    ? '<td class="text-end text-currency' + balanceClass + '">' + formatCurrency(acc.periodDebit || 0) + '</td>' +
+                      '<td class="text-end text-currency' + balanceClass + '">' + formatCurrency(acc.periodCredit || 0) + '</td>'
+                    : '') +
 
                 '<td class="text-end text-currency' + balanceClass + '">' + formatCurrency(acc.runningBalance) + '</td>' +
 
@@ -729,6 +754,10 @@
 
 
 
+                var periodHeaders = coaPeriodActive
+                    ? '<th class="text-end">Period Dr</th><th class="text-end">Period Cr</th>'
+                    : '';
+
                 var $table = $(
 
                     '<table class="table table-sm table-hover coa-accounts-table mb-0">' +
@@ -737,7 +766,7 @@
 
                     '<th>Number</th><th>Name</th>' +
 
-                    '<th class="text-end">Opening</th><th class="text-end">Balance</th>' +
+                    '<th class="text-end">Opening</th>' + periodHeaders + '<th class="text-end">Balance</th>' +
 
                     '<th>Status</th><th class="text-end">Actions</th>' +
 
@@ -781,9 +810,23 @@
 
         );
 
+        var params = {};
 
+        var fromDate = $('#coa-period-from').val();
 
-        return $.getJSON('/api/chart-of-accounts/tree')
+        var toDate = $('#coa-period-to').val();
+
+        coaPeriodActive = !!(fromDate && toDate);
+
+        if (coaPeriodActive) {
+
+            params.fromDate = fromDate;
+
+            params.toDate = toDate;
+
+        }
+
+        return $.getJSON('/api/chart-of-accounts/tree', params)
 
             .done(renderTree)
 
@@ -1355,9 +1398,29 @@
 
         detectPermissions();
 
+        var now = new Date();
 
+        var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        var monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        $('#coa-period-from').val(monthStart.toISOString().slice(0, 10));
+
+        $('#coa-period-to').val(monthEnd.toISOString().slice(0, 10));
 
         loadLookups().always(loadTree);
+
+        $('#btn-coa-apply-period').on('click', loadTree);
+
+        $('#btn-coa-clear-period').on('click', function () {
+
+            $('#coa-period-from').val('');
+
+            $('#coa-period-to').val('');
+
+            loadTree();
+
+        });
 
 
 

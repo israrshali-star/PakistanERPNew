@@ -12,6 +12,9 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class ChartOfAccountsService : IChartOfAccountsService
 {
+    private const int LiabilityTypeId = 2;
+    private const int EquityTypeId = 3;
+
     private static readonly Dictionary<int, (int Min, int Max)> TypeNumberRanges = new()
     {
         [1] = (1000, 1999),
@@ -45,10 +48,16 @@ public class ChartOfAccountsService : IChartOfAccountsService
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<ChartOfAccountTreeTypeDto>> GetTreeAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ChartOfAccountTreeTypeDto>> GetTreeAsync(
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
         var leafBalanceMap = await GetRunningBalanceMapAsync(companyId, cancellationToken);
+        var periodTotalsMap = fromDate.HasValue && toDate.HasValue
+            ? await GetPeriodJournalTotalsMapAsync(companyId, fromDate.Value.Date, toDate.Value.Date, cancellationToken)
+            : null;
 
         var accounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
@@ -87,7 +96,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 st => st.SubTypeId,
                 st => accounts
                     .Where(a => a.SubTypeId == st.SubTypeId && a.ParentAccountId is null)
-                    .Select(a => BuildTreeNode(a, childrenLookup, leafBalanceMap))
+                    .Select(a => BuildTreeNode(a, childrenLookup, leafBalanceMap, periodTotalsMap))
                     .OrderBy(a => a.AccountNumber)
                     .ToList());
 
@@ -119,7 +128,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                     subTypeRoots[subTypeId.Value] = roots;
                 }
 
-                var orphanNode = BuildTreeNode(orphan, childrenLookup, leafBalanceMap);
+                var orphanNode = BuildTreeNode(orphan, childrenLookup, leafBalanceMap, periodTotalsMap);
                 roots.Add(orphanNode);
                 CollectTreeAccountIds(orphanNode, includedIds);
             }
@@ -199,6 +208,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
             account.HasChildren,
             leafBalanceMap,
             cancellationToken);
+
+        openingBalance = NormalizeBalanceForDisplay(openingBalance, account.TypeId);
+        runningBalance = NormalizeBalanceForDisplay(runningBalance, account.TypeId);
 
         return new ChartOfAccountDto(
             account.Id,
@@ -542,38 +554,40 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         var companyId = _currentCompany.GetRequiredCompanyId();
+        var rawOpening = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.Id == id && a.CompanyId == companyId)
+            .Select(a => a.OpeningBalance)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var from = fromDate?.Date;
         var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
+        var liabilityStyle = UsesCreditNormalDisplay(account.TypeId);
 
-        decimal periodOpening;
+        decimal rawPeriodOpening;
         if (from.HasValue)
         {
-            periodOpening = await GetBalanceBeforeDateAsync(id, companyId, from.Value, cancellationToken);
-            if (periodOpening != 0m)
-            {
-                entries.Add(new ChartOfAccountLedgerEntryDto(
-                    from.Value.AddDays(-1),
-                    "B/F",
-                    "Balance Brought Forward",
-                    periodOpening > 0 ? periodOpening : 0m,
-                    periodOpening < 0 ? Math.Abs(periodOpening) : 0m,
-                    periodOpening));
-            }
+            rawPeriodOpening = await GetBalanceBeforeDateAsync(id, companyId, from.Value, cancellationToken);
         }
         else
         {
-            periodOpening = account.OpeningBalance;
-            if (account.OpeningBalance != 0m)
-            {
-                entries.Add(new ChartOfAccountLedgerEntryDto(
-                    DateTime.MinValue,
-                    "OPENING",
-                    "Opening Balance",
-                    account.OpeningBalance > 0 ? account.OpeningBalance : 0m,
-                    account.OpeningBalance < 0 ? Math.Abs(account.OpeningBalance) : 0m,
-                    account.OpeningBalance));
-            }
+            rawPeriodOpening = rawOpening;
+        }
+
+        var periodOpening = NormalizeBalanceForDisplay(rawPeriodOpening, account.TypeId);
+        if (periodOpening != 0m)
+        {
+            var openingDate = from.HasValue ? from.Value.AddDays(-1) : DateTime.MinValue;
+            var openingRef = from.HasValue ? "B/F" : "OPENING";
+            var openingDesc = from.HasValue ? "Balance Brought Forward" : "Opening Balance";
+            entries.Add(new ChartOfAccountLedgerEntryDto(
+                openingDate,
+                openingRef,
+                openingDesc,
+                periodOpening > 0 ? 0m : Math.Abs(periodOpening),
+                periodOpening > 0 ? periodOpening : 0m,
+                periodOpening));
         }
 
         var balance = periodOpening;
@@ -609,9 +623,14 @@ public class ChartOfAccountsService : IChartOfAccountsService
             })
             .ToListAsync(cancellationToken);
 
+        decimal periodDebitTotal = 0m;
+        decimal periodCreditTotal = 0m;
+
         foreach (var line in lines)
         {
-            balance += line.Debit - line.Credit;
+            periodDebitTotal += line.Debit;
+            periodCreditTotal += line.Credit;
+            balance += liabilityStyle ? line.Credit - line.Debit : line.Debit - line.Credit;
 
             var description = !string.IsNullOrWhiteSpace(line.Memo)
                 ? line.Memo
@@ -634,7 +653,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
             to,
             periodOpening,
             entries,
-            closingBalance);
+            closingBalance,
+            periodDebitTotal,
+            periodCreditTotal);
     }
 
     public async Task<byte[]?> ExportLedgerToExcelAsync(
@@ -711,7 +732,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
     public async Task<byte[]> ExportToExcelAsync(CancellationToken cancellationToken = default)
     {
-        var tree = await GetTreeAsync(cancellationToken);
+        var tree = await GetTreeAsync(cancellationToken: cancellationToken);
 
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Chart of Accounts");
@@ -1014,11 +1035,12 @@ public class ChartOfAccountsService : IChartOfAccountsService
     private static ChartOfAccountTreeAccountDto BuildTreeNode(
         AccountRow account,
         ILookup<int?, AccountRow> childrenLookup,
-        IReadOnlyDictionary<int, decimal> leafBalanceMap)
+        IReadOnlyDictionary<int, decimal> leafBalanceMap,
+        IReadOnlyDictionary<int, (decimal Debit, decimal Credit)>? periodTotalsMap)
     {
         var children = childrenLookup[account.Id]
             .OrderBy(c => c.AccountNumber)
-            .Select(c => BuildTreeNode(c, childrenLookup, leafBalanceMap))
+            .Select(c => BuildTreeNode(c, childrenLookup, leafBalanceMap, periodTotalsMap))
             .ToList();
 
         if (children.Count > 0)
@@ -1029,23 +1051,60 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 account.AccountName,
                 children.Sum(c => c.OpeningBalance),
                 children.Sum(c => c.RunningBalance),
+                children.Sum(c => c.PeriodDebit),
+                children.Sum(c => c.PeriodCredit),
                 account.IsActive,
                 true,
                 account.ParentAccountId,
                 children);
         }
 
-        var runningBalance = leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance);
+        var rawRunning = leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance);
+        var periodTotals = periodTotalsMap?.GetValueOrDefault(account.Id) ?? (0m, 0m);
+
         return new ChartOfAccountTreeAccountDto(
             account.Id,
             account.AccountNumber,
             account.AccountName,
-            account.OpeningBalance,
-            runningBalance,
+            NormalizeBalanceForDisplay(account.OpeningBalance, account.TypeId),
+            NormalizeBalanceForDisplay(rawRunning, account.TypeId),
+            periodTotals.Debit,
+            periodTotals.Credit,
             account.IsActive,
             false,
             account.ParentAccountId,
             Array.Empty<ChartOfAccountTreeAccountDto>());
+    }
+
+    private static bool UsesCreditNormalDisplay(int? typeId) =>
+        typeId is LiabilityTypeId or EquityTypeId;
+
+    private static decimal NormalizeBalanceForDisplay(decimal netBalance, int? typeId) =>
+        UsesCreditNormalDisplay(typeId) ? -netBalance : netBalance;
+
+    private async Task<Dictionary<int, (decimal Debit, decimal Credit)>> GetPeriodJournalTotalsMapAsync(
+        int companyId,
+        DateTime fromDate,
+        DateTime toDate,
+        CancellationToken cancellationToken)
+    {
+        var totals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted
+                        && l.JournalEntry.EntryDate >= fromDate
+                        && l.JournalEntry.EntryDate <= toDate)
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit)
+            })
+            .ToListAsync(cancellationToken);
+
+        return totals.ToDictionary(x => x.AccountId, x => (x.Debit, x.Credit));
     }
 
     private async Task<(decimal OpeningBalance, decimal RunningBalance)> GetDisplayBalancesAsync(

@@ -51,6 +51,30 @@
 
 <div id="coa-notice" class="d-none alert alert-warning mb-3"></div>
 
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1" for="coa-period-from">Period From</label>
+                <input type="date" class="form-control form-control-sm" id="coa-period-from" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1" for="coa-period-to">Period To</label>
+                <input type="date" class="form-control form-control-sm" id="coa-period-to" />
+            </div>
+            <div class="col-md-3">
+                <button type="button" class="btn btn-primary btn-sm w-100" id="btn-coa-apply-period">
+                    <i class="fa-solid fa-filter me-1"></i>Apply Period
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-coa-clear-period">Clear Period</button>
+            </div>
+        </div>
+        <div class="form-text mt-1">Set a date range to show period debits/credits (e.g. June sales tax on 25510 and 25520). Balance is the current amount owed after payments.</div>
+    </div>
+</div>
+
 <div id="coa-tree-container">
 
     <div class="text-center text-muted py-5">
@@ -229,13 +253,25 @@
                     </div>
                 </div>
                 <div class="row g-3 mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card card-kpi p-3">
                             <div class="kpi-label">Opening Balance</div>
                             <div class="kpi-value text-currency" id="account-ledger-opening">0.00</div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <div class="card card-kpi p-3">
+                            <div class="kpi-label">Period Debits</div>
+                            <div class="kpi-value text-currency" id="account-ledger-period-debit">0.00</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card card-kpi p-3">
+                            <div class="kpi-label">Period Credits</div>
+                            <div class="kpi-value text-currency" id="account-ledger-period-credit">0.00</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
                         <div class="card card-kpi p-3">
                             <div class="kpi-label">Closing Balance</div>
                             <div class="kpi-value text-currency" id="account-ledger-closing">0.00</div>
