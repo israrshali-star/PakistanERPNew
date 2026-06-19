@@ -19,7 +19,7 @@ public interface IDashboardService
     /// <summary>Returns monthly posted sales cartons for the last 12 months.</summary>
     Task<IReadOnlyList<MonthlySalesPointDto>> GetMonthlySalesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Returns customers with non-zero balance (opening + posted invoices minus receipts), sorted ascending.</summary>
+    /// <summary>Returns top debit and credit customer balances (opening + posted activity).</summary>
     Task<IReadOnlyList<TopCustomerBalanceDto>> GetTopCustomersByBalanceAsync(
         CancellationToken cancellationToken = default);
 

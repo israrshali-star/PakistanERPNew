@@ -295,6 +295,31 @@ body.app-body {
     font-size: 0.85rem;
 }
 
+.dashboard-customer-balances-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 0.15rem;
+    scrollbar-gutter: stable;
+}
+
+.dashboard-customer-balances-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.dashboard-customer-balances-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.dashboard-customer-balances-scroll::-webkit-scrollbar-thumb {
+    background: rgba(13, 110, 253, 0.25);
+    border-radius: 999px;
+}
+
+.dashboard-customer-balances-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(13, 110, 253, 0.45);
+}
+
 .text-currency::before {
     content: "PKR ";
     font-weight: 500;

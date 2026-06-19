@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using PakistanAccountingERP.Application.DTOs;
@@ -274,6 +275,23 @@ public partial class BankGlPostingService : IBankGlPostingService
                     return (false, $"Insufficient balance in pay-from account. Available: {vendorPayFromBalance:N2}", null);
                 }
 
+                var counterAccountNumber = await GetAccountNumberAsync(
+                    transaction.CounterChartOfAccountId.Value,
+                    cancellationToken);
+
+                if (TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+                    && (SalesTaxPaymentGlHelper.IsSalesTaxAccountNumber(counterAccountNumber)
+                        || SalesTaxPaymentGlHelper.IsSalesTaxPartyName(transaction.PartyName)))
+                {
+                    return await BuildSplitSalesTaxPaymentLinesAsync(
+                        transaction,
+                        amount,
+                        party,
+                        payFromMemo,
+                        counterAccountNumber,
+                        cancellationToken);
+                }
+
                 return (true, null,
                 [
                     CreateLine(transaction.CounterChartOfAccountId.Value, amount, 0m, party),
@@ -313,6 +331,79 @@ public partial class BankGlPostingService : IBankGlPostingService
             default:
                 return (false, "Unsupported bank transaction type.", null);
         }
+    }
+
+    private async Task<(bool Success, string? Message, List<JournalEntryLine>? Lines)> BuildSplitSalesTaxPaymentLinesAsync(
+        BankTransaction transaction,
+        decimal amount,
+        string party,
+        string payFromMemo,
+        string? counterAccountNumber,
+        CancellationToken cancellationToken)
+    {
+        var companyId = transaction.CompanyId;
+        var furtherTaxAccountId = await GetAccountIdAsync(companyId, FurtherTaxPayable, cancellationToken);
+        var salesTax18AccountId = await GetAccountIdAsync(companyId, SalesTaxPayable18, cancellationToken);
+
+        if (!furtherTaxAccountId.HasValue)
+        {
+            return (false, $"Chart of account {FurtherTaxPayable} (Further Tax Payable) not found.", null);
+        }
+
+        if (!salesTax18AccountId.HasValue)
+        {
+            return (false, $"Chart of account {SalesTaxPayable18} (Sales Tax Payable 18%) not found.", null);
+        }
+
+        decimal furtherPay;
+        decimal salesTax18Pay;
+
+        if (string.Equals(counterAccountNumber, FurtherTaxPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            furtherPay = amount;
+            salesTax18Pay = 0m;
+        }
+        else if (string.Equals(counterAccountNumber, SalesTaxPayable18, StringComparison.OrdinalIgnoreCase))
+        {
+            furtherPay = 0m;
+            salesTax18Pay = amount;
+        }
+        else
+        {
+            var furtherBalance = await GetAccountBalanceAsync(companyId, furtherTaxAccountId.Value, cancellationToken);
+            var salesTax18Balance = await GetAccountBalanceAsync(companyId, salesTax18AccountId.Value, cancellationToken);
+            (furtherPay, salesTax18Pay) = SalesTaxPaymentGlHelper.AllocatePayment(
+                amount,
+                SalesTaxPaymentGlHelper.LiabilityOutstanding(furtherBalance),
+                SalesTaxPaymentGlHelper.LiabilityOutstanding(salesTax18Balance));
+        }
+
+        var lines = new List<JournalEntryLine>();
+        if (furtherPay > 0m)
+        {
+            lines.Add(CreateLine(
+                furtherTaxAccountId.Value,
+                furtherPay,
+                0m,
+                $"{party} — Further Tax (4%)"));
+        }
+
+        if (salesTax18Pay > 0m)
+        {
+            lines.Add(CreateLine(
+                salesTax18AccountId.Value,
+                salesTax18Pay,
+                0m,
+                $"{party} — Sales Tax (18%)"));
+        }
+
+        if (lines.Count == 0)
+        {
+            lines.Add(CreateLine(salesTax18AccountId.Value, amount, 0m, $"{party} — Sales Tax (18%)"));
+        }
+
+        lines.Add(CreateLine(transaction.ChartOfAccountId, 0m, amount, payFromMemo));
+        return (true, null, lines);
     }
 
     private static string BuildJournalDescription(BankTransaction transaction, string? payFromAccountNumber = null)

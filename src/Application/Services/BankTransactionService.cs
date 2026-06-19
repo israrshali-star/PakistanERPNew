@@ -233,7 +233,8 @@ public class BankTransactionService : IBankTransactionService
             int? customerId,
             int? vendorId,
             string partyName,
-            string accountNumber)
+            string accountNumber,
+            string? partyCode = null)
         {
             var key = $"{chartOfAccountId}:{customerId}:{vendorId}";
             if (!usedKeys.Add(key))
@@ -248,7 +249,8 @@ public class BankTransactionService : IBankTransactionService
                 vendorId,
                 partyName,
                 accountNumber,
-                0m));
+                0m,
+                partyCode));
         }
 
         foreach (var account in accounts.Where(a => arAccountIds.Contains(a.Id)))
@@ -287,7 +289,7 @@ public class BankTransactionService : IBankTransactionService
 
             if (matched is not null)
             {
-                AddParty(matched.Id, "AR", customer.Id, null, customer.BuyerName, matched.AccountNumber);
+                AddParty(matched.Id, "AR", customer.Id, null, customer.BuyerName, matched.AccountNumber, customer.BuyerId);
                 continue;
             }
 
@@ -297,7 +299,7 @@ public class BankTransactionService : IBankTransactionService
             }
 
             var arNumber = accounts.First(a => a.Id == defaultArId.Value).AccountNumber;
-            AddParty(defaultArId.Value, "AR", customer.Id, null, customer.BuyerName, arNumber);
+            AddParty(defaultArId.Value, "AR", customer.Id, null, customer.BuyerName, arNumber, customer.BuyerId);
         }
 
         var vendors = await _unitOfWork.Repository<Vendor>()
@@ -316,7 +318,7 @@ public class BankTransactionService : IBankTransactionService
 
             if (matched is not null)
             {
-                AddParty(matched.Id, "AP", null, vendor.Id, vendor.VendorName, matched.AccountNumber);
+                AddParty(matched.Id, "AP", null, vendor.Id, vendor.VendorName, matched.AccountNumber, vendor.VendorCode);
                 continue;
             }
 
@@ -326,7 +328,7 @@ public class BankTransactionService : IBankTransactionService
             }
 
             var apNumber = accounts.First(a => a.Id == defaultApId.Value).AccountNumber;
-            AddParty(defaultApId.Value, "AP", null, vendor.Id, vendor.VendorName, apNumber);
+            AddParty(defaultApId.Value, "AP", null, vendor.Id, vendor.VendorName, apNumber, vendor.VendorCode);
         }
 
         var payFromIds = (await QueryBankCoaAccountsAsync(companyId, includeCashInHand: true, cancellationToken))
@@ -641,11 +643,12 @@ public class BankTransactionService : IBankTransactionService
 
         await TryAuditAsync("Create", entity.Id.ToString(), null, JsonSerializer.Serialize(request), cancellationToken);
 
+        string? nextChequeNumber = null;
         if (request.TransactionType == BankTransactionType.Withdrawal
             && request.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.CashWithdrawal
             && !string.IsNullOrWhiteSpace(entity.ChequeNumber))
         {
-            await AdvanceNextChequeNumberAsync(
+            nextChequeNumber = await AdvanceNextChequeNumberAsync(
                 companyId,
                 bankId.Value,
                 entity.ChequeNumber,
@@ -653,7 +656,7 @@ public class BankTransactionService : IBankTransactionService
         }
 
         var dto = await GetByIdAsync(entity.Id, cancellationToken);
-        return new BankTransactionSaveResult(true, null, dto);
+        return new BankTransactionSaveResult(true, null, dto, nextChequeNumber);
     }
 
     public async Task<BankNextChequeNumberDto> GetNextChequeNumberAsync(
@@ -734,7 +737,7 @@ public class BankTransactionService : IBankTransactionService
         }
 
         var bank = await _unitOfWork.Repository<Bank>()
-            .Query()
+            .Query(asNoTracking: false)
             .FirstOrDefaultAsync(b => b.Id == bankId.Value && b.CompanyId == companyId, cancellationToken);
 
         if (bank is null)
@@ -744,7 +747,8 @@ public class BankTransactionService : IBankTransactionService
 
         bank.NextChequeNumber = nextChequeNumber;
         bank.UpdatedAt = DateTime.UtcNow;
-        bank.UpdatedBy = _currentUser.UserName;
+        bank.UpdatedBy = _currentUser.UserName ?? "system";
+        _unitOfWork.Repository<Bank>().Update(bank);
 
         try
         {
@@ -762,38 +766,41 @@ public class BankTransactionService : IBankTransactionService
             new BankNextChequeNumberDto(nextChequeNumber, true));
     }
 
-    private async Task AdvanceNextChequeNumberAsync(
+    private async Task<string?> AdvanceNextChequeNumberAsync(
         int companyId,
         int bankId,
         string usedChequeNumber,
         CancellationToken cancellationToken)
     {
         var bank = await _unitOfWork.Repository<Bank>()
-            .Query()
+            .Query(asNoTracking: false)
             .FirstOrDefaultAsync(b => b.Id == bankId && b.CompanyId == companyId, cancellationToken);
 
         if (bank is null)
         {
-            return;
+            return null;
         }
 
         var next = ChequeNumberHelper.Increment(usedChequeNumber.Trim());
         if (string.IsNullOrWhiteSpace(next))
         {
-            return;
+            return null;
         }
 
         bank.NextChequeNumber = next;
         bank.UpdatedAt = DateTime.UtcNow;
-        bank.UpdatedBy = _currentUser.UserName;
+        bank.UpdatedBy = _currentUser.UserName ?? "system";
+        _unitOfWork.Repository<Bank>().Update(bank);
 
         try
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return next;
         }
         catch (DbUpdateException ex)
         {
             _logger.LogWarning(ex, "Failed to advance next cheque number for bank {BankId}", bankId);
+            return null;
         }
     }
 
@@ -931,7 +938,9 @@ public class BankTransactionService : IBankTransactionService
                     {
                         return new BankTransactionSaveResult(
                             false,
-                            "Sales tax payments must use Sales Tax Payable (25500), not Accounts Payable.",
+                            TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+                                ? "Sales tax payments must use Further Tax Payable (25510), Sales Tax Payable 18% (25520), or Sales Tax Payable (25500) — not Accounts Payable."
+                                : "Sales tax payments must use Sales Tax Payable (25500), not Accounts Payable.",
                             null);
                     }
                 }

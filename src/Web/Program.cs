@@ -108,6 +108,11 @@ if (TryRunRepairArGl(args, out var repairArGlExitCode))
     Environment.Exit(repairArGlExitCode);
 }
 
+if (TryRunRepairSalesTaxSubAccounts(args, out var repairSalesTaxSubAccountsExitCode))
+{
+    Environment.Exit(repairSalesTaxSubAccountsExitCode);
+}
+
 if (TryRunReplugOpeningBalanceEquity(args, out var replugObeExitCode))
 {
     Environment.Exit(replugObeExitCode);
@@ -1075,6 +1080,51 @@ static bool TryRunRepairArGl(string[] args, out int exitCode)
         Console.WriteLine(result.Message);
         Console.WriteLine($"Invoices fixed: {result.InvoicesFixed}");
         Console.WriteLine($"AR (11110) balance: {result.AccountsReceivableBalance:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairSalesTaxSubAccounts(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--repair-sales-tax-subaccounts", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairSalesTaxSubAccountTrialBalanceAsync(companyId).GetAwaiter().GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"25510 opening: {result.FurtherTaxOpening:N2}");
+        Console.WriteLine($"25520 opening: {result.SalesTax18Opening:N2}");
+        Console.WriteLine($"Bank payments reposted: {result.BankPaymentsReposted}");
+        Console.WriteLine($"25500 balance: {result.ParentSalesTaxBalance:N2}");
+        Console.WriteLine($"25510 balance: {result.FurtherTaxBalance:N2}");
+        Console.WriteLine($"25520 balance: {result.SalesTax18Balance:N2}");
+        Console.WriteLine($"OBE (30000): {result.OpeningBalanceEquity:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
 
         exitCode = result.Success ? 0 : 1;
     }

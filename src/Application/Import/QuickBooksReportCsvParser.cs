@@ -63,10 +63,10 @@ public static class QuickBooksReportCsvParser
 {
     private static readonly Dictionary<string, string> QbAccountNumberToErp = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["10010"] = "10006",
         ["10020"] = "10013",
         ["10800"] = "10015",
         ["10900"] = "10016",
+        ["11000"] = "11110",
         ["12000"] = "10017",
         ["15200"] = "15100",
         ["30800"] = "30020",
@@ -76,10 +76,7 @@ public static class QuickBooksReportCsvParser
     private static readonly HashSet<string> SkipErpAccountNumbers = new(StringComparer.OrdinalIgnoreCase)
     {
         "10000",
-        "11000",
-        "11110",
         "12100",
-        "20000",
         "47900",
     };
 

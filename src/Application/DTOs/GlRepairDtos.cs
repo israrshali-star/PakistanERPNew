@@ -130,3 +130,15 @@ public record InventoryAssetRepairResult(
     decimal ErpClosingBalance,
     decimal DifferenceVsQuickBooks);
 
+public record SalesTaxSubAccountRepairResult(
+    bool Success,
+    string? Message,
+    decimal FurtherTaxOpening,
+    decimal SalesTax18Opening,
+    int BankPaymentsReposted,
+    decimal ParentSalesTaxBalance,
+    decimal FurtherTaxBalance,
+    decimal SalesTax18Balance,
+    decimal OpeningBalanceEquity,
+    decimal TrialBalanceDebits,
+    decimal TrialBalanceCredits);

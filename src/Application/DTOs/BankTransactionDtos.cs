@@ -60,7 +60,11 @@ public record UndepositedChequeDto(
     DateTime? ChequeDate,
     bool IsPostDated);
 
-public record BankTransactionSaveResult(bool Success, string? Message, BankTransactionDto? Transaction);
+public record BankTransactionSaveResult(
+    bool Success,
+    string? Message,
+    BankTransactionDto? Transaction,
+    string? NextChequeNumber = null);
 
 public record BankCoaLookupDto(
     int Id,
@@ -78,9 +82,12 @@ public record WriteChequePartyLookupDto(
     int? VendorId,
     string PartyName,
     string AccountNumber,
-    decimal Balance)
+    decimal Balance,
+    string? PartyCode = null)
 {
-    public string Label => $"[{PartyType}] {PartyName} — {AccountNumber}";
+    public string Label => string.IsNullOrWhiteSpace(PartyCode)
+        ? $"[{PartyType}] {PartyName} — {AccountNumber}"
+        : $"[{PartyType}] {PartyName} ({PartyCode}) — {AccountNumber}";
 }
 
 public record BankUndepositedSummaryDto(decimal Balance, string AccountNumber);

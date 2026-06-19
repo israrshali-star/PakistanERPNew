@@ -69,24 +69,7 @@ public partial class VendorService : IVendorService
             query = query.Skip(request.Start).Take(request.Length);
         }
 
-        var rows = await query
-            .Select(v => new VendorListItemDto(
-                v.Id,
-                v.VendorCode,
-                v.VendorName,
-                v.Province != null ? v.Province.Name : null,
-                v.NTN,
-                v.Phone,
-                v.DefaultSalesTaxRate,
-                v.OpeningBalance,
-                v.OpeningBalance + v.VendorBills
-                    .Where(b => b.Status == BillStatus.Approved)
-                    .Sum(b => b.NetAmount)
-                    - v.VendorPayments.Sum(p => p.Amount)
-                    - v.WriteChequePayments
-                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.Amount),
-                v.IsActive))
+        var rows = await ProjectVendorListItems(query)
             .ToListAsync(cancellationToken);
 
         return new DataTableResponse<VendorListItemDto>(
@@ -100,30 +83,10 @@ public partial class VendorService : IVendorService
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
 
-        return await _unitOfWork.Repository<Vendor>()
-            .Query()
-            .Where(v => v.Id == id && v.CompanyId == companyId)
-            .Select(v => new VendorDto(
-                v.Id,
-                v.VendorCode,
-                v.VendorName,
-                v.OpeningBalance,
-                v.OpeningBalance + v.VendorBills
-                    .Where(b => b.Status == BillStatus.Approved)
-                    .Sum(b => b.NetAmount)
-                    - v.VendorPayments.Sum(p => p.Amount)
-                    - v.WriteChequePayments
-                        .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.Amount),
-                v.Address,
-                v.ProvinceId,
-                v.Province != null ? v.Province.Name : null,
-                v.Phone,
-                v.Email,
-                v.NTN,
-                v.DefaultSalesTaxRate,
-                v.IsActive,
-                v.VendorBills.Any()))
+        return await ProjectVendorDto(
+                _unitOfWork.Repository<Vendor>()
+                    .Query()
+                    .Where(v => v.Id == id && v.CompanyId == companyId))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -380,7 +343,7 @@ public partial class VendorService : IVendorService
         }
 
         var entries = await BuildLedgerEntriesAsync(id, null, null, cancellationToken);
-        var closing = entries.Count > 0 ? entries[^1].Balance : vendor.OpeningBalance;
+        var closing = entries.Count > 0 ? entries[^1].Balance : vendor.Balance;
 
         return new VendorLedgerDto(vendor, entries, closing);
     }
@@ -626,6 +589,54 @@ public partial class VendorService : IVendorService
 
         return opening + billTotal - paymentTotal - chequeTotal;
     }
+
+    private IQueryable<VendorListItemDto> ProjectVendorListItems(IQueryable<Vendor> query) =>
+        query.Select(v => new VendorListItemDto(
+            v.Id,
+            v.VendorCode,
+            v.VendorName,
+            v.Province != null ? v.Province.Name : null,
+            v.NTN,
+            v.Phone,
+            v.DefaultSalesTaxRate,
+            v.OpeningBalance,
+            v.OpeningBalance
+                + v.VendorBills
+                    .Where(b => b.Status == BillStatus.Approved)
+                    .Sum(b => b.NetAmount)
+                - v.VendorPayments.Sum(p => p.Amount)
+                - v.WriteChequePayments
+                    .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal
+                                 && !bt.IsDeleted
+                                 && bt.JournalEntryId != null)
+                    .Sum(bt => bt.Amount),
+            v.IsActive));
+
+    private IQueryable<VendorDto> ProjectVendorDto(IQueryable<Vendor> query) =>
+        query.Select(v => new VendorDto(
+            v.Id,
+            v.VendorCode,
+            v.VendorName,
+            v.OpeningBalance,
+            v.OpeningBalance
+                + v.VendorBills
+                    .Where(b => b.Status == BillStatus.Approved)
+                    .Sum(b => b.NetAmount)
+                - v.VendorPayments.Sum(p => p.Amount)
+                - v.WriteChequePayments
+                    .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal
+                                 && !bt.IsDeleted
+                                 && bt.JournalEntryId != null)
+                    .Sum(bt => bt.Amount),
+            v.Address,
+            v.ProvinceId,
+            v.Province != null ? v.Province.Name : null,
+            v.Phone,
+            v.Email,
+            v.NTN,
+            v.DefaultSalesTaxRate,
+            v.IsActive,
+            v.VendorBills.Any()));
 
     private async Task<VendorSaveResult> ValidateSaveRequestAsync(
         VendorSaveRequest request,

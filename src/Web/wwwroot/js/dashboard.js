@@ -203,15 +203,37 @@
             return;
         }
 
-        customers.forEach(function (c) {
+        var debitRows = customers.filter(function (c) {
+            return (c.balanceSide || 'Dr') === 'Dr';
+        });
+        var creditRows = customers.filter(function (c) {
+            return (c.balanceSide || '') === 'Cr';
+        });
+
+        function appendCustomer(c) {
+            var side = c.balanceSide || 'Dr';
+            var amount = Math.abs(parseFloat(c.balance) || 0);
+            var badgeClass = side === 'Dr' ? 'bg-primary' : 'bg-success';
             $list.append(
                 '<li class="list-group-item d-flex justify-content-between align-items-center px-0">' +
                 '<span><strong>' + $('<div>').text(c.buyerName).html() + '</strong>' +
                 '<br><small class="text-muted">' + $('<div>').text(c.buyerId).html() + '</small></span>' +
-                '<span class="text-currency fw-semibold">' + formatCurrency(c.balance) + '</span>' +
-                '</li>'
+                '<span class="text-end">' +
+                '<span class="badge ' + badgeClass + ' me-1">' + side + '</span>' +
+                '<span class="text-currency fw-semibold">' + formatCurrency(amount) + '</span>' +
+                '</span></li>'
             );
-        });
+        }
+
+        if (debitRows.length) {
+            $list.append('<li class="list-group-item px-0 py-1"><small class="text-muted fw-semibold">Debit (Receivable)</small></li>');
+            debitRows.forEach(appendCustomer);
+        }
+
+        if (creditRows.length) {
+            $list.append('<li class="list-group-item px-0 py-1' + (debitRows.length ? ' border-top mt-1' : '') + '"><small class="text-muted fw-semibold">Credit</small></li>');
+            creditRows.forEach(appendCustomer);
+        }
     }
 
     function renderLowStock(items) {

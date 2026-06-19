@@ -104,6 +104,67 @@
         return (party.customerId || 0) + ':' + (party.vendorId || 0) + ':' + party.chartOfAccountId;
     }
 
+    function partySearchText(party, displayText) {
+        return [
+            party.partyType,
+            party.partyName,
+            party.accountNumber,
+            party.partyCode,
+            party.label,
+            displayText
+        ].filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function partySelectMatcher(params, data) {
+        if ($.trim(params.term) === '') {
+            return data;
+        }
+
+        if (data.children && data.children.length) {
+            var matchedChildren = [];
+            for (var i = 0; i < data.children.length; i++) {
+                var childMatch = partySelectMatcher(params, data.children[i]);
+                if (childMatch) {
+                    matchedChildren.push(childMatch);
+                }
+            }
+
+            if (matchedChildren.length) {
+                return $.extend({}, data, { children: matchedChildren });
+            }
+
+            return null;
+        }
+
+        var haystack = (data.element && $(data.element).data('search'))
+            ? String($(data.element).data('search'))
+            : (data.text || '').toLowerCase();
+
+        return haystack.indexOf(params.term.toLowerCase()) > -1 ? data : null;
+    }
+
+    function refreshSelect2($select) {
+        if (!$select.length) {
+            return;
+        }
+
+        if (window.initPaSelect2) {
+            window.initPaSelect2($select, { matcher: partySelectMatcher });
+            return;
+        }
+
+        if ($select.data('select2')) {
+            $select.select2('destroy');
+        }
+
+        $select.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            minimumResultsForSearch: 0,
+            matcher: partySelectMatcher
+        });
+    }
+
     function formatPaymentMethod(value) {
         if (!value) return '—';
         var labels = {
@@ -132,6 +193,7 @@
                     $('<option></option>')
                         .val(partyOptionValue(p))
                         .text(text)
+                        .attr('data-search', partySearchText(p, text))
                         .attr('data-customer-id', p.customerId || '')
                         .attr('data-vendor-id', p.vendorId || '')
                         .attr('data-coa-id', p.chartOfAccountId)
@@ -170,6 +232,23 @@
         var id = parseInt($select.val(), 10) || 0;
         var account = findAccount(list, id);
         $hint.text(account ? 'GL balance: PKR ' + formatMoney(account.balance) : '');
+    }
+
+    function applyNextChequeNumber(res) {
+        if (res && res.nextChequeNumber) {
+            $('#op-cheque-number').val(res.nextChequeNumber);
+            updateChequeNumberHint({ isConfigured: true });
+            return;
+        }
+
+        var bankId = parseInt($('#op-bank-account-id').val(), 10) || 0;
+        if (bankId) {
+            loadNextChequeNumber(bankId);
+        }
+    }
+
+    function usesChequeNumber(method) {
+        return method === 2 || method === 4;
     }
 
     function updateChequeNumberHint(res) {
@@ -231,7 +310,11 @@
             })
         })
             .done(function (res) {
-                updateChequeNumberHint(res && res.nextChequeNumber ? res.nextChequeNumber : { isConfigured: true });
+                var next = res && (res.nextChequeNumber || (res.NextChequeNumber && res.NextChequeNumber.nextChequeNumber));
+                if (typeof next === 'string') {
+                    $('#op-cheque-number').val(next);
+                }
+                updateChequeNumberHint({ isConfigured: true });
             })
             .fail(function (xhr) {
                 showFormError(getApiErrorMessage(xhr, 'Could not save starting cheque number.'));
@@ -454,6 +537,7 @@
             requests.push($.getJSON('/api/bank-transactions/coa-counter').done(function (res) {
                 counterAccounts = res || [];
                 buildPartyOptions($('#op-counter-account-id'), counterAccounts);
+                refreshSelect2($('#op-counter-account-id'));
             }));
         } else {
             requests.push($.getJSON('/api/bank-transactions/coa-deposit').done(function (res) {
@@ -607,7 +691,7 @@
             contentType: 'application/json',
             data: JSON.stringify(payload)
         })
-            .done(function () {
+            .done(function (result) {
                 var selectedBankId = parseInt($('#op-bank-account-id').val(), 10) || 0;
                 var selectedMethod = getPaymentMethod();
                 $('#bank-op-form')[0].reset();
@@ -617,12 +701,16 @@
                 loadLookups().always(function () {
                     if (transactionType === 2) {
                         if (selectedMethod) $('#op-payment-method').val(String(selectedMethod));
-                        syncPaymentMethodUi();
                         if (selectedBankId) {
                             $('#op-bank-account-id').val(String(selectedBankId));
+                        }
+                        syncPaymentMethodUi();
+                        if (selectedBankId) {
                             var payFromList = selectedMethod === 1 ? transferAccounts : bankAccounts;
                             updateBalanceHint($('#op-bank-account-id'), $('#op-bank-balance'), payFromList);
-                            if (selectedMethod === 2) loadNextChequeNumber(selectedBankId);
+                        }
+                        if (usesChequeNumber(selectedMethod)) {
+                            applyNextChequeNumber(result);
                         }
                     }
                     dataTable.ajax.reload(null, false);
@@ -638,7 +726,13 @@
         transactionType = parseInt($('#bank-op-permissions').data('transaction-type'), 10) || 1;
         if (!canCreate) $('#btn-save-bank-op').prop('disabled', true);
 
-        $('.select2').select2({ theme: 'bootstrap-5', width: '100%' });
+        if (window.initPaSelect2) {
+            window.initPaSelect2($('.select2').not('#op-counter-account-id'), {});
+            window.initPaSelect2($('#op-counter-account-id'), { matcher: partySelectMatcher });
+        } else {
+            $('.select2').select2({ theme: 'bootstrap-5', width: '100%', minimumResultsForSearch: 0 });
+            refreshSelect2($('#op-counter-account-id'));
+        }
         $('#op-date').val(new Date().toISOString().slice(0, 10));
 
         $.getJSON('/api/company/current')

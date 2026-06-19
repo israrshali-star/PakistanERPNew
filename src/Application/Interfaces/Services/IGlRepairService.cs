@@ -76,4 +76,8 @@ public interface IGlRepairService
         int companyId,
         string quickBooksLedgerFilePath,
         CancellationToken cancellationToken = default);
+
+    Task<SalesTaxSubAccountRepairResult> RepairSalesTaxSubAccountTrialBalanceAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
 }

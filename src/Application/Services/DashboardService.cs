@@ -65,44 +65,24 @@ public class DashboardService : IDashboardService
             .Where(i => i.InvoiceDate >= monthStart && i.InvoiceDate < monthEnd)
             .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
 
-        var customerBalances = await CustomerBalanceQuery(companyId)
-            .ToListAsync(cancellationToken);
+        var arGlBalance = await GetGlAccountBalanceAsync(
+            companyId,
+            AccountsReceivable,
+            cancellationToken);
 
-        var outstandingReceivables = customerBalances.Sum(c => c.Balance);
+        // Imported QB openings store customer Dr balances as negative on AR; flip sign so the
+        // dashboard matches QuickBooks "outstanding receivables" presentation (positive amount).
+        var outstandingReceivables = -arGlBalance;
 
-        var approvedBills = await _unitOfWork.Repository<VendorBill>()
-            .Query()
-            .Where(b => b.CompanyId == companyId && b.Status == BillStatus.Approved)
-            .Select(b => new { b.VendorId, b.NetAmount })
-            .ToListAsync(cancellationToken);
+        var outstandingPayables = await GetGlAccountBalanceAsync(
+            companyId,
+            AccountsPayable,
+            cancellationToken);
 
-        var billTotalsByVendor = approvedBills
-            .GroupBy(b => b.VendorId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.NetAmount));
-
-        var paymentTotalsByVendor = await _unitOfWork.Repository<VendorPayment>()
-            .Query()
-            .Where(p => p.CompanyId == companyId)
-            .GroupBy(p => p.VendorId)
-            .Select(g => new { VendorId = g.Key, Total = g.Sum(p => p.Amount) })
-            .ToListAsync(cancellationToken);
-
-        var paymentLookup = paymentTotalsByVendor.ToDictionary(x => x.VendorId, x => x.Total);
-
-        var vendors = await _unitOfWork.Repository<Vendor>()
-            .Query()
-            .Where(v => v.CompanyId == companyId && v.IsActive)
-            .Select(v => new { v.Id, v.OpeningBalance })
-            .ToListAsync(cancellationToken);
-
-        var outstandingPayables = vendors.Sum(v =>
-        {
-            billTotalsByVendor.TryGetValue(v.Id, out var billed);
-            paymentLookup.TryGetValue(v.Id, out var paid);
-            return v.OpeningBalance + billed - paid;
-        });
-
-        var inventoryValue = await GetInventoryAssetBalanceAsync(companyId, cancellationToken);
+        var inventoryValue = await GetGlAccountBalanceAsync(
+            companyId,
+            InventoryAsset,
+            cancellationToken);
 
         return new DashboardSummaryDto(
             todaySales,
@@ -288,12 +268,21 @@ public class DashboardService : IDashboardService
         var rows = await CustomerBalanceQuery(companyId)
             .ToListAsync(cancellationToken);
 
-        return rows
-            .Where(c => c.Balance != 0m)
+        const int perSide = 5;
+
+        var debitCustomers = rows
+            .Where(c => c.Balance > 0.01m)
             .OrderByDescending(c => c.Balance)
-            .Take(10)
-            .Select(c => new TopCustomerBalanceDto(c.Id, c.BuyerName, c.BuyerId, c.Balance))
-            .ToList();
+            .Take(perSide)
+            .Select(c => new TopCustomerBalanceDto(c.Id, c.BuyerName, c.BuyerId, c.Balance, "Dr"));
+
+        var creditCustomers = rows
+            .Where(c => c.Balance < -0.01m)
+            .OrderBy(c => c.Balance)
+            .Take(perSide)
+            .Select(c => new TopCustomerBalanceDto(c.Id, c.BuyerName, c.BuyerId, c.Balance, "Cr"));
+
+        return debitCustomers.Concat(creditCustomers).ToList();
     }
 
     public async Task<IReadOnlyList<LowStockItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
@@ -385,13 +374,14 @@ public class DashboardService : IDashboardService
             recent);
     }
 
-    private async Task<decimal> GetInventoryAssetBalanceAsync(
+    private async Task<decimal> GetGlAccountBalanceAsync(
         int companyId,
+        string accountNumber,
         CancellationToken cancellationToken)
     {
         var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
-            .Where(a => a.CompanyId == companyId && a.AccountNumber == InventoryAsset)
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == accountNumber)
             .Select(a => new { a.Id, a.OpeningBalance })
             .FirstOrDefaultAsync(cancellationToken);
 
