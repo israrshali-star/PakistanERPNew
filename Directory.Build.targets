@@ -1,0 +1,15 @@
+<Project>
+  <!-- Remove leftover SDK 9/10 static-web-asset cache files before MSBuild tries to rewrite them -->
+  <Target Name="RemoveStaticWebAssetCacheFiles"
+          BeforeTargets="ResolveProjectStaticWebAssets"
+          Condition="'$(StaticWebAssetsCacheDefineStaticWebAssetsEnabled)' != 'true'">
+    <ItemGroup>
+      <_StaticWebAssetCacheFile Include="$(IntermediateOutputPath)rpswa.dswa.cache.json;
+                                        $(IntermediateOutputPath)rbcswa.dswa.cache.json;
+                                        $(IntermediateOutputPath)rjimswa.dswa.cache.json;
+                                        $(IntermediateOutputPath)rjsmcshtml.dswa.cache.json;
+                                        $(IntermediateOutputPath)rjsmrazor.dswa.cache.json" />
+    </ItemGroup>
+    <Delete Files="@(_StaticWebAssetCacheFile)" ContinueOnError="true" />
+  </Target>
+</Project>

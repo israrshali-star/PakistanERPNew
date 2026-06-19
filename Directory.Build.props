@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <!-- Reduce DLL lock conflicts when Visual Studio and dotnet CLI build at the same time -->
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <NodeReuse>false</NodeReuse>
+    <AccelerateBuildsInVisualStudio>false</AccelerateBuildsInVisualStudio>
+    <BuildInParallel>false</BuildInParallel>
+
+    <!-- SDK 9/10 writes rpswa.dswa.cache.json etc.; disable for all projects (harmless on class libs) -->
+    <StaticWebAssetsCacheDefineStaticWebAssetsEnabled>false</StaticWebAssetsCacheDefineStaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <!-- VS design-time builds can still invoke CopyRefAssembly and lock obj/ref/*.dll -->
+  <Target Name="CopyRefAssembly" />
+</Project>

@@ -21,6 +21,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>pakistan-accounting-erp-web</UserSecretsId>
+    <!-- Avoid rpswa.dswa.cache.json file-lock failures when VS and CLI build together -->
+    <StaticWebAssetsCacheDefineStaticWebAssetsEnabled>false</StaticWebAssetsCacheDefineStaticWebAssetsEnabled>
   </PropertyGroup>
 
 </Project>
