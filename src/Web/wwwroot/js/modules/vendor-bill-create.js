@@ -276,70 +276,75 @@
         recalcTotals();
     }
 
+    function applyPurchaseTaxSettings(purchaseTax) {
+        purchaseTax = purchaseTax || {};
+        purchaseTaxSettings.supportsPurchaseWithholdingTax =
+            purchaseTax.supportsPurchaseWithholdingTax === true
+            || purchaseTax.SupportsPurchaseWithholdingTax === true;
+        purchaseTaxSettings.purchaseWithholdingTaxRate =
+            purchaseTax.purchaseWithholdingTaxRate != null
+                ? purchaseTax.purchaseWithholdingTaxRate
+                : (purchaseTax.PurchaseWithholdingTaxRate || 1);
+        purchaseTaxSettings.defaultIncomeTax236GRate =
+            purchaseTax.defaultIncomeTax236GRate != null
+                ? purchaseTax.defaultIncomeTax236GRate
+                : (purchaseTax.DefaultIncomeTax236GRate || 0.10);
+
+        var companyTaxRate = purchaseTax.defaultSalesTaxRate != null
+            ? purchaseTax.defaultSalesTaxRate
+            : (purchaseTax.DefaultSalesTaxRate || 18);
+        if (!$('#tax-rate').val() || parseFloat($('#tax-rate').val()) <= 0) {
+            $('#tax-rate').val(companyTaxRate);
+        }
+
+        if (purchaseTaxSettings.supportsPurchaseWithholdingTax) {
+            var sectionLabel = purchaseTax.withholdingTaxSectionLabel
+                || purchaseTax.WithholdingTaxSectionLabel
+                || 'Payment for Goods u/s 153(1)(a)';
+            var it236gLabel = purchaseTax.incomeTax236GSectionLabel
+                || purchaseTax.IncomeTax236GSectionLabel
+                || 'Income Tax u/s 236G';
+            $('#wht-section-label').text('W/H Tax — ' + sectionLabel);
+            $('#it236g-section-label').text(it236gLabel);
+            $('#wht-nature').text(
+                'Nature: ' + (purchaseTax.natureOfPayment || purchaseTax.NatureOfPayment || 'Withheld income tax adjustable') + ' (GL 12810)'
+            );
+            if (!$('#wht-rate').val() || parseFloat($('#wht-rate').val()) <= 0) {
+                $('#wht-rate').val(purchaseTaxSettings.purchaseWithholdingTaxRate);
+            }
+            if (!$('#it236g-rate').val() || parseFloat($('#it236g-rate').val()) <= 0) {
+                $('#it236g-rate').val(purchaseTaxSettings.defaultIncomeTax236GRate);
+            }
+            $('#purchase-tax-section').removeClass('d-none');
+        } else {
+            $('#purchase-tax-section').addClass('d-none');
+        }
+    }
+
     function loadLookups() {
         var editId = getEditId();
         var numberRequest = editId
             ? $.Deferred().resolve([{ billNumber: '' }]).promise()
             : $.getJSON('/api/vendor-bills/next-bill-number');
 
+        $.getJSON('/api/vendor-bills/purchase-tax-settings')
+            .done(applyPurchaseTaxSettings);
+
         return $.when(
             numberRequest,
             $.getJSON('/api/vendor-bills/vendors'),
             $.getJSON('/api/vendor-bills/items'),
             $.getJSON('/api/vendor-bills/warehouses'),
-            $.getJSON('/api/sales-invoices/tax-rates'),
             $.getJSON('/api/vendor-bills/purchase-tax-settings'),
             window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, taxRatesRes, purchaseTaxRes) {
+        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, purchaseTaxRes) {
             if (!editId) {
                 $('#bill-number').val(numberRes[0].billNumber || numberRes[0].BillNumber);
             }
             vendors = vendorsRes[0] || [];
             items = itemsRes[0] || [];
             warehouses = warehousesRes[0] || [];
-            var taxRates = taxRatesRes[0] || {};
-            var companyTaxRate = taxRates.registeredSalesTaxRate != null
-                ? taxRates.registeredSalesTaxRate
-                : (taxRates.RegisteredSalesTaxRate || 18);
-            if (!$('#tax-rate').val() || parseFloat($('#tax-rate').val()) <= 0) {
-                $('#tax-rate').val(companyTaxRate);
-            }
-
-            var purchaseTax = purchaseTaxRes[0] || {};
-            purchaseTaxSettings.supportsPurchaseWithholdingTax =
-                purchaseTax.supportsPurchaseWithholdingTax === true
-                || purchaseTax.SupportsPurchaseWithholdingTax === true;
-            purchaseTaxSettings.purchaseWithholdingTaxRate =
-                purchaseTax.purchaseWithholdingTaxRate != null
-                    ? purchaseTax.purchaseWithholdingTaxRate
-                    : (purchaseTax.PurchaseWithholdingTaxRate || 1);
-            purchaseTaxSettings.defaultIncomeTax236GRate =
-                purchaseTax.defaultIncomeTax236GRate != null
-                    ? purchaseTax.defaultIncomeTax236GRate
-                    : (purchaseTax.DefaultIncomeTax236GRate || 0.10);
-
-            if (purchaseTaxSettings.supportsPurchaseWithholdingTax) {
-                var sectionLabel = purchaseTax.withholdingTaxSectionLabel
-                    || purchaseTax.WithholdingTaxSectionLabel
-                    || 'Payment for Goods u/s 153(1)(a)';
-                var it236gLabel = purchaseTax.incomeTax236GSectionLabel
-                    || purchaseTax.IncomeTax236GSectionLabel
-                    || 'Income Tax u/s 236G';
-                $('#wht-section-label').text('W/H Tax — ' + sectionLabel);
-                $('#it236g-section-label').text(it236gLabel);
-                $('#wht-nature').text(
-                    'Nature: ' + (purchaseTax.natureOfPayment || purchaseTax.NatureOfPayment || 'Withheld income tax adjustable') + ' (GL 12810)'
-                );
-                if (!$('#wht-rate').val() || parseFloat($('#wht-rate').val()) <= 0) {
-                    $('#wht-rate').val(purchaseTaxSettings.purchaseWithholdingTaxRate);
-                }
-                if (!$('#it236g-rate').val() || parseFloat($('#it236g-rate').val()) <= 0) {
-                    $('#it236g-rate').val(purchaseTaxSettings.defaultIncomeTax236GRate);
-                }
-                $('#purchase-tax-section').removeClass('d-none');
-            } else {
-                $('#purchase-tax-section').addClass('d-none');
-            }
+            applyPurchaseTaxSettings(purchaseTaxRes[0] || {});
 
             var $vendor = $('#vendor-id');
             $vendor.find('option:not(:first)').remove();

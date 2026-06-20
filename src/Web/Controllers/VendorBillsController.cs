@@ -167,7 +167,7 @@ public class VendorBillsApiController : ControllerBase
     }
 
     [HttpGet("vendors")]
-    [RequirePermission("Purchase.Create")]
+    [RequirePermission("Purchase.View")]
     public async Task<IActionResult> Vendors(CancellationToken cancellationToken)
     {
         try
@@ -181,7 +181,7 @@ public class VendorBillsApiController : ControllerBase
     }
 
     [HttpGet("items")]
-    [RequirePermission("Purchase.Create")]
+    [RequirePermission("Purchase.View")]
     public async Task<IActionResult> Items(CancellationToken cancellationToken)
     {
         try
@@ -195,7 +195,7 @@ public class VendorBillsApiController : ControllerBase
     }
 
     [HttpGet("warehouses")]
-    [RequirePermission("Purchase.Create")]
+    [RequirePermission("Purchase.View")]
     public async Task<IActionResult> Warehouses(CancellationToken cancellationToken)
     {
         try
@@ -209,7 +209,7 @@ public class VendorBillsApiController : ControllerBase
     }
 
     [HttpGet("purchase-tax-settings")]
-    [RequirePermission("Purchase.Create")]
+    [RequirePermission("Purchase.View")]
     public async Task<IActionResult> PurchaseTaxSettings(CancellationToken cancellationToken)
     {
         try

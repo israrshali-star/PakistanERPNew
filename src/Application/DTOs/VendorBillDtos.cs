@@ -112,4 +112,5 @@ public record VendorBillPurchaseTaxSettingsDto(
     string NatureOfPayment,
     decimal DefaultIncomeTax236GRate,
     string IncomeTax236GSection,
-    string IncomeTax236GSectionLabel);
+    string IncomeTax236GSectionLabel,
+    decimal DefaultSalesTaxRate);

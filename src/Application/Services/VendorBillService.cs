@@ -266,13 +266,19 @@ public partial class VendorBillService : IVendorBillService
             .ToListAsync(cancellationToken);
     }
 
-    public Task<VendorBillPurchaseTaxSettingsDto> GetPurchaseTaxSettingsAsync(
+    public async Task<VendorBillPurchaseTaxSettingsDto> GetPurchaseTaxSettingsAsync(
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
         var supports = PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId);
+        var taxRates = await _unitOfWork.Repository<TaxSetting>()
+            .Query()
+            .Where(t => t.CompanyId == companyId)
+            .Select(t => new { t.SalesTaxRate })
+            .FirstOrDefaultAsync(cancellationToken);
+        var defaultSalesTaxRate = taxRates?.SalesTaxRate > 0m ? taxRates.SalesTaxRate : 18m;
 
-        return Task.FromResult(new VendorBillPurchaseTaxSettingsDto(
+        return new VendorBillPurchaseTaxSettingsDto(
             supports,
             supports ? PurchaseWithholdingTaxLayout.DefaultWithholdingTaxRate : 0m,
             PurchaseWithholdingTaxLayout.SectionCode,
@@ -280,7 +286,8 @@ public partial class VendorBillService : IVendorBillService
             PurchaseWithholdingTaxLayout.NatureOfPayment,
             supports ? PurchaseWithholdingTaxLayout.DefaultIncomeTax236GRate : 0m,
             PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode,
-            PurchaseWithholdingTaxLayout.IncomeTax236GSectionLabel));
+            PurchaseWithholdingTaxLayout.IncomeTax236GSectionLabel,
+            defaultSalesTaxRate);
     }
 
     public async Task<VendorBillSaveResult> CreateAsync(
