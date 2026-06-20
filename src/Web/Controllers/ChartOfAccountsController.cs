@@ -38,14 +38,11 @@ public class ChartOfAccountsApiController : ControllerBase
 
     [HttpGet("tree")]
     [RequirePermission("ChartOfAccounts.View")]
-    public async Task<IActionResult> Tree(
-        DateTime? fromDate,
-        DateTime? toDate,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Tree(CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await _chartOfAccountsService.GetTreeAsync(fromDate, toDate, cancellationToken));
+            return Ok(await _chartOfAccountsService.GetTreeAsync(cancellationToken));
         }
         catch (InvalidOperationException ex)
         {

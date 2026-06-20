@@ -49,15 +49,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
     }
 
     public async Task<IReadOnlyList<ChartOfAccountTreeTypeDto>> GetTreeAsync(
-        DateTime? fromDate = null,
-        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
         var leafBalanceMap = await GetRunningBalanceMapAsync(companyId, cancellationToken);
-        var periodTotalsMap = fromDate.HasValue && toDate.HasValue
-            ? await GetPeriodJournalTotalsMapAsync(companyId, fromDate.Value.Date, toDate.Value.Date, cancellationToken)
-            : null;
 
         var accounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
@@ -96,7 +91,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 st => st.SubTypeId,
                 st => accounts
                     .Where(a => a.SubTypeId == st.SubTypeId && a.ParentAccountId is null)
-                    .Select(a => BuildTreeNode(a, childrenLookup, leafBalanceMap, periodTotalsMap))
+                    .Select(a => BuildTreeNode(a, childrenLookup, leafBalanceMap))
                     .OrderBy(a => a.AccountNumber)
                     .ToList());
 
@@ -128,7 +123,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                     subTypeRoots[subTypeId.Value] = roots;
                 }
 
-                var orphanNode = BuildTreeNode(orphan, childrenLookup, leafBalanceMap, periodTotalsMap);
+                var orphanNode = BuildTreeNode(orphan, childrenLookup, leafBalanceMap);
                 roots.Add(orphanNode);
                 CollectTreeAccountIds(orphanNode, includedIds);
             }
@@ -1035,12 +1030,11 @@ public class ChartOfAccountsService : IChartOfAccountsService
     private static ChartOfAccountTreeAccountDto BuildTreeNode(
         AccountRow account,
         ILookup<int?, AccountRow> childrenLookup,
-        IReadOnlyDictionary<int, decimal> leafBalanceMap,
-        IReadOnlyDictionary<int, (decimal Debit, decimal Credit)>? periodTotalsMap)
+        IReadOnlyDictionary<int, decimal> leafBalanceMap)
     {
         var children = childrenLookup[account.Id]
             .OrderBy(c => c.AccountNumber)
-            .Select(c => BuildTreeNode(c, childrenLookup, leafBalanceMap, periodTotalsMap))
+            .Select(c => BuildTreeNode(c, childrenLookup, leafBalanceMap))
             .ToList();
 
         if (children.Count > 0)
@@ -1051,8 +1045,6 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 account.AccountName,
                 children.Sum(c => c.OpeningBalance),
                 children.Sum(c => c.RunningBalance),
-                children.Sum(c => c.PeriodDebit),
-                children.Sum(c => c.PeriodCredit),
                 account.IsActive,
                 true,
                 account.ParentAccountId,
@@ -1060,7 +1052,6 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         var rawRunning = leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance);
-        var periodTotals = periodTotalsMap?.GetValueOrDefault(account.Id) ?? (0m, 0m);
 
         return new ChartOfAccountTreeAccountDto(
             account.Id,
@@ -1068,8 +1059,6 @@ public class ChartOfAccountsService : IChartOfAccountsService
             account.AccountName,
             NormalizeBalanceForDisplay(account.OpeningBalance, account.TypeId),
             NormalizeBalanceForDisplay(rawRunning, account.TypeId),
-            periodTotals.Debit,
-            periodTotals.Credit,
             account.IsActive,
             false,
             account.ParentAccountId,
@@ -1081,31 +1070,6 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
     private static decimal NormalizeBalanceForDisplay(decimal netBalance, int? typeId) =>
         UsesCreditNormalDisplay(typeId) ? -netBalance : netBalance;
-
-    private async Task<Dictionary<int, (decimal Debit, decimal Credit)>> GetPeriodJournalTotalsMapAsync(
-        int companyId,
-        DateTime fromDate,
-        DateTime toDate,
-        CancellationToken cancellationToken)
-    {
-        var totals = await _unitOfWork.Repository<JournalEntryLine>()
-            .Query()
-            .Where(l => l.JournalEntry.CompanyId == companyId
-                        && l.JournalEntry.Status == JournalStatus.Posted
-                        && !l.JournalEntry.IsDeleted
-                        && l.JournalEntry.EntryDate >= fromDate
-                        && l.JournalEntry.EntryDate <= toDate)
-            .GroupBy(l => l.ChartOfAccountId)
-            .Select(g => new
-            {
-                AccountId = g.Key,
-                Debit = g.Sum(x => x.Debit),
-                Credit = g.Sum(x => x.Credit)
-            })
-            .ToListAsync(cancellationToken);
-
-        return totals.ToDictionary(x => x.AccountId, x => (x.Debit, x.Credit));
-    }
 
     private async Task<(decimal OpeningBalance, decimal RunningBalance)> GetDisplayBalancesAsync(
         int accountId,

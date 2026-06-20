@@ -123,6 +123,26 @@ if (TryRunRepairInventoryAssetFromQuickBooks(args, out var repairInventoryAssetE
     Environment.Exit(repairInventoryAssetExitCode);
 }
 
+if (TryRunRepairVendorBillsFromQuickBooksAp(args, out var repairVendorBillsApExitCode))
+{
+    Environment.Exit(repairVendorBillsApExitCode);
+}
+
+if (TryRunRepairDeletedSalesInvoiceInventory(args, out var repairDeletedSalesInvoiceInventoryExitCode))
+{
+    Environment.Exit(repairDeletedSalesInvoiceInventoryExitCode);
+}
+
+if (TryRunRepairUnderstatedSalesInvoiceCogs(args, out var repairUnderstatedSalesInvoiceCogsExitCode))
+{
+    Environment.Exit(repairUnderstatedSalesInvoiceCogsExitCode);
+}
+
+if (TryRunAlignInventoryToStockSummary(args, out var alignInventoryStockExitCode))
+{
+    Environment.Exit(alignInventoryStockExitCode);
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
@@ -1206,6 +1226,206 @@ static bool TryRunRepairInventoryAssetFromQuickBooks(string[] args, out int exit
         Console.WriteLine($"Sales invoices updated: {result.SalesInvoicesUpdated}");
         Console.WriteLine($"QuickBooks closing: {result.QuickBooksClosingBalance:N2}");
         Console.WriteLine($"ERP closing (12110): {result.ErpClosingBalance:N2}");
+        Console.WriteLine($"Difference: {result.DifferenceVsQuickBooks:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairVendorBillsFromQuickBooksAp(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 4
+        || !string.Equals(args[0], "--repair-vendor-bills-ap", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var filePath = Path.GetFullPath(args[3]);
+    var applyFixes = !args.Any(a => string.Equals(a, "--dry-run", StringComparison.OrdinalIgnoreCase));
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairVendorBillsFromQuickBooksApAsync(companyId, filePath, applyFixes)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Bills checked: {result.BillsChecked}");
+        Console.WriteLine($"Bills updated: {result.BillsUpdated}");
+        Console.WriteLine($"Missing in ERP: {result.BillsMissingInErp}");
+        Console.WriteLine($"Missing in QuickBooks file: {result.BillsMissingInQuickBooks}");
+        Console.WriteLine($"QuickBooks AP balance: {result.QuickBooksClosingBalance:N2}");
+        Console.WriteLine($"ERP AP balance: {result.ErpAccountsPayableBalance:N2}");
+        Console.WriteLine($"Difference: {result.DifferenceVsQuickBooks:N2}");
+
+        foreach (var mismatch in result.Mismatches)
+        {
+            Console.WriteLine(
+                $"{mismatch.RefNo} | {mismatch.ErpBillNumber ?? "MISSING"} | {mismatch.VendorName} | QB {mismatch.QuickBooksNetAmount:N2} | ERP {mismatch.ErpNetAmount:N2} | Diff {mismatch.Difference:N2}");
+        }
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairDeletedSalesInvoiceInventory(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--repair-deleted-invoice-inventory", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    string? invoiceNumber = null;
+    for (var i = 3; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--invoice-number", StringComparison.OrdinalIgnoreCase))
+        {
+            invoiceNumber = args[i + 1];
+            break;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairDeletedSalesInvoiceInventoryAsync(companyId, invoiceNumber)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Inventory transactions removed: {result.InventoryTransactionsRemoved}");
+        Console.WriteLine($"Journal entries removed: {result.JournalEntriesRemoved}");
+        Console.WriteLine($"Items updated: {result.ItemsUpdated}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunRepairUnderstatedSalesInvoiceCogs(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--repair-invoice-cogs", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    string? invoiceNumber = null;
+    for (var i = 3; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--invoice-number", StringComparison.OrdinalIgnoreCase))
+        {
+            invoiceNumber = args[i + 1];
+            break;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.RepairUnderstatedSalesInvoiceCogsAsync(companyId, invoiceNumber)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Opening transactions fixed: {result.OpeningTransactionsFixed}");
+        Console.WriteLine($"Invoices adjusted: {result.InvoicesAdjusted}");
+        Console.WriteLine($"Total COGS adjusted: {result.TotalCogsAdjusted:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunAlignInventoryToStockSummary(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--align-inventory-stock-summary", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.AlignInventoryAssetToStockSummaryAsync(companyId)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Stock summary target: {result.QuickBooksClosingBalance:N2}");
+        Console.WriteLine($"Old opening balance: {result.OldOpeningBalance:N2}");
+        Console.WriteLine($"New opening balance: {result.NewOpeningBalance:N2}");
+        Console.WriteLine($"Journal net: {result.JournalNet:N2}");
+        Console.WriteLine($"ERP inventory balance: {result.ErpClosingBalance:N2}");
         Console.WriteLine($"Difference: {result.DifferenceVsQuickBooks:N2}");
 
         exitCode = result.Success ? 0 : 1;

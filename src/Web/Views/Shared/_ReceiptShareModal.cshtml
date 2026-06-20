@@ -1,0 +1,36 @@
+<div class="modal fade" id="receiptShareModal" tabindex="-1" aria-labelledby="receiptShareModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="receiptShareModalLabel">Share Customer Receipt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3" id="receipt-share-summary"></p>
+
+                <div class="mb-3">
+                    <label class="form-label" for="receipt-share-whatsapp">WhatsApp number</label>
+                    <input type="text" class="form-control" id="receipt-share-whatsapp" maxlength="20" placeholder="03xx-xxxxxxx or 923xxxxxxxxx" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="receipt-share-message">Message</label>
+                    <textarea class="form-control" id="receipt-share-message" rows="8" maxlength="1000"></textarea>
+                    <div class="form-text">This message is sent on WhatsApp. You can edit it before sending.</div>
+                </div>
+
+                <div class="alert alert-danger d-none" id="receipt-share-error"></div>
+                <div class="alert alert-success d-none" id="receipt-share-success"></div>
+            </div>
+            <div class="modal-footer flex-wrap">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-primary" id="btn-receipt-share-download-pdf">
+                    <i class="fa-solid fa-file-pdf me-1"></i>Download PDF
+                </button>
+                <button type="button" class="btn btn-success" id="btn-receipt-share-whatsapp">
+                    <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -324,6 +324,16 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillSaveResult(false, "Bill number already exists.", null);
         }
 
+        var refNoValidation = await ValidateQuickBooksRefNoAsync(
+            companyId,
+            request.RefNo,
+            null,
+            cancellationToken);
+        if (refNoValidation is not null)
+        {
+            return refNoValidation;
+        }
+
         var lineBuild = await BuildLineEntitiesAsync(request.Lines, companyId, cancellationToken);
         if (!lineBuild.Success)
         {
@@ -459,6 +469,16 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillSaveResult(false, "Bill number already exists.", null);
         }
 
+        var refNoValidation = await ValidateQuickBooksRefNoAsync(
+            companyId,
+            request.RefNo,
+            entity.Id,
+            cancellationToken);
+        if (refNoValidation is not null)
+        {
+            return refNoValidation;
+        }
+
         var lineBuild = await BuildLineEntitiesAsync(request.Lines, companyId, cancellationToken);
         if (!lineBuild.Success)
         {
@@ -561,6 +581,29 @@ public partial class VendorBillService : IVendorBillService
         if (bill.Lines.Count == 0)
         {
             return new VendorBillActionResult(false, "Bill has no line items.", null);
+        }
+
+        if (string.IsNullOrWhiteSpace(bill.RefNo))
+        {
+            return new VendorBillActionResult(
+                false,
+                "Enter the QuickBooks bill number in Ref No before approving.",
+                null);
+        }
+
+        var duplicateRefNo = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .AnyAsync(
+                b => b.CompanyId == companyId
+                     && b.RefNo == bill.RefNo.Trim()
+                     && b.Id != bill.Id,
+                cancellationToken);
+        if (duplicateRefNo)
+        {
+            return new VendorBillActionResult(
+                false,
+                $"QuickBooks bill number {bill.RefNo.Trim()} is already used on another vendor bill.",
+                null);
         }
 
         var accounts = await ResolvePostingAccountsAsync(
@@ -1286,6 +1329,37 @@ public partial class VendorBillService : IVendorBillService
             4 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
             _ => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate)
         };
+    }
+
+    private async Task<VendorBillSaveResult?> ValidateQuickBooksRefNoAsync(
+        int companyId,
+        string? refNo,
+        int? excludeBillId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(refNo))
+        {
+            return null;
+        }
+
+        var normalized = refNo.Trim();
+        var duplicate = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .AnyAsync(
+                b => b.CompanyId == companyId
+                     && b.RefNo == normalized
+                     && (!excludeBillId.HasValue || b.Id != excludeBillId.Value),
+                cancellationToken);
+
+        if (duplicate)
+        {
+            return new VendorBillSaveResult(
+                false,
+                $"Reference / QuickBooks bill number '{normalized}' is already used on another vendor bill.",
+                null);
+        }
+
+        return null;
     }
 
     private sealed record VendorBillAmounts(

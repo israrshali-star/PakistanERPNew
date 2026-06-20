@@ -9,8 +9,6 @@ public interface IChartOfAccountsService
 {
     /// <summary>Returns accounts grouped by account type and sub-type for the tree view.</summary>
     Task<IReadOnlyList<ChartOfAccountTreeTypeDto>> GetTreeAsync(
-        DateTime? fromDate = null,
-        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Returns a single account with running balance metadata.</summary>

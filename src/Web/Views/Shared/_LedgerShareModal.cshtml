@@ -1,0 +1,44 @@
+<div class="modal fade" id="ledgerShareModal" tabindex="-1" aria-labelledby="ledgerShareModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="ledgerShareModalLabel">Share Ledger</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3" id="ledger-share-summary"></p>
+
+                <div class="mb-3">
+                    <label class="form-label" for="ledger-share-email">Email</label>
+                    <input type="email" class="form-control" id="ledger-share-email" maxlength="200" placeholder="party@example.com" />
+                    <div class="form-text" id="ledger-share-email-hint">Sends ledger PDF as email attachment.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="ledger-share-message">Message (optional)</label>
+                    <textarea class="form-control" id="ledger-share-message" rows="3" maxlength="1000"></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="ledger-share-whatsapp">WhatsApp number</label>
+                    <input type="text" class="form-control" id="ledger-share-whatsapp" maxlength="20" placeholder="03xx-xxxxxxx or 923xxxxxxxxx" />
+                </div>
+
+                <div class="alert alert-danger d-none" id="ledger-share-error"></div>
+                <div class="alert alert-success d-none" id="ledger-share-success"></div>
+            </div>
+            <div class="modal-footer flex-wrap">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-primary" id="btn-ledger-share-download-pdf">
+                    <i class="fa-solid fa-file-pdf me-1"></i>Download PDF
+                </button>
+                <button type="button" class="btn btn-success" id="btn-ledger-share-whatsapp">
+                    <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp
+                </button>
+                <button type="button" class="btn btn-primary" id="btn-ledger-share-email">
+                    <i class="fa-solid fa-envelope me-1"></i>Send Email
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

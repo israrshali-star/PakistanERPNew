@@ -21,8 +21,23 @@ public class InventoryCostingService : IInventoryCostingService
         CancellationToken cancellationToken = default)
     {
         var distinctItemIds = itemIds.Distinct().ToList();
-        var layersByItem = await BuildRemainingLayersAsync(companyId, distinctItemIds, cancellationToken);
-        var stackLotRates = await BuildStackLotPurchaseRatesAsync(companyId, distinctItemIds, cancellationToken);
+        var purchaseRatesByItem = distinctItemIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && distinctItemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, i => i.PurchaseRate, cancellationToken);
+
+        var layersByItem = await BuildRemainingLayersAsync(
+            companyId,
+            distinctItemIds,
+            purchaseRatesByItem,
+            cancellationToken);
+        var stackLotRates = await BuildStackLotPurchaseRatesAsync(
+            companyId,
+            distinctItemIds,
+            purchaseRatesByItem,
+            cancellationToken);
 
         return new InventoryCostingBatch(request => CalculateLineCost(request, layersByItem, stackLotRates));
     }
@@ -54,13 +69,7 @@ public class InventoryCostingService : IInventoryCostingService
 
         if (eligibleLayers.Count == 0)
         {
-            var rate = stackLotRates.TryGetValue(
-                StackLotRateKey.From(request.ItemId, resolvedStack, resolvedLot),
-                out var stackLotRate)
-                ? stackLotRate
-                : fallbackRate;
-
-            rate = Math.Round(rate, 2);
+            var rate = ResolveFallbackRate(stackLotRates, request, resolvedStack, resolvedLot, fallbackRate);
             return InventoryLineCostResult.Ok(rate, Math.Round(quantity * rate, 2));
         }
 
@@ -92,20 +101,15 @@ public class InventoryCostingService : IInventoryCostingService
             }
 
             var take = Math.Min(remaining, layer.RemainingQty);
-            totalCost += Math.Round(take * layer.UnitCost, 2);
+            var layerRate = EffectiveLayerRate(layer.UnitCost, fallbackRate, stackLotRates, request, resolvedStack, resolvedLot);
+            totalCost += Math.Round(take * layerRate, 2);
             layer.RemainingQty = Math.Round(layer.RemainingQty - take, 2);
             remaining = Math.Round(remaining - take, 2);
         }
 
         if (remaining > 0m)
         {
-            var rate = stackLotRates.TryGetValue(
-                StackLotRateKey.From(request.ItemId, resolvedStack, resolvedLot),
-                out var stackLotRate)
-                ? stackLotRate
-                : fallbackRate;
-
-            rate = Math.Round(rate, 2);
+            var rate = ResolveFallbackRate(stackLotRates, request, resolvedStack, resolvedLot, fallbackRate);
             totalCost += Math.Round(remaining * rate, 2);
         }
 
@@ -126,17 +130,13 @@ public class InventoryCostingService : IInventoryCostingService
         var availableQty = eligibleLayers.Sum(l => l.RemainingQty);
         if (availableQty <= 0m)
         {
-            var rate = stackLotRates.TryGetValue(
-                StackLotRateKey.From(request.ItemId, resolvedStack, resolvedLot),
-                out var stackLotRate)
-                ? stackLotRate
-                : fallbackRate;
-
-            rate = Math.Round(rate, 2);
+            var rate = ResolveFallbackRate(stackLotRates, request, resolvedStack, resolvedLot, fallbackRate);
             return InventoryLineCostResult.Ok(rate, Math.Round(quantity * rate, 2));
         }
 
-        var layerValue = eligibleLayers.Sum(l => Math.Round(l.RemainingQty * l.UnitCost, 2));
+        var layerValue = eligibleLayers.Sum(l => Math.Round(
+            l.RemainingQty * EffectiveLayerRate(l.UnitCost, fallbackRate, stackLotRates, request, resolvedStack, resolvedLot),
+            2));
         var averageRate = Math.Round(layerValue / availableQty, 2);
         var totalCost = Math.Round(quantity * averageRate, 2);
 
@@ -155,13 +155,8 @@ public class InventoryCostingService : IInventoryCostingService
 
         if (remaining > 0m)
         {
-            var rate = stackLotRates.TryGetValue(
-                StackLotRateKey.From(request.ItemId, resolvedStack, resolvedLot),
-                out var stackLotRate)
-                ? stackLotRate
-                : fallbackRate;
-
-            totalCost += Math.Round(remaining * Math.Round(rate, 2), 2);
+            var rate = ResolveFallbackRate(stackLotRates, request, resolvedStack, resolvedLot, fallbackRate);
+            totalCost += Math.Round(remaining * rate, 2);
         }
 
         totalCost = Math.Round(totalCost, 2);
@@ -169,9 +164,44 @@ public class InventoryCostingService : IInventoryCostingService
         return InventoryLineCostResult.Ok(unitCost, totalCost);
     }
 
+    private static decimal EffectiveLayerRate(
+        decimal layerUnitCost,
+        decimal fallbackRate,
+        Dictionary<StackLotRateKey, decimal> stackLotRates,
+        InventoryLineCostRequest request,
+        string? resolvedStack,
+        string? resolvedLot)
+    {
+        if (layerUnitCost > 0m)
+        {
+            return Math.Round(layerUnitCost, 2);
+        }
+
+        return ResolveFallbackRate(stackLotRates, request, resolvedStack, resolvedLot, fallbackRate);
+    }
+
+    private static decimal ResolveFallbackRate(
+        Dictionary<StackLotRateKey, decimal> stackLotRates,
+        InventoryLineCostRequest request,
+        string? resolvedStack,
+        string? resolvedLot,
+        decimal fallbackRate)
+    {
+        if (stackLotRates.TryGetValue(
+                StackLotRateKey.From(request.ItemId, resolvedStack, resolvedLot),
+                out var stackLotRate)
+            && stackLotRate > 0m)
+        {
+            return Math.Round(stackLotRate, 2);
+        }
+
+        return Math.Round(fallbackRate, 2);
+    }
+
     private async Task<Dictionary<int, List<CostLayer>>> BuildRemainingLayersAsync(
         int companyId,
         IReadOnlyList<int> itemIds,
+        IReadOnlyDictionary<int, decimal> purchaseRatesByItem,
         CancellationToken cancellationToken)
     {
         if (itemIds.Count == 0)
@@ -214,6 +244,15 @@ public class InventoryCostingService : IInventoryCostingService
             {
                 case InventoryTransactionType.StockIn:
                 case InventoryTransactionType.Opening:
+                {
+                    var unitCost = Math.Round(transaction.UnitCost, 2);
+                    if (unitCost <= 0m
+                        && purchaseRatesByItem.TryGetValue(transaction.ItemId, out var purchaseRate)
+                        && purchaseRate > 0m)
+                    {
+                        unitCost = Math.Round(purchaseRate, 2);
+                    }
+
                     layers.Add(new CostLayer
                     {
                         TransactionId = transaction.Id,
@@ -221,9 +260,10 @@ public class InventoryCostingService : IInventoryCostingService
                         StackNo = stackNo,
                         LotNo = lotNo,
                         RemainingQty = Math.Round(transaction.Quantity, 2),
-                        UnitCost = Math.Round(transaction.UnitCost, 2)
+                        UnitCost = unitCost
                     });
                     break;
+                }
 
                 case InventoryTransactionType.StockOut:
                     ConsumeLayers(
@@ -237,6 +277,14 @@ public class InventoryCostingService : IInventoryCostingService
                 case InventoryTransactionType.Adjustment:
                     if (transaction.Quantity > 0m)
                     {
+                        var unitCost = Math.Round(transaction.UnitCost, 2);
+                        if (unitCost <= 0m
+                            && purchaseRatesByItem.TryGetValue(transaction.ItemId, out var purchaseRate)
+                            && purchaseRate > 0m)
+                        {
+                            unitCost = Math.Round(purchaseRate, 2);
+                        }
+
                         layers.Add(new CostLayer
                         {
                             TransactionId = transaction.Id,
@@ -244,7 +292,7 @@ public class InventoryCostingService : IInventoryCostingService
                             StackNo = stackNo,
                             LotNo = lotNo,
                             RemainingQty = Math.Round(transaction.Quantity, 2),
-                            UnitCost = Math.Round(transaction.UnitCost, 2)
+                            UnitCost = unitCost
                         });
                     }
                     else if (transaction.Quantity < 0m)
@@ -319,6 +367,7 @@ public class InventoryCostingService : IInventoryCostingService
     private async Task<Dictionary<StackLotRateKey, decimal>> BuildStackLotPurchaseRatesAsync(
         int companyId,
         IReadOnlyList<int> itemIds,
+        IReadOnlyDictionary<int, decimal> purchaseRatesByItem,
         CancellationToken cancellationToken)
     {
         if (itemIds.Count == 0)
@@ -359,8 +408,31 @@ public class InventoryCostingService : IInventoryCostingService
                 continue;
             }
 
-            var weightedRate = group.Sum(x => x.Quantity * x.Rate) / totalQty;
-            rates[group.Key] = Math.Round(weightedRate, 2);
+            var ratedLines = group.Where(x => x.Rate > 0m).ToList();
+            decimal weightedRate;
+            if (ratedLines.Count > 0)
+            {
+                var ratedQty = ratedLines.Sum(x => x.Quantity);
+                weightedRate = ratedQty > 0m
+                    ? ratedLines.Sum(x => x.Quantity * x.Rate) / ratedQty
+                    : 0m;
+            }
+            else
+            {
+                weightedRate = 0m;
+            }
+
+            if (weightedRate <= 0m
+                && purchaseRatesByItem.TryGetValue(group.Key.ItemId, out var purchaseRate)
+                && purchaseRate > 0m)
+            {
+                weightedRate = purchaseRate;
+            }
+
+            if (weightedRate > 0m)
+            {
+                rates[group.Key] = Math.Round(weightedRate, 2);
+            }
         }
 
         return rates;

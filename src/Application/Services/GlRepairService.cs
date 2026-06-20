@@ -17,8 +17,9 @@ public class GlRepairService : IGlRepairService
 {
     private const string CartageItemCode = "ITEM-0002";
     private const int CogsTypeId = 5;
-    private const decimal Company3FurtherTaxOpening = 0m;
-    private const decimal Company3SalesTax18Opening = -156_159m;
+    // Option B: target closing balances (June collected) for company 3 sales tax sub-accounts.
+    private const decimal Company3FurtherTaxTargetClosing = 593_252.32m;
+    private const decimal Company3SalesTax18TargetClosing = 3_452_826.60m;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
@@ -273,10 +274,45 @@ public class GlRepairService : IGlRepairService
 
             decimal furtherOpening;
             decimal salesTax18Opening;
+            var bankPaymentsReposted = 0;
+
             if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
             {
-                furtherOpening = Company3FurtherTaxOpening;
-                salesTax18Opening = Company3SalesTax18Opening;
+                parent.OpeningBalance = 0m;
+                parent.UpdatedAt = now;
+                parent.UpdatedBy = userName;
+                furtherTaxAccount.OpeningBalance = 0m;
+                furtherTaxAccount.UpdatedAt = now;
+                furtherTaxAccount.UpdatedBy = userName;
+                salesTax18Account.OpeningBalance = 0m;
+                salesTax18Account.UpdatedAt = now;
+                salesTax18Account.UpdatedBy = userName;
+
+                _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+                _unitOfWork.Repository<ChartOfAccount>().Update(furtherTaxAccount);
+                _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18Account);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                bankPaymentsReposted = await RepostSalesTaxBankPaymentsOnParentAsync(
+                    companyId,
+                    parent.Id,
+                    cancellationToken);
+
+                var furtherJournalMovement = await GetPostedJournalMovementAsync(
+                    companyId,
+                    furtherTaxAccount.Id,
+                    cancellationToken);
+                var salesTax18JournalMovement = await GetPostedJournalMovementAsync(
+                    companyId,
+                    salesTax18Account.Id,
+                    cancellationToken);
+
+                furtherOpening = Math.Round(
+                    -Company3FurtherTaxTargetClosing - furtherJournalMovement,
+                    2);
+                salesTax18Opening = Math.Round(
+                    -Company3SalesTax18TargetClosing - salesTax18JournalMovement,
+                    2);
             }
             else
             {
@@ -293,28 +329,46 @@ public class GlRepairService : IGlRepairService
 
                 furtherOpening = Math.Round(totalOpening * 4m / 22m, 2);
                 salesTax18Opening = Math.Round(totalOpening - furtherOpening, 2);
+
+                parent.OpeningBalance = 0m;
+                parent.UpdatedAt = now;
+                parent.UpdatedBy = userName;
+                furtherTaxAccount.OpeningBalance = furtherOpening;
+                furtherTaxAccount.UpdatedAt = now;
+                furtherTaxAccount.UpdatedBy = userName;
+                salesTax18Account.OpeningBalance = salesTax18Opening;
+                salesTax18Account.UpdatedAt = now;
+                salesTax18Account.UpdatedBy = userName;
+
+                _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+                _unitOfWork.Repository<ChartOfAccount>().Update(furtherTaxAccount);
+                _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18Account);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                bankPaymentsReposted = await RepostSalesTaxBankPaymentsOnParentAsync(
+                    companyId,
+                    parent.Id,
+                    cancellationToken);
             }
 
-            parent.OpeningBalance = 0m;
-            parent.UpdatedAt = now;
-            parent.UpdatedBy = userName;
-            furtherTaxAccount.OpeningBalance = furtherOpening;
-            furtherTaxAccount.UpdatedAt = now;
-            furtherTaxAccount.UpdatedBy = userName;
-            salesTax18Account.OpeningBalance = salesTax18Opening;
-            salesTax18Account.UpdatedAt = now;
-            salesTax18Account.UpdatedBy = userName;
+            if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
+            {
+                parent.OpeningBalance = 0m;
+                parent.UpdatedAt = now;
+                parent.UpdatedBy = userName;
+                furtherTaxAccount.OpeningBalance = furtherOpening;
+                furtherTaxAccount.UpdatedAt = now;
+                furtherTaxAccount.UpdatedBy = userName;
+                salesTax18Account.OpeningBalance = salesTax18Opening;
+                salesTax18Account.UpdatedAt = now;
+                salesTax18Account.UpdatedBy = userName;
 
-            _unitOfWork.Repository<ChartOfAccount>().Update(parent);
-            _unitOfWork.Repository<ChartOfAccount>().Update(furtherTaxAccount);
-            _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18Account);
+                _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+                _unitOfWork.Repository<ChartOfAccount>().Update(furtherTaxAccount);
+                _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18Account);
+            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            var bankPaymentsReposted = await RepostSalesTaxBankPaymentsOnParentAsync(
-                companyId,
-                parent.Id,
-                cancellationToken);
 
             await RecalculateOpeningBalanceEquityPlugAsync(companyId, now, userName, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -325,7 +379,7 @@ public class GlRepairService : IGlRepairService
 
             return new SalesTaxSubAccountRepairResult(
                 true,
-                $"Sales tax openings set: {FurtherTaxPayable}={furtherOpening:N2}, {SalesTaxPayable18}={salesTax18Opening:N2}; parent {SalesTaxPayable} cleared; OBE replugged.",
+                $"Sales tax openings set: {FurtherTaxPayable}={furtherOpening:N2}, {SalesTaxPayable18}={salesTax18Opening:N2}; parent {SalesTaxPayable} cleared; OBE replugged (Option B closings {Company3FurtherTaxTargetClosing:N2} / {Company3SalesTax18TargetClosing:N2}).",
                 furtherOpening,
                 salesTax18Opening,
                 bankPaymentsReposted,
@@ -1229,6 +1283,390 @@ public class GlRepairService : IGlRepairService
         {
             _logger.LogError(ex, "Item stock recalculation failed for company {CompanyId}", companyId);
             return new RecalculateItemStockResult(false, ex.Message, 0, 0m, 0m);
+        }
+    }
+
+    public async Task<DeletedSalesInvoiceInventoryRepairResult> RepairDeletedSalesInvoiceInventoryAsync(
+        int companyId,
+        string? invoiceNumber = null,
+        CancellationToken cancellationToken = default)
+    {
+        var companyExists = await _unitOfWork.Repository<Company>()
+            .Query()
+            .AnyAsync(c => c.Id == companyId, cancellationToken);
+
+        if (!companyExists)
+        {
+            return new DeletedSalesInvoiceInventoryRepairResult(
+                false,
+                $"Company id {companyId} was not found.",
+                0,
+                0,
+                0);
+        }
+
+        try
+        {
+            var now = DateTime.UtcNow;
+            var userName = _currentUser.UserName ?? "repair-deleted-invoice-inventory";
+
+            var activePostedNumbers = await _unitOfWork.Repository<SalesInvoice>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && i.Status == InvoiceStatus.Posted)
+                .Select(i => i.InvoiceNumber)
+                .ToListAsync(cancellationToken);
+            var activePostedNumberSet = activePostedNumbers.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var inventoryQuery = _unitOfWork.Repository<InventoryTransaction>()
+                .Query(asNoTracking: false)
+                .Where(t => t.CompanyId == companyId
+                            && t.ReferenceNo != null
+                            && t.ReferenceNo.StartsWith(AppConstants.InvoiceNumberPrefix));
+
+            if (!string.IsNullOrWhiteSpace(invoiceNumber))
+            {
+                inventoryQuery = inventoryQuery.Where(t => t.ReferenceNo == invoiceNumber.Trim());
+            }
+
+            var orphanInventoryTransactions = await inventoryQuery
+                .Where(t => !activePostedNumberSet.Contains(t.ReferenceNo!))
+                .ToListAsync(cancellationToken);
+
+            var affectedItemIds = orphanInventoryTransactions
+                .Select(t => t.ItemId)
+                .Distinct()
+                .ToList();
+
+            foreach (var transaction in orphanInventoryTransactions)
+            {
+                _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+            }
+
+            var salesInvoiceJournals = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .Where(j => j.CompanyId == companyId
+                            && !j.IsDeleted
+                            && j.ReferenceType == ReferenceTypes.SalesInvoice
+                            && j.ReferenceId != null)
+                .ToListAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(invoiceNumber))
+            {
+                var invoiceIdsForNumber = await _unitOfWork.Repository<SalesInvoice>()
+                    .Query(asNoTracking: false)
+                    .IgnoreQueryFilters()
+                    .Where(i => i.CompanyId == companyId && i.InvoiceNumber == invoiceNumber.Trim())
+                    .Select(i => i.Id)
+                    .ToListAsync(cancellationToken);
+
+                salesInvoiceJournals = salesInvoiceJournals
+                    .Where(j => invoiceIdsForNumber.Contains(j.ReferenceId!.Value))
+                    .ToList();
+            }
+
+            var referencedInvoiceIds = salesInvoiceJournals
+                .Select(j => j.ReferenceId!.Value)
+                .Distinct()
+                .ToList();
+
+            var referencedInvoices = referencedInvoiceIds.Count == 0
+                ? new Dictionary<int, (bool IsDeleted, InvoiceStatus Status, int? JournalEntryId)>()
+                : await _unitOfWork.Repository<SalesInvoice>()
+                    .Query(asNoTracking: false)
+                    .IgnoreQueryFilters()
+                    .Where(i => i.CompanyId == companyId && referencedInvoiceIds.Contains(i.Id))
+                    .Select(i => new { i.Id, i.IsDeleted, i.Status, i.JournalEntryId })
+                    .ToDictionaryAsync(
+                        i => i.Id,
+                        i => (i.IsDeleted, i.Status, i.JournalEntryId),
+                        cancellationToken);
+
+            var orphanJournalEntries = new List<JournalEntry>();
+            foreach (var journal in salesInvoiceJournals)
+            {
+                if (!referencedInvoices.TryGetValue(journal.ReferenceId!.Value, out var invoiceState))
+                {
+                    orphanJournalEntries.Add(journal);
+                    continue;
+                }
+
+                if (invoiceState.IsDeleted
+                    || invoiceState.Status != InvoiceStatus.Posted
+                    || invoiceState.JournalEntryId != journal.Id)
+                {
+                    orphanJournalEntries.Add(journal);
+                }
+            }
+
+            foreach (var journal in orphanJournalEntries)
+            {
+                journal.IsDeleted = true;
+                journal.DeletedAt = now;
+                journal.DeletedBy = userName;
+                _unitOfWork.Repository<JournalEntry>().Update(journal);
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var itemsUpdated = 0;
+            if (affectedItemIds.Count > 0)
+            {
+                itemsUpdated = await RecalculateAllItemStockAsync(companyId, now, userName, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _itemCartonSyncService.SyncItemsAsync(companyId, affectedItemIds, cancellationToken);
+            }
+
+            return new DeletedSalesInvoiceInventoryRepairResult(
+                true,
+                orphanInventoryTransactions.Count > 0 || orphanJournalEntries.Count > 0
+                    ? $"Removed {orphanInventoryTransactions.Count} orphan inventory transaction(s) and {orphanJournalEntries.Count} orphan journal entry(s)."
+                    : "No orphan sales invoice inventory or journal entries found.",
+                orphanInventoryTransactions.Count,
+                orphanJournalEntries.Count,
+                itemsUpdated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Deleted sales invoice inventory repair failed for company {CompanyId}", companyId);
+            return new DeletedSalesInvoiceInventoryRepairResult(false, ex.Message, 0, 0, 0);
+        }
+    }
+
+    public async Task<SalesInvoiceCogsRepairResult> RepairUnderstatedSalesInvoiceCogsAsync(
+        int companyId,
+        string? invoiceNumber = null,
+        CancellationToken cancellationToken = default)
+    {
+        var companyExists = await _unitOfWork.Repository<Company>()
+            .Query()
+            .AnyAsync(c => c.Id == companyId, cancellationToken);
+
+        if (!companyExists)
+        {
+            return new SalesInvoiceCogsRepairResult(
+                false,
+                $"Company id {companyId} was not found.",
+                0,
+                0,
+                0m);
+        }
+
+        try
+        {
+            var now = DateTime.UtcNow;
+            var userName = _currentUser.UserName ?? "repair-invoice-cogs";
+
+            var openingTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+                .Query(asNoTracking: false)
+                .Where(t => t.CompanyId == companyId
+                            && t.UnitCost <= 0m
+                            && (t.ReferenceNo == AppConstants.OpeningStockBillNumber
+                                || t.TransactionType == InventoryTransactionType.Opening))
+                .ToListAsync(cancellationToken);
+
+            var openingItemIds = openingTransactions.Select(t => t.ItemId).Distinct().ToList();
+            var openingPurchaseRates = openingItemIds.Count == 0
+                ? new Dictionary<int, decimal>()
+                : await _unitOfWork.Repository<Item>()
+                    .Query()
+                    .Where(i => i.CompanyId == companyId && openingItemIds.Contains(i.Id) && i.PurchaseRate > 0m)
+                    .ToDictionaryAsync(i => i.Id, i => i.PurchaseRate, cancellationToken);
+
+            var openingTransactionsFixed = 0;
+            foreach (var transaction in openingTransactions)
+            {
+                if (!openingPurchaseRates.TryGetValue(transaction.ItemId, out var purchaseRate))
+                {
+                    continue;
+                }
+
+                var unitCost = Math.Round(purchaseRate, 2);
+                var totalCost = Math.Round(transaction.Quantity * unitCost, 2);
+                if (transaction.UnitCost == unitCost && transaction.TotalCost == totalCost)
+                {
+                    continue;
+                }
+
+                transaction.UnitCost = unitCost;
+                transaction.TotalCost = totalCost;
+                transaction.UpdatedAt = now;
+                transaction.UpdatedBy = userName;
+                _unitOfWork.Repository<InventoryTransaction>().Update(transaction);
+                openingTransactionsFixed++;
+            }
+
+            var cogsAccountId = await GetAccountIdAsync(companyId, CostOfGoodsSold, cancellationToken);
+            var inventoryAccountId = await GetAccountIdAsync(companyId, InventoryAsset, cancellationToken);
+            if (!cogsAccountId.HasValue || !inventoryAccountId.HasValue)
+            {
+                return new SalesInvoiceCogsRepairResult(
+                    false,
+                    "COGS or inventory asset account was not found.",
+                    openingTransactionsFixed,
+                    0,
+                    0m);
+            }
+
+            var cartageItemIds = await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && i.ItemCode == CartageItemCode)
+                .Select(i => i.Id)
+                .ToListAsync(cancellationToken);
+            var cartageItemIdSet = cartageItemIds.ToHashSet();
+
+            var invoiceQuery = _unitOfWork.Repository<SalesInvoice>()
+                .Query(asNoTracking: false)
+                .Include(i => i.Lines)
+                .Where(i => i.CompanyId == companyId
+                            && i.Status == InvoiceStatus.Posted
+                            && i.JournalEntryId != null
+                            && i.InvoiceType != InvoiceType.DebitNote);
+
+            if (!string.IsNullOrWhiteSpace(invoiceNumber))
+            {
+                invoiceQuery = invoiceQuery.Where(i => i.InvoiceNumber == invoiceNumber.Trim());
+            }
+
+            var invoices = await invoiceQuery.ToListAsync(cancellationToken);
+            if (invoices.Count == 0)
+            {
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                return new SalesInvoiceCogsRepairResult(
+                    true,
+                    openingTransactionsFixed > 0
+                        ? $"Updated {openingTransactionsFixed} opening stock transaction(s). No posted invoices to adjust."
+                        : "No opening stock or invoice COGS adjustments were needed.",
+                    openingTransactionsFixed,
+                    0,
+                    0m);
+            }
+
+            var itemIds = invoices
+                .SelectMany(i => i.Lines.Select(l => l.ItemId))
+                .Distinct()
+                .ToList();
+
+            var items = await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+            var stackLotRates = await BuildStackLotPurchaseRatesForRepairAsync(companyId, itemIds, cancellationToken);
+
+            var invoicesAdjusted = 0;
+            var totalCogsAdjusted = 0m;
+
+            foreach (var invoice in invoices.OrderBy(i => i.InvoiceDate).ThenBy(i => i.Id))
+            {
+                if (!invoice.JournalEntryId.HasValue)
+                {
+                    continue;
+                }
+
+                var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+                    .Query(asNoTracking: false)
+                    .Where(l => l.JournalEntryId == invoice.JournalEntryId.Value)
+                    .ToListAsync(cancellationToken);
+
+                var cogsLine = journalLines.FirstOrDefault(l => l.ChartOfAccountId == cogsAccountId.Value);
+                var inventoryLine = journalLines.FirstOrDefault(l => l.ChartOfAccountId == inventoryAccountId.Value);
+                if (cogsLine is null || inventoryLine is null)
+                {
+                    continue;
+                }
+
+                decimal expectedCogs = 0m;
+                foreach (var line in invoice.Lines)
+                {
+                    if (cartageItemIdSet.Contains(line.ItemId))
+                    {
+                        continue;
+                    }
+
+                    if (!items.TryGetValue(line.ItemId, out var item) || item.ItemType == ItemType.Service)
+                    {
+                        continue;
+                    }
+
+                    var quantity = Math.Round(line.Quantity, 2);
+                    if (quantity <= 0m)
+                    {
+                        continue;
+                    }
+
+                    var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim();
+                    var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim();
+                    var rate = ResolveStackLotRate(stackLotRates, item.Id, stackNo, lotNo, item.PurchaseRate);
+                    var lineCost = Math.Round(quantity * rate, 2);
+                    expectedCogs += lineCost;
+
+                    var inventoryTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+                        .Query(asNoTracking: false)
+                        .Where(t => t.CompanyId == companyId
+                                    && t.ReferenceNo == invoice.InvoiceNumber
+                                    && t.ItemId == line.ItemId
+                                    && t.TransactionType == InventoryTransactionType.StockOut
+                                    && t.Quantity == quantity)
+                        .ToListAsync(cancellationToken);
+
+                    var inventoryTransaction = inventoryTransactions.FirstOrDefault(t =>
+                        string.Equals(t.StackNo ?? string.Empty, stackNo ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(t.LotNo ?? string.Empty, lotNo ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+                    if (inventoryTransaction is not null
+                        && (inventoryTransaction.UnitCost != rate || inventoryTransaction.TotalCost != lineCost))
+                    {
+                        inventoryTransaction.UnitCost = rate;
+                        inventoryTransaction.TotalCost = lineCost;
+                        inventoryTransaction.UpdatedAt = now;
+                        inventoryTransaction.UpdatedBy = userName;
+                        _unitOfWork.Repository<InventoryTransaction>().Update(inventoryTransaction);
+                    }
+                }
+
+                expectedCogs = Math.Round(expectedCogs, 2);
+                var actualCogs = Math.Round(cogsLine.Debit - cogsLine.Credit, 2);
+                var delta = Math.Round(expectedCogs - actualCogs, 2);
+                if (Math.Abs(delta) < 0.01m)
+                {
+                    continue;
+                }
+
+                if (invoice.InvoiceType == InvoiceType.CreditNote)
+                {
+                    cogsLine.Credit = Math.Round(cogsLine.Credit + delta, 2);
+                    inventoryLine.Debit = Math.Round(inventoryLine.Debit + delta, 2);
+                }
+                else
+                {
+                    cogsLine.Debit = Math.Round(cogsLine.Debit + delta, 2);
+                    inventoryLine.Credit = Math.Round(inventoryLine.Credit + delta, 2);
+                }
+
+                cogsLine.Memo ??= "Cost of Goods Sold";
+                inventoryLine.Memo ??= "Inventory Asset";
+                _unitOfWork.Repository<JournalEntryLine>().Update(cogsLine);
+                _unitOfWork.Repository<JournalEntryLine>().Update(inventoryLine);
+
+                invoicesAdjusted++;
+                totalCogsAdjusted += delta;
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return new SalesInvoiceCogsRepairResult(
+                true,
+                invoicesAdjusted > 0 || openingTransactionsFixed > 0
+                    ? $"Fixed {openingTransactionsFixed} opening stock transaction(s) and adjusted COGS on {invoicesAdjusted} invoice(s) by {totalCogsAdjusted:N2}."
+                    : "Opening stock and invoice COGS already match expected inventory cost.",
+                openingTransactionsFixed,
+                invoicesAdjusted,
+                totalCogsAdjusted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Sales invoice COGS repair failed for company {CompanyId}", companyId);
+            return new SalesInvoiceCogsRepairResult(false, ex.Message, 0, 0, 0m);
         }
     }
 
@@ -3548,6 +3986,24 @@ public class GlRepairService : IGlRepairService
         _unitOfWork.Repository<ChartOfAccount>().Update(account);
     }
 
+    private async Task<decimal> GetPostedJournalMovementAsync(
+        int companyId,
+        int chartOfAccountId,
+        CancellationToken cancellationToken)
+    {
+        return Math.Round(
+            await _unitOfWork.Repository<JournalEntryLine>()
+                .Query()
+                .Where(l =>
+                    l.ChartOfAccountId == chartOfAccountId
+                    && l.JournalEntry.CompanyId == companyId
+                    && l.JournalEntry.Status == JournalStatus.Posted
+                    && !l.JournalEntry.IsDeleted)
+                .Select(l => l.Debit - l.Credit)
+                .SumAsync(cancellationToken),
+            2);
+    }
+
     private async Task<decimal> GetAccountBalanceAsync(
         int companyId,
         string accountNumber,
@@ -3819,6 +4275,96 @@ public class GlRepairService : IGlRepairService
         }
     }
 
+    public async Task<InventoryAssetAlignResult> AlignInventoryAssetToStockSummaryAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "inventory-stock-align";
+        var obeAccountId = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
+        if (!obeAccountId.HasValue)
+        {
+            return new InventoryAssetAlignResult(
+                false,
+                "Opening Balance Equity account not found.",
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m);
+        }
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            var inventoryAccount = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query(asNoTracking: false)
+                .FirstAsync(a => a.CompanyId == companyId && a.AccountNumber == InventoryAsset, cancellationToken);
+
+            var stockSummaryValue = await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId)
+                .Select(i => i.CurrentStock * i.PurchaseRate)
+                .SumAsync(cancellationToken);
+
+            stockSummaryValue = Math.Round(stockSummaryValue, 2);
+
+            var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+                .Query()
+                .Where(l =>
+                    l.ChartOfAccountId == inventoryAccount.Id
+                    && l.JournalEntry.CompanyId == companyId
+                    && l.JournalEntry.Status == JournalStatus.Posted
+                    && !l.JournalEntry.IsDeleted)
+                .Select(l => l.Debit - l.Credit)
+                .SumAsync(cancellationToken);
+
+            var oldOpening = inventoryAccount.OpeningBalance;
+            var newOpening = Math.Round(stockSummaryValue - journalNet, 2);
+            inventoryAccount.OpeningBalance = newOpening;
+            inventoryAccount.UpdatedAt = now;
+            inventoryAccount.UpdatedBy = userName;
+            _unitOfWork.Repository<ChartOfAccount>().Update(inventoryAccount);
+
+            await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId.Value, now, userName, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            var erpClosing = await GetAccountBalanceAsync(companyId, InventoryAsset, cancellationToken);
+
+            return new InventoryAssetAlignResult(
+                true,
+                Math.Abs(erpClosing - stockSummaryValue) < 0.02m
+                    ? "Inventory asset balance now matches stock summary valuation."
+                    : $"Inventory asset adjusted toward stock summary. Remaining difference: {Math.Round(erpClosing - stockSummaryValue, 2):N2}.",
+                stockSummaryValue,
+                oldOpening,
+                newOpening,
+                journalNet,
+                erpClosing,
+                stockSummaryValue,
+                Math.Round(erpClosing - stockSummaryValue, 2));
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Inventory asset stock summary alignment failed for company {CompanyId}", companyId);
+            return new InventoryAssetAlignResult(
+                false,
+                ex.Message,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m);
+        }
+    }
+
     private async Task RestoreInventoryOpeningBalanceAsync(
         int companyId,
         decimal openingBalance,
@@ -4001,6 +4547,375 @@ public class GlRepairService : IGlRepairService
 
         return true;
     }
+
+    public async Task<VendorBillApRepairResult> RepairVendorBillsFromQuickBooksApAsync(
+        int companyId,
+        string accountsPayableFilePath,
+        bool applyFixes = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(accountsPayableFilePath))
+        {
+            return new VendorBillApRepairResult(
+                false,
+                $"Accounts Payable file not found: {accountsPayableFilePath}",
+                0,
+                0,
+                0,
+                0,
+                0m,
+                0m,
+                0m,
+                Array.Empty<VendorBillApMismatchDto>());
+        }
+
+        var quickBooks = QuickBooksAccountsPayableReader.Read(accountsPayableFilePath);
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "ap-qb-repair";
+
+        var inventoryAccountId = await GetAccountIdAsync(companyId, InventoryAsset, cancellationToken);
+        var payableAccountId = await GetAccountIdAsync(companyId, AccountsPayable, cancellationToken);
+        var inputTaxAccountId = await GetAccountIdAsync(companyId, PrepaidSalesTax, cancellationToken);
+
+        if (!inventoryAccountId.HasValue || !payableAccountId.HasValue || !inputTaxAccountId.HasValue)
+        {
+            return new VendorBillApRepairResult(
+                false,
+                "Inventory, Accounts Payable, or Input Tax account not found.",
+                0,
+                0,
+                0,
+                0,
+                quickBooks.ClosingBalance ?? 0m,
+                0m,
+                0m,
+                Array.Empty<VendorBillApMismatchDto>());
+        }
+
+        var erpBills = await _unitOfWork.Repository<VendorBill>()
+            .Query(asNoTracking: false)
+            .Include(b => b.Vendor)
+            .Where(b => b.CompanyId == companyId
+                        && b.Status == BillStatus.Approved
+                        && !string.IsNullOrWhiteSpace(b.RefNo))
+            .ToListAsync(cancellationToken);
+
+        var erpByRef = erpBills
+            .GroupBy(b => b.RefNo!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var mismatches = new List<VendorBillApMismatchDto>();
+        var billsUpdated = 0;
+        var missingInErp = 0;
+        var fixCandidates = new List<(VendorBill Bill, decimal TargetNet)>();
+
+        foreach (var qbBill in quickBooks.Bills)
+        {
+            if (!erpByRef.TryGetValue(qbBill.RefNo, out var erpBill))
+            {
+                missingInErp++;
+                mismatches.Add(new VendorBillApMismatchDto(
+                    qbBill.RefNo,
+                    null,
+                    qbBill.VendorName,
+                    qbBill.NetAmount,
+                    0m,
+                    qbBill.NetAmount));
+                continue;
+            }
+
+            var difference = Math.Round(qbBill.NetAmount - erpBill.NetAmount, 2);
+            if (difference == 0m)
+            {
+                continue;
+            }
+
+            mismatches.Add(new VendorBillApMismatchDto(
+                qbBill.RefNo,
+                erpBill.BillNumber,
+                erpBill.Vendor.VendorName,
+                qbBill.NetAmount,
+                erpBill.NetAmount,
+                difference));
+
+            if (applyFixes)
+            {
+                fixCandidates.Add((erpBill, qbBill.NetAmount));
+            }
+        }
+
+        if (applyFixes && fixCandidates.Count > 0)
+        {
+            try
+            {
+                await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+                foreach (var (bill, targetNet) in fixCandidates)
+                {
+                    var changed = await AdjustApprovedVendorBillNetAmountAsync(
+                        bill,
+                        targetNet,
+                        inventoryAccountId.Value,
+                        payableAccountId.Value,
+                        now,
+                        userName,
+                        cancellationToken);
+
+                    if (changed)
+                    {
+                        billsUpdated++;
+                    }
+                }
+
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                _logger.LogError(ex, "QuickBooks AP bill repair failed for company {CompanyId}", companyId);
+                return new VendorBillApRepairResult(
+                    false,
+                    ex.Message,
+                    quickBooks.Bills.Count,
+                    0,
+                    missingInErp,
+                    0,
+                    quickBooks.ClosingBalance ?? 0m,
+                    0m,
+                    0m,
+                    mismatches);
+            }
+        }
+
+        var qbRefNos = quickBooks.Bills
+            .Select(b => b.RefNo)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missingInQuickBooks = erpBills.Count(b => !qbRefNos.Contains(b.RefNo!.Trim()));
+
+        var qbClosing = quickBooks.ClosingBalance ?? 0m;
+        var erpApStoredNet = await GetAccountBalanceAsync(companyId, AccountsPayable, cancellationToken);
+        var qbDisplay = qbClosing == 0m ? 0m : Math.Round(Math.Abs(qbClosing), 2);
+        var erpDisplay = Math.Round(Math.Abs(erpApStoredNet), 2);
+        var diff = Math.Round(erpDisplay - qbDisplay, 2);
+
+        var message = applyFixes
+            ? billsUpdated > 0
+                ? $"Updated {billsUpdated} vendor bill(s) to match QuickBooks AP amounts."
+                : mismatches.Count == 0
+                    ? "All matched QuickBooks AP bill amounts are already correct."
+                    : "No bill amounts were changed."
+            : $"Found {mismatches.Count} QuickBooks AP mismatch(es). Run with --apply to fix.";
+
+        return new VendorBillApRepairResult(
+            true,
+            message,
+            quickBooks.Bills.Count,
+            billsUpdated,
+            missingInErp,
+            missingInQuickBooks,
+            qbDisplay,
+            erpDisplay,
+            diff,
+            mismatches);
+    }
+
+    private async Task<bool> AdjustApprovedVendorBillNetAmountAsync(
+        VendorBill bill,
+        decimal targetNetAmount,
+        int inventoryAccountId,
+        int payableAccountId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        targetNetAmount = Math.Round(targetNetAmount, 2);
+        var delta = Math.Round(targetNetAmount - bill.NetAmount, 2);
+        if (delta == 0m)
+        {
+            return false;
+        }
+
+        if (!bill.JournalEntryId.HasValue)
+        {
+            throw new InvalidOperationException(
+                $"Vendor bill {bill.BillNumber} has no posted journal entry.");
+        }
+
+        var lines = await _unitOfWork.Repository<VendorBillLine>()
+            .Query(asNoTracking: false)
+            .Where(l => l.VendorBillId == bill.Id)
+            .OrderBy(l => l.Id)
+            .ToListAsync(cancellationToken);
+
+        if (lines.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Vendor bill {bill.BillNumber} has no line items.");
+        }
+
+        var taxAmount = Math.Round(bill.TaxAmount, 2);
+        var withholdingTaxAmount = Math.Round(bill.WithholdingTaxAmount, 2);
+        var incomeTax236GAmount = Math.Round(bill.IncomeTax236GAmount, 2);
+        var targetSubTotal = Math.Round(
+            targetNetAmount - taxAmount + withholdingTaxAmount + incomeTax236GAmount,
+            2);
+        var currentSubTotal = Math.Round(lines.Sum(l => l.Amount), 2);
+        var subDelta = Math.Round(targetSubTotal - currentSubTotal, 2);
+
+        var adjustLine = lines[^1];
+        adjustLine.Amount = Math.Round(adjustLine.Amount + subDelta, 2);
+        if (adjustLine.Quantity > 0m)
+        {
+            adjustLine.Rate = Math.Round(adjustLine.Amount / adjustLine.Quantity, 2);
+        }
+
+        var inventoryTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == bill.CompanyId && t.ReferenceNo == bill.BillNumber)
+            .ToListAsync(cancellationToken);
+
+        if (adjustLine.ItemId.HasValue)
+        {
+            var matchingTxn = inventoryTransactions
+                .FirstOrDefault(t => t.ItemId == adjustLine.ItemId.Value);
+            if (matchingTxn is not null)
+            {
+                matchingTxn.UnitCost = adjustLine.Rate;
+                matchingTxn.TotalCost = adjustLine.Amount;
+                matchingTxn.UpdatedAt = now;
+                matchingTxn.UpdatedBy = userName;
+                _unitOfWork.Repository<InventoryTransaction>().Update(matchingTxn);
+            }
+        }
+
+        bill.NetAmount = targetNetAmount;
+        bill.UpdatedAt = now;
+        bill.UpdatedBy = userName;
+        _unitOfWork.Repository<VendorBill>().Update(bill);
+
+        var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query(asNoTracking: false)
+            .Where(l => l.JournalEntryId == bill.JournalEntryId.Value)
+            .ToListAsync(cancellationToken);
+
+        var payableLine = journalLines.FirstOrDefault(l => l.ChartOfAccountId == payableAccountId)
+            ?? throw new InvalidOperationException(
+                $"Accounts Payable line not found for vendor bill {bill.BillNumber}.");
+
+        foreach (var inventoryLine in journalLines.Where(l => l.ChartOfAccountId == inventoryAccountId).ToList())
+        {
+            _unitOfWork.Repository<JournalEntryLine>().Remove(inventoryLine);
+        }
+
+        await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+        {
+            JournalEntryId = bill.JournalEntryId.Value,
+            ChartOfAccountId = inventoryAccountId,
+            Debit = targetSubTotal,
+            Credit = 0m,
+            Memo = "Inventory Asset"
+        }, cancellationToken);
+
+        payableLine.Credit = targetNetAmount;
+        _unitOfWork.Repository<JournalEntryLine>().Update(payableLine);
+
+        var journal = await _unitOfWork.Repository<JournalEntry>()
+            .Query(asNoTracking: false)
+            .FirstAsync(j => j.Id == bill.JournalEntryId.Value, cancellationToken);
+        journal.UpdatedAt = now;
+        journal.UpdatedBy = userName;
+        _unitOfWork.Repository<JournalEntry>().Update(journal);
+
+        return true;
+    }
+
+    private async Task<Dictionary<(int ItemId, string? StackNo, string? LotNo), decimal>> BuildStackLotPurchaseRatesForRepairAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return new Dictionary<(int, string?, string?), decimal>();
+        }
+
+        var purchaseLines = await _unitOfWork.Repository<VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.Status == BillStatus.Approved
+                        && l.ItemId != null
+                        && itemIds.Contains(l.ItemId.Value))
+            .Select(l => new
+            {
+                ItemId = l.ItemId!.Value,
+                StackNo = string.IsNullOrWhiteSpace(l.StackNo) ? l.Item!.StackNo : l.StackNo,
+                LotNo = string.IsNullOrWhiteSpace(l.LotNo) ? l.Item!.LotNo : l.LotNo,
+                l.Quantity,
+                l.Rate
+            })
+            .ToListAsync(cancellationToken);
+
+        var purchaseRatesByItem = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => i.PurchaseRate, cancellationToken);
+
+        var rates = new Dictionary<(int, string?, string?), decimal>();
+        foreach (var group in purchaseLines.GroupBy(x => (
+                     x.ItemId,
+                     StackNo: NormalizeStackLotKey(x.StackNo),
+                     LotNo: NormalizeStackLotKey(x.LotNo))))
+        {
+            var ratedLines = group.Where(x => x.Rate > 0m).ToList();
+            decimal weightedRate;
+            if (ratedLines.Count > 0)
+            {
+                var ratedQty = ratedLines.Sum(x => x.Quantity);
+                weightedRate = ratedQty > 0m
+                    ? ratedLines.Sum(x => x.Quantity * x.Rate) / ratedQty
+                    : 0m;
+            }
+            else
+            {
+                weightedRate = 0m;
+            }
+
+            if (weightedRate <= 0m
+                && purchaseRatesByItem.TryGetValue(group.Key.ItemId, out var purchaseRate)
+                && purchaseRate > 0m)
+            {
+                weightedRate = purchaseRate;
+            }
+
+            if (weightedRate > 0m)
+            {
+                rates[group.Key] = Math.Round(weightedRate, 2);
+            }
+        }
+
+        return rates;
+    }
+
+    private static decimal ResolveStackLotRate(
+        IReadOnlyDictionary<(int ItemId, string? StackNo, string? LotNo), decimal> stackLotRates,
+        int itemId,
+        string? stackNo,
+        string? lotNo,
+        decimal fallbackPurchaseRate)
+    {
+        var normalizedStack = NormalizeStackLotKey(stackNo);
+        var normalizedLot = NormalizeStackLotKey(lotNo);
+        if (stackLotRates.TryGetValue((itemId, normalizedStack, normalizedLot), out var rate) && rate > 0m)
+        {
+            return rate;
+        }
+
+        return Math.Round(fallbackPurchaseRate, 2);
+    }
+
+    private static string? NormalizeStackLotKey(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
 
     private async Task<int?> GetAccountIdAsync(
         int companyId,

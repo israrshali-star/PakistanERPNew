@@ -25,8 +25,6 @@ public record ChartOfAccountTreeAccountDto(
     string AccountName,
     decimal OpeningBalance,
     decimal RunningBalance,
-    decimal PeriodDebit,
-    decimal PeriodCredit,
     bool IsActive,
     bool IsGroupAccount,
     int? ParentAccountId,

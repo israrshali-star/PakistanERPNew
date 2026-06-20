@@ -110,6 +110,20 @@ public record RecalculateItemStockResult(
     decimal SumItemStock,
     decimal SumTransactionStock);
 
+public record DeletedSalesInvoiceInventoryRepairResult(
+    bool Success,
+    string? Message,
+    int InventoryTransactionsRemoved,
+    int JournalEntriesRemoved,
+    int ItemsUpdated);
+
+public record SalesInvoiceCogsRepairResult(
+    bool Success,
+    string? Message,
+    int OpeningTransactionsFixed,
+    int InvoicesAdjusted,
+    decimal TotalCogsAdjusted);
+
 public record InventoryAssetAlignResult(
     bool Success,
     string? Message,
@@ -142,3 +156,23 @@ public record SalesTaxSubAccountRepairResult(
     decimal OpeningBalanceEquity,
     decimal TrialBalanceDebits,
     decimal TrialBalanceCredits);
+
+public record VendorBillApMismatchDto(
+    string RefNo,
+    string? ErpBillNumber,
+    string VendorName,
+    decimal QuickBooksNetAmount,
+    decimal ErpNetAmount,
+    decimal Difference);
+
+public record VendorBillApRepairResult(
+    bool Success,
+    string? Message,
+    int BillsChecked,
+    int BillsUpdated,
+    int BillsMissingInErp,
+    int BillsMissingInQuickBooks,
+    decimal QuickBooksClosingBalance,
+    decimal ErpAccountsPayableBalance,
+    decimal DifferenceVsQuickBooks,
+    IReadOnlyList<VendorBillApMismatchDto> Mismatches);

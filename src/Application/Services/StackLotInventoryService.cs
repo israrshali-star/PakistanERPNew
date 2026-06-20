@@ -372,7 +372,7 @@ public class StackLotInventoryService : IStackLotInventoryService
         var salesQuery = _unitOfWork.Repository<Domain.Entities.SalesInvoiceLine>()
             .Query()
             .Where(l => l.SalesInvoice.CompanyId == companyId
-                        && l.SalesInvoice.Status != InvoiceStatus.Cancelled);
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted);
 
         if (itemIds.Count > 0)
         {

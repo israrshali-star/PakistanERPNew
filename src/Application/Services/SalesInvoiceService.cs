@@ -1336,8 +1336,27 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 null);
         }
 
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "system";
         var invoiceNumber = invoice.InvoiceNumber;
-        var journalEntryId = invoice.JournalEntryId;
+        var affectedItemIds = new List<int>();
+
+        if (invoice.Status == InvoiceStatus.Posted
+            && invoice.InvoiceType is InvoiceType.SalesInvoice or InvoiceType.CreditNote)
+        {
+            affectedItemIds = await ReversePostedInvoiceInventoryAsync(
+                companyId,
+                invoice,
+                cancellationToken);
+        }
+
+        await SoftDeleteSalesInvoiceJournalEntriesAsync(
+            companyId,
+            invoice.Id,
+            invoice.JournalEntryId,
+            now,
+            userName,
+            cancellationToken);
 
         foreach (var line in invoice.Lines.ToList())
         {
@@ -1351,35 +1370,23 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         invoice.JournalEntryId = null;
         _unitOfWork.Repository<SalesInvoice>().Update(invoice);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        if (journalEntryId.HasValue)
-        {
-            var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
-                .Query(asNoTracking: false)
-                .Where(l => l.JournalEntryId == journalEntryId.Value)
-                .ToListAsync(cancellationToken);
-
-            foreach (var journalLine in journalLines)
-            {
-                _unitOfWork.Repository<JournalEntryLine>().Remove(journalLine);
-            }
-
-            var journalEntry = await _unitOfWork.Repository<JournalEntry>()
-                .Query(asNoTracking: false)
-                .FirstOrDefaultAsync(j => j.Id == journalEntryId.Value && j.CompanyId == companyId, cancellationToken);
-
-            if (journalEntry is not null)
-            {
-                _unitOfWork.Repository<JournalEntry>().Remove(journalEntry);
-            }
-        }
-
         _unitOfWork.Repository<SalesInvoice>().Remove(invoice);
 
         try
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (affectedItemIds.Count > 0)
+            {
+                await RecalculateItemStockFromTransactionsAsync(
+                    companyId,
+                    affectedItemIds,
+                    now,
+                    userName,
+                    cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _itemCartonSyncService.SyncItemsAsync(companyId, affectedItemIds, cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
@@ -2562,6 +2569,171 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
     private static bool IsCartageOrService(InvoiceItemSnapshot item) =>
         SalesTaxSplit.IsCartageOrService(item.ItemType, item.ItemCode);
+
+    private async Task<List<int>> ReversePostedInvoiceInventoryAsync(
+        int companyId,
+        SalesInvoice invoice,
+        CancellationToken cancellationToken)
+    {
+        var lineItemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var cartageItemIds = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => lineItemIds.Contains(i.Id)
+                        && i.CompanyId == companyId
+                        && i.ItemCode == CartageItemCode)
+            .Select(i => i.Id)
+            .ToListAsync(cancellationToken);
+        var cartageItemIdSet = cartageItemIds.ToHashSet();
+
+        var inventoryItems = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => lineItemIds.Contains(i.Id) && i.CompanyId == companyId)
+            .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+        var goodsLines = invoice.Lines
+            .Where(l => !cartageItemIdSet.Contains(l.ItemId)
+                        && inventoryItems.TryGetValue(l.ItemId, out var item)
+                        && item.ItemType != ItemType.Service)
+            .ToList();
+
+        if (goodsLines.Count == 0)
+        {
+            return [];
+        }
+
+        var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+        var expectedType = isCreditNote
+            ? InventoryTransactionType.StockIn
+            : InventoryTransactionType.StockOut;
+
+        var candidateTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == companyId && t.ReferenceNo == invoice.InvoiceNumber)
+            .ToListAsync(cancellationToken);
+
+        var matchedItemIds = new HashSet<int>();
+
+        foreach (var line in goodsLines)
+        {
+            var quantity = Math.Round(line.Quantity, 2);
+            if (quantity <= 0m)
+            {
+                continue;
+            }
+
+            var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim();
+            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim();
+
+            var transaction = candidateTransactions.FirstOrDefault(t =>
+                t.ItemId == line.ItemId
+                && t.TransactionType == expectedType
+                && Math.Round(t.Quantity, 2) == quantity
+                && string.Equals(t.StackNo ?? string.Empty, stackNo ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(t.LotNo ?? string.Empty, lotNo ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                && t.TransactionDate.Date == invoice.InvoiceDate.Date);
+
+            if (transaction is null)
+            {
+                continue;
+            }
+
+            _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+            matchedItemIds.Add(line.ItemId);
+            candidateTransactions.Remove(transaction);
+        }
+
+        return matchedItemIds.ToList();
+    }
+
+    private async Task SoftDeleteSalesInvoiceJournalEntriesAsync(
+        int companyId,
+        int invoiceId,
+        int? journalEntryId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var journalEntries = await _unitOfWork.Repository<JournalEntry>()
+            .Query(asNoTracking: false)
+            .Where(j => j.CompanyId == companyId
+                        && !j.IsDeleted
+                        && j.ReferenceType == ReferenceTypes.SalesInvoice
+                        && j.ReferenceId == invoiceId)
+            .ToListAsync(cancellationToken);
+
+        if (journalEntryId.HasValue
+            && journalEntries.All(j => j.Id != journalEntryId.Value))
+        {
+            var linkedEntry = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(
+                    j => j.Id == journalEntryId.Value && j.CompanyId == companyId && !j.IsDeleted,
+                    cancellationToken);
+
+            if (linkedEntry is not null)
+            {
+                journalEntries.Add(linkedEntry);
+            }
+        }
+
+        foreach (var entry in journalEntries)
+        {
+            entry.IsDeleted = true;
+            entry.DeletedAt = now;
+            entry.DeletedBy = userName;
+            _unitOfWork.Repository<JournalEntry>().Update(entry);
+        }
+    }
+
+    private async Task RecalculateItemStockFromTransactionsAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return;
+        }
+
+        var items = await _unitOfWork.Repository<Item>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+            .ToListAsync(cancellationToken);
+
+        var stockByItemId = await BuildStockByItemIdAsync(companyId, itemIds, cancellationToken);
+
+        foreach (var item in items)
+        {
+            item.CurrentStock = stockByItemId.GetValueOrDefault(item.Id);
+            item.UpdatedAt = now;
+            item.UpdatedBy = userName;
+            _unitOfWork.Repository<Item>().Update(item);
+        }
+    }
+
+    private async Task<Dictionary<int, decimal>> BuildStockByItemIdAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        CancellationToken cancellationToken)
+    {
+        return await _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId && itemIds.Contains(t.ItemId))
+            .GroupBy(t => t.ItemId)
+            .Select(g => new
+            {
+                ItemId = g.Key,
+                Stock = g.Sum(t =>
+                    t.TransactionType == InventoryTransactionType.StockOut
+                        ? -t.Quantity
+                        : t.TransactionType == InventoryTransactionType.Adjustment
+                            ? t.Quantity
+                            : t.Quantity)
+            })
+            .ToDictionaryAsync(x => x.ItemId, x => Math.Round(x.Stock, 2), cancellationToken);
+    }
 
     private async Task<int?> GetDefaultWarehouseIdAsync(int companyId, CancellationToken cancellationToken) =>
         await _unitOfWork.Repository<Warehouse>()

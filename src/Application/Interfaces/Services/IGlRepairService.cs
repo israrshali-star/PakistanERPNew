@@ -67,9 +67,23 @@ public interface IGlRepairService
         int companyId,
         CancellationToken cancellationToken = default);
 
+    Task<DeletedSalesInvoiceInventoryRepairResult> RepairDeletedSalesInvoiceInventoryAsync(
+        int companyId,
+        string? invoiceNumber = null,
+        CancellationToken cancellationToken = default);
+
+    Task<SalesInvoiceCogsRepairResult> RepairUnderstatedSalesInvoiceCogsAsync(
+        int companyId,
+        string? invoiceNumber = null,
+        CancellationToken cancellationToken = default);
+
     Task<InventoryAssetAlignResult> AlignInventoryAssetToQuickBooksAsync(
         int companyId,
         decimal quickBooksClosingBalance,
+        CancellationToken cancellationToken = default);
+
+    Task<InventoryAssetAlignResult> AlignInventoryAssetToStockSummaryAsync(
+        int companyId,
         CancellationToken cancellationToken = default);
 
     Task<InventoryAssetRepairResult> RepairInventoryAssetFromQuickBooksAsync(
@@ -79,5 +93,11 @@ public interface IGlRepairService
 
     Task<SalesTaxSubAccountRepairResult> RepairSalesTaxSubAccountTrialBalanceAsync(
         int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<VendorBillApRepairResult> RepairVendorBillsFromQuickBooksApAsync(
+        int companyId,
+        string accountsPayableFilePath,
+        bool applyFixes = true,
         CancellationToken cancellationToken = default);
 }

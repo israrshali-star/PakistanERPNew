@@ -1,0 +1,62 @@
+<div class="modal fade" id="invoiceShareModal" tabindex="-1" aria-labelledby="invoiceShareModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary" id="invoiceShareModalLabel">Share Invoice</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="share-invoice-id" />
+                <p class="text-muted small mb-3" id="share-invoice-summary"></p>
+
+                <div class="mb-3">
+                    <label class="form-label" for="share-customer-email">Email to customer</label>
+                    <input type="email" class="form-control" id="share-customer-email" maxlength="200" placeholder="customer@example.com" />
+                    <div class="form-text" id="share-email-hint">Sends invoice PDF as email attachment.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="share-customer-message">Message (optional)</label>
+                    <textarea class="form-control" id="share-customer-message" rows="3" maxlength="1000" placeholder="Add a note for the customer..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="share-customer-whatsapp">WhatsApp number</label>
+                    <input type="text" class="form-control" id="share-customer-whatsapp" maxlength="20" placeholder="03xx-xxxxxxx or 923xxxxxxxxx" />
+                    <div class="form-text">Opens WhatsApp with invoice details. On mobile, you can share the PDF file directly when supported.</div>
+                </div>
+
+                <div class="alert alert-danger d-none" id="share-error"></div>
+                <div class="alert alert-success d-none" id="share-success"></div>
+
+                <div id="share-challan-panel" class="d-none">
+                    <hr class="my-3" />
+                    <h6 class="text-primary mb-2"><i class="fa-solid fa-truck me-1"></i>Delivery Challan to Godown</h6>
+                    <div class="mb-3">
+                        <label class="form-label" for="share-godown-email">Godown email</label>
+                        <input type="email" class="form-control" id="share-godown-email" maxlength="200" placeholder="godown@example.com" />
+                        <div class="form-text" id="share-challan-hint">Emails delivery challan PDF for posted invoices (company 3).</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer flex-wrap">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-secondary d-none" id="btn-share-download-challan">
+                    <i class="fa-solid fa-truck me-1"></i>Challan PDF
+                </button>
+                <button type="button" class="btn btn-outline-warning d-none" id="btn-share-email-challan">
+                    <i class="fa-solid fa-envelope me-1"></i>Email Challan
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="btn-share-download-pdf">
+                    <i class="fa-solid fa-file-pdf me-1"></i>Download PDF
+                </button>
+                <button type="button" class="btn btn-success" id="btn-share-whatsapp">
+                    <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp
+                </button>
+                <button type="button" class="btn btn-primary" id="btn-share-email">
+                    <i class="fa-solid fa-envelope me-1"></i>Send Email
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
