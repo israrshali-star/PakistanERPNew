@@ -219,20 +219,20 @@ public static class QuickBooksReportCsvParser
 
         foreach (var row in rows)
         {
-            if (row.Count < 2)
+            if (!TryParseNameBalanceColumns(row, out var name, out var balanceIndex))
             {
                 continue;
             }
 
-            var name = row[0].Trim().Trim('"');
             if (string.IsNullOrWhiteSpace(name)
                 || name.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
-                || name.StartsWith("Grand", StringComparison.OrdinalIgnoreCase))
+                || name.StartsWith("Grand", StringComparison.OrdinalIgnoreCase)
+                || LooksLikeReportDate(name))
             {
                 continue;
             }
 
-            var balance = ParseDecimal(row[1]);
+            var balance = ParseDecimal(row[balanceIndex]);
             if (balance == 0m)
             {
                 continue;
@@ -243,6 +243,37 @@ public static class QuickBooksReportCsvParser
 
         return result;
     }
+
+    private static bool TryParseNameBalanceColumns(
+        IReadOnlyList<string> row,
+        out string name,
+        out int balanceIndex)
+    {
+        name = string.Empty;
+        balanceIndex = -1;
+
+        if (row.Count < 2)
+        {
+            return false;
+        }
+
+        if (row.Count >= 3
+            && string.IsNullOrWhiteSpace(row[0])
+            && !string.IsNullOrWhiteSpace(row[1]))
+        {
+            name = row[1].Trim().Trim('"');
+            balanceIndex = 2;
+            return balanceIndex < row.Count;
+        }
+
+        name = row[0].Trim().Trim('"');
+        balanceIndex = 1;
+        return true;
+    }
+
+    private static bool LooksLikeReportDate(string value) =>
+        value.Contains("as of", StringComparison.OrdinalIgnoreCase)
+        || Regex.IsMatch(value, @"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b", RegexOptions.IgnoreCase);
 
     private static int FindDetailBalanceHeaderRowIndex(IReadOnlyList<IReadOnlyList<string>> rows)
     {

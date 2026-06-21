@@ -78,28 +78,29 @@ public class CustomerExcelImportService : ICustomerExcelImportService
             ? namedSheet
             : workbook.Worksheets.First();
 
-        var headerRow = worksheet.FirstRowUsed();
+        var headerRow = FindHeaderRow(worksheet);
         if (headerRow is null)
         {
-            return new CustomerExcelImportResult(false, "Excel sheet is empty.");
+            return new CustomerExcelImportResult(false, "Excel sheet is empty or missing a customer name column.");
         }
 
         var columnMap = BuildColumnMap(headerRow);
-        if (!columnMap.ContainsKey("customername"))
+        if (!TryResolveCustomerNameColumn(columnMap, out var customerNameKey))
         {
-            return new CustomerExcelImportResult(false, "Customers sheet must include a 'Customer Name' column.");
+            return new CustomerExcelImportResult(false, "Customers sheet must include a 'Customer Name' or 'Customer' column.");
         }
 
-        foreach (var row in worksheet.RowsUsed().Skip(1))
+        var firstDataRow = headerRow.RowNumber() + 1;
+        foreach (var row in worksheet.RowsUsed().Where(r => r.RowNumber() >= firstDataRow))
         {
-            var buyerName = GetCell(row, columnMap, "customername");
+            var buyerName = GetCell(row, columnMap, customerNameKey);
             if (string.IsNullOrWhiteSpace(buyerName))
             {
                 continue;
             }
 
-            var address = NullIfEmpty(GetCell(row, columnMap, "address"));
-            var phone = NullIfEmpty(GetCell(row, columnMap, "phone"));
+            var address = NullIfEmpty(ResolveCustomerAddress(row, columnMap));
+            var phone = NullIfEmpty(GetCell(row, columnMap, "phone", "mobile"));
             var email = NullIfEmpty(GetCell(row, columnMap, "email"));
             var cnic = NormalizeTaxId(GetCell(row, columnMap, "cnic"));
             var ntn = NormalizeTaxId(GetCell(row, columnMap, "ntn"));
@@ -182,15 +183,76 @@ public class CustomerExcelImportService : ICustomerExcelImportService
         return new CustomerExcelImportResult(true, message, imported, skipped, updated);
     }
 
+    private static IXLRow? FindHeaderRow(IXLWorksheet worksheet)
+    {
+        var lastRow = worksheet.LastRowUsed()?.RowNumber()
+            ?? worksheet.RangeUsed()?.LastRow().RowNumber()
+            ?? 20;
+
+        lastRow = Math.Min(lastRow, 20);
+        for (var rowNumber = 1; rowNumber <= lastRow; rowNumber++)
+        {
+            var row = worksheet.Row(rowNumber);
+            var map = BuildColumnMap(row);
+            if (TryResolveCustomerNameColumn(map, out _))
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveCustomerNameColumn(
+        IReadOnlyDictionary<string, int> columnMap,
+        out string key)
+    {
+        foreach (var candidate in new[] { "customername", "customer", "name", "buyername" })
+        {
+            if (columnMap.ContainsKey(candidate))
+            {
+                key = candidate;
+                return true;
+            }
+        }
+
+        key = string.Empty;
+        return false;
+    }
+
+    /// <summary>
+    /// Prefer the dedicated Address column (QuickBooks export last column). Ignore Bill To 2 / City.
+    /// </summary>
+    private static string ResolveCustomerAddress(IXLRow row, IReadOnlyDictionary<string, int> columnMap)
+    {
+        var address = GetCell(row, columnMap, "address");
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            return address;
+        }
+
+        return GetCell(row, columnMap, "billto", "billingaddress");
+    }
+
     private static Dictionary<string, int> BuildColumnMap(IXLRow headerRow)
     {
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var cell in headerRow.CellsUsed())
+        var worksheet = headerRow.Worksheet;
+        var lastColumn = Math.Max(
+            headerRow.LastCellUsed()?.Address.ColumnNumber ?? 0,
+            worksheet.LastColumnUsed()?.ColumnNumber() ?? 0);
+
+        if (lastColumn <= 0)
         {
-            var key = NormalizeHeader(cell.GetString());
+            return map;
+        }
+
+        for (var column = 1; column <= lastColumn; column++)
+        {
+            var key = NormalizeHeader(headerRow.Cell(column).GetString());
             if (!string.IsNullOrWhiteSpace(key) && !map.ContainsKey(key))
             {
-                map[key] = cell.Address.ColumnNumber;
+                map[key] = column;
             }
         }
 
