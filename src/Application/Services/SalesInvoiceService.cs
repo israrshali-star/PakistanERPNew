@@ -846,6 +846,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     l.Id,
                     l.ItemId,
                     l.Item.ItemCode,
+                    l.Item.ItemType,
                     l.Item.ItemName,
                     l.Item.Description,
                     l.HSCode,
@@ -1699,6 +1700,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     l.ProductDescription,
                     ItemDescription = l.Item.Description,
                     ItemCode = l.Item.ItemCode,
+                    ItemType = l.Item.ItemType,
                     l.LineTotal,
                     l.CartonDescription,
                     l.LotNo,
@@ -1716,12 +1718,12 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         }
 
         var goodsLines = invoice.Lines
-            .Where(l => !string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+            .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
             .ToList();
 
         var transportationChargesReceive = Math.Round(
             invoice.Lines
-                .Where(l => string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+                .Where(l => SalesTaxSplit.IsCartageOrService(l.ItemType, l.ItemCode))
                 .Sum(l => l.LineTotal),
             2);
 
@@ -1745,7 +1747,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         if (transportationChargesReceive > 0m)
         {
             var transportDescription = invoice.Lines
-                .Where(l => string.Equals(l.ItemCode, CartageItemCode, StringComparison.OrdinalIgnoreCase))
+                .Where(l => SalesTaxSplit.IsCartageOrService(l.ItemType, l.ItemCode))
                 .Select(l => !string.IsNullOrWhiteSpace(l.ProductDescription)
                     ? l.ProductDescription.Trim()
                     : l.ItemDescription)
@@ -1816,6 +1818,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 {
                     l.ProductDescription,
                     ItemDescription = l.Item.Description,
+                    ItemType = l.Item.ItemType,
+                    ItemCode = l.Item.ItemCode,
                     l.CartonDescription,
                     l.LotNo,
                     l.StackNo,
@@ -1846,7 +1850,9 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 Math.Round(l.Cartons, 2),
                 Math.Round(l.Quantity, 2),
                 Math.Round(l.Price, 2),
-                amount);
+                amount,
+                l.ItemType,
+                l.ItemCode);
         }).ToList();
 
         var taxableTotal = Math.Round(invoice.SubTotal - invoice.DiscountAmount, 2);

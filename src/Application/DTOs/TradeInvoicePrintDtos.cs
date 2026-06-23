@@ -1,5 +1,7 @@
 namespace PakistanAccountingERP.Application.DTOs;
 
+using PakistanAccountingERP.Domain.Enums;
+
 public record TradeInvoicePrintDto(
     string InvoiceNumber,
     DateTime InvoiceDate,
@@ -19,4 +21,6 @@ public record TradeInvoicePrintLineDto(
     decimal Cartons,
     decimal Quantity,
     decimal Rate,
-    decimal Amount);
+    decimal Amount,
+    ItemType ItemType,
+    string ItemCode);

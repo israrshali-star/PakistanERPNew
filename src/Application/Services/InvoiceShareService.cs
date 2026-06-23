@@ -203,8 +203,12 @@ public class InvoiceShareService : IInvoiceShareService
 
         var pdfBytes = _deliveryChallanPdfService.GeneratePdf(challanData);
         var fileName = $"DC-{challanData.InvoiceNumber}.pdf".Replace('/', '-');
-        var totalCartons = challanData.Lines.Sum(l => l.Cartons);
-        var totalQty = challanData.Lines.Sum(l => l.Quantity);
+        var totalCartons = challanData.Lines
+            .Where(l => !l.IsTransportation)
+            .Sum(l => l.Cartons);
+        var totalQty = challanData.Lines
+            .Where(l => !l.IsTransportation)
+            .Sum(l => l.Quantity);
         var subject = $"Delivery Challan {challanData.InvoiceNumber} - {challanData.BuyerName}";
 
         var bodyIntro = string.IsNullOrWhiteSpace(request.Message)

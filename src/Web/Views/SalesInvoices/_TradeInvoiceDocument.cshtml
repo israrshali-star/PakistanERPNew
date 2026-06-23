@@ -7,8 +7,12 @@
         taxableTotal,
         Model.TaxAmount,
         Model.Lines.Select(l => l.TaxRate).ToList());
-    var totalCartons = Model.Lines.Sum(l => l.Cartons);
-    var totalQty = Model.Lines.Sum(l => l.Quantity);
+    var totalCartons = Model.Lines
+        .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
+        .Sum(l => l.Cartons);
+    var totalQty = Model.Lines
+        .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
+        .Sum(l => l.Quantity);
     var totalAmount = Model.Lines.Sum(l => TradeInvoiceLayout.LineAmountExTax(l.Quantity, l.Price, l.Discount));
 }
 

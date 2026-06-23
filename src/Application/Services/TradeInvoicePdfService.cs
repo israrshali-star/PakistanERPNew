@@ -66,8 +66,11 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
 
     private static void ComposeLinesTable(IContainer container, TradeInvoicePrintDto model)
     {
-        var totalCartons = model.Lines.Sum(l => l.Cartons);
-        var totalQty = model.Lines.Sum(l => l.Quantity);
+        var weightLines = model.Lines
+            .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
+            .ToList();
+        var totalCartons = weightLines.Sum(l => l.Cartons);
+        var totalQty = weightLines.Sum(l => l.Quantity);
         var totalAmount = model.Lines.Sum(l => l.Amount);
 
         container.Table(table =>

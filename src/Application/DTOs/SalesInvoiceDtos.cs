@@ -23,6 +23,7 @@ public record SalesInvoiceLineDto(
     int Id,
     int ItemId,
     string ItemCode,
+    ItemType ItemType,
     string ItemName,
     string? ItemDescription,
     string? HsCode,

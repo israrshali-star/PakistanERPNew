@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using PakistanAccountingERP.Domain.Enums;
+
 namespace PakistanAccountingERP.Application.Common;
 
 public static class TradeInvoiceLayout
@@ -48,6 +50,10 @@ public static class TradeInvoiceLayout
 
     public static decimal LineAmountExTax(decimal quantity, decimal price, decimal discount) =>
         Math.Round(Math.Max(0m, quantity * price - discount), 2);
+
+    /// <summary>Goods weight/carton totals exclude cartage and service charge lines.</summary>
+    public static bool CountsTowardWeightAndCartonTotals(ItemType itemType, string? itemCode) =>
+        !SalesTaxSplit.IsCartageOrService(itemType, itemCode);
 
     public static decimal ResolveTaxRateDisplay(decimal taxableTotal, decimal taxAmount, IReadOnlyList<decimal> lineTaxRates)
     {

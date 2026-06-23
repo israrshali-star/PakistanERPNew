@@ -18,8 +18,8 @@ public class GlRepairService : IGlRepairService
     private const string CartageItemCode = "ITEM-0002";
     private const int CogsTypeId = 5;
     // Option B: target closing balances (June collected) for company 3 sales tax sub-accounts.
-    private const decimal Company3FurtherTaxTargetClosing = 593_252.32m;
-    private const decimal Company3SalesTax18TargetClosing = 3_452_826.60m;
+    private const decimal Company3FurtherTaxTargetClosing = 664_347.29m;
+    private const decimal Company3SalesTax18TargetClosing = 4_129_974.88m;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
