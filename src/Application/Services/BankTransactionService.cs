@@ -1145,7 +1145,9 @@ public class BankTransactionService : IBankTransactionService
                 && a.IsActive
                 && !a.IsDeleted
                 && !a.ChildAccounts.Any()
-                && a.TypeId == AssetsTypeId);
+                && a.TypeId == AssetsTypeId
+                && a.AccountNumber != KeptAside
+                && a.AccountNumber != UndepositedFunds);
 
         if (parentId.HasValue)
         {

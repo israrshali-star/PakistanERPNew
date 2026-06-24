@@ -2,9 +2,13 @@
 
 @using PakistanAccountingERP.Application.Interfaces
 
+@using PakistanAccountingERP.Application.Interfaces.Services
+
 @using PakistanAccountingERP.Domain.Enums
 
 @inject ICurrentUserService CurrentUser
+
+@inject IPermissionService PermissionService
 
 @model JournalEntryDetailDto
 
@@ -16,6 +20,10 @@
 
     var isPosted = Model.Status == JournalStatus.Posted;
 
+    var canDelete = await PermissionService.HasPermissionAsync("JournalEntries.Delete");
+
+    var canDeleteEntry = canDelete && Model.CanDelete;
+
 }
 
 
@@ -23,6 +31,10 @@
 <div id="journal-entry-edit"
 
      data-entry-id="@Model.Id"
+
+     data-status="@Model.Status"
+
+     data-can-delete="@canDeleteEntry.ToString().ToLower()"
 
      data-is-super-admin="@isSuperAdmin.ToString().ToLower()"
 
@@ -60,12 +72,17 @@
 
     </div>
 
-    <a asp-action="Details" asp-route-id="@Model.Id" class="btn btn-outline-secondary btn-sm">
-
-        <i class="fa-solid fa-arrow-left me-1"></i>Back to details
-
-    </a>
-
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="Details" asp-route-id="@Model.Id" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back to details
+        </a>
+        @if (canDeleteEntry)
+        {
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-delete-entry">
+                <i class="fa-solid fa-trash me-1"></i>Delete
+            </button>
+        }
+    </div>
 </div>
 
 
@@ -199,6 +216,8 @@
 @section Scripts {
 
     <script src="~/js/modules/journal-entry-create.js" asp-append-version="true"></script>
+
+    <script src="~/js/modules/journal-entry-details.js" asp-append-version="true"></script>
 
 }
 

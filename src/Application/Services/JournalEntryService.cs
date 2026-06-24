@@ -86,6 +86,7 @@ public partial class JournalEntryService : IJournalEntryService
 
             var isManual = IsManualEntry(entry.ReferenceType);
             var canEdit = CanEditEntry(entry.Status, isManual);
+            var canDelete = CanDeleteEntry(entry.Status, isManual);
             rows.Add(new JournalEntryListItemDto(
                 entry.Id,
                 entry.EntryNumber,
@@ -95,7 +96,7 @@ public partial class JournalEntryService : IJournalEntryService
                 entry.TotalDebit,
                 entry.Status.ToString(),
                 entry.Status == JournalStatus.Draft && isManual,
-                entry.Status == JournalStatus.Draft && isManual,
+                canDelete,
                 canEdit));
         }
 
@@ -149,6 +150,7 @@ public partial class JournalEntryService : IJournalEntryService
         var totalCredit = entry.Lines.Sum(l => l.Credit);
 
         var canEdit = CanEditEntry(entry.Status, isManual);
+        var canDelete = CanDeleteEntry(entry.Status, isManual);
 
         return new JournalEntryDetailDto(
             entry.Id,
@@ -163,7 +165,7 @@ public partial class JournalEntryService : IJournalEntryService
             totalDebit,
             totalCredit,
             entry.Status == JournalStatus.Draft && isManual,
-            entry.Status == JournalStatus.Draft && isManual,
+            canDelete,
             canEdit,
             entry.Lines);
     }
@@ -428,14 +430,12 @@ public partial class JournalEntryService : IJournalEntryService
             return new JournalEntryActionResult(false, "Journal entry not found.", null);
         }
 
-        if (entry.Status != JournalStatus.Draft)
+        if (!CanDeleteEntry(entry.Status, IsManualEntry(entry.ReferenceType)))
         {
-            return new JournalEntryActionResult(false, "Only draft entries can be deleted.", null);
-        }
-
-        if (!IsManualEntry(entry.ReferenceType))
-        {
-            return new JournalEntryActionResult(false, "System-generated entries cannot be deleted.", null);
+            return new JournalEntryActionResult(
+                false,
+                GetDeleteDeniedMessage(entry.Status, IsManualEntry(entry.ReferenceType)),
+                null);
         }
 
         entry.IsDeleted = true;
@@ -454,8 +454,13 @@ public partial class JournalEntryService : IJournalEntryService
             _logger.LogWarning(ex, "Audit log failed for journal entry {EntryId}", id);
         }
 
-        return new JournalEntryActionResult(true, "Journal entry deleted.", null);
+        return new JournalEntryActionResult(true, GetDeleteSuccessMessage(entry.Status), null);
     }
+
+    private static string GetDeleteSuccessMessage(JournalStatus status) =>
+        status == JournalStatus.Posted
+            ? "Posted journal entry removed from the general ledger."
+            : "Journal entry deleted.";
 
     private async Task<(bool Success, string? Message, List<JournalEntryLine> Lines)> BuildLineEntitiesAsync(
         IReadOnlyList<JournalEntryLineSaveRequest> lines,
@@ -589,6 +594,10 @@ public partial class JournalEntryService : IJournalEntryService
         status != JournalStatus.Reversed
         && (IsSuperAdmin() || (status == JournalStatus.Draft && isManual));
 
+    private static bool CanDeleteEntry(JournalStatus status, bool isManual) =>
+        isManual
+        && status is JournalStatus.Draft or JournalStatus.Posted;
+
     private static string GetEditDeniedMessage(JournalStatus status, bool isManual)
     {
         if (status == JournalStatus.Reversed)
@@ -602,6 +611,21 @@ public partial class JournalEntryService : IJournalEntryService
         }
 
         return "Only draft entries can be edited.";
+    }
+
+    private static string GetDeleteDeniedMessage(JournalStatus status, bool isManual)
+    {
+        if (!isManual)
+        {
+            return "System-generated journal entries cannot be deleted. Delete or reverse the source document instead.";
+        }
+
+        if (status == JournalStatus.Reversed)
+        {
+            return "Reversed journal entries cannot be deleted.";
+        }
+
+        return "This journal entry cannot be deleted.";
     }
 
     private static JournalEntryActionResult ToActionError(JournalEntrySaveResult error) =>

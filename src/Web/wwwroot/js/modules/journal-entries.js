@@ -104,7 +104,7 @@
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-post-entry" data-id="' + id + '" title="Post"><i class="fa-solid fa-check"></i></button>';
                         }
                         if (canDelete && row.canDelete) {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-entry" data-id="' + id + '" title="Delete"><i class="fa-solid fa-trash"></i></button>';
+                            actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-entry" data-id="' + id + '" data-status="' + escapeHtml(row.status) + '" title="Delete"><i class="fa-solid fa-trash"></i></button>';
                         }
 
                         return actions;
@@ -134,8 +134,13 @@
         });
 
         $('#journal-entries-table').on('click', '.btn-delete-entry', function () {
-            runAction($(this).data('id'), 'DELETE', '', 'Delete this draft journal entry?');
+            var $btn = $(this);
+            var status = $btn.data('status') || '';
+            var confirmText = status === 'Posted'
+                ? 'Delete this posted journal entry? It will be removed from the general ledger.'
+                : 'Delete this draft journal entry?';
+            runAction($btn.data('id'), 'DELETE', '', confirmText);
         });
     });
 })();
-
+
