@@ -10,4 +10,10 @@ public interface IAuthService
 
     /// <summary>Signs out the current user and clears company session.</summary>
     Task LogoutAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Changes the signed-in user's password.</summary>
+    Task<DTOs.AuthResult> ChangePasswordAsync(
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default);
 }

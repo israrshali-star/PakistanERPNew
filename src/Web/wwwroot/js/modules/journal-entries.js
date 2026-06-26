@@ -103,7 +103,7 @@
                         if (canEdit && row.canPost) {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-post-entry" data-id="' + id + '" title="Post"><i class="fa-solid fa-check"></i></button>';
                         }
-                        if (canDelete && row.canDelete) {
+                        if (canDelete && rowCanDelete(row)) {
                             actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-entry" data-id="' + id + '" data-status="' + escapeHtml(row.status) + '" title="Delete"><i class="fa-solid fa-trash"></i></button>';
                         }
 
@@ -117,9 +117,18 @@
         });
     }
 
+    function detectPermissions() {
+        var $perms = $('#je-permissions');
+        canEdit = $perms.attr('data-can-edit') === 'true';
+        canDelete = $perms.attr('data-can-delete') === 'true';
+    }
+
+    function rowCanDelete(row) {
+        return row.canDelete === true || row.CanDelete === true;
+    }
+
     $(function () {
-        canEdit = $('#je-permissions').data('can-edit') === true;
-        canDelete = $('#je-permissions').data('can-delete') === true;
+        detectPermissions();
 
         $.getJSON('/api/company/current')
             .done(initDataTable)

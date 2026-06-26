@@ -72,4 +72,49 @@ public class AuthService : IAuthService
         await _currentCompany.ClearCompanyAsync(cancellationToken);
         await _signInManager.SignOutAsync();
     }
+
+    public async Task<AuthResult> ChangePasswordAsync(
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_currentUser.UserId))
+        {
+            return AuthResult.Failure("You are not signed in.");
+        }
+
+        if (string.IsNullOrWhiteSpace(currentPassword) || string.IsNullOrWhiteSpace(newPassword))
+        {
+            return AuthResult.Failure("Current and new passwords are required.");
+        }
+
+        var user = await _userManager.FindByIdAsync(_currentUser.UserId);
+        if (user is null || !user.IsActive)
+        {
+            return AuthResult.Failure("User account not found.");
+        }
+
+        var result = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+        if (!result.Succeeded)
+        {
+            return AuthResult.Failure(string.Join(" ", result.Errors.Select(e => e.Description)));
+        }
+
+        try
+        {
+            await _auditService.LogAsync(
+                "ChangePassword",
+                "Account",
+                user.Id,
+                null,
+                null,
+                cancellationToken);
+        }
+        catch
+        {
+            // Password change succeeded; audit failure should not block the user.
+        }
+
+        return AuthResult.Success();
+    }
 }

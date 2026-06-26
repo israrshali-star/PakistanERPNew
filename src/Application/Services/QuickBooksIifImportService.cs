@@ -1815,6 +1815,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
         var rows = QuickBooksReportCsvParser.ParseNameBalanceReport(filePath);
         var vendorMap = await BuildVendorNameMapAsync(companyId, cancellationToken);
+        var updatedVendorIds = new HashSet<int>();
         var updated = 0;
 
         foreach (var row in rows)
@@ -1849,10 +1850,58 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 throw new InvalidOperationException(postResult.Message ?? $"Failed to post opening balance for {row.Name}.");
             }
 
+            updatedVendorIds.Add(vendorId);
+            updated++;
+        }
+
+        var staleVendors = await _unitOfWork.Repository<Vendor>()
+            .Query(asNoTracking: false)
+            .Where(v => v.CompanyId == companyId && !updatedVendorIds.Contains(v.Id) && v.OpeningBalance != 0m)
+            .ToListAsync(cancellationToken);
+
+        foreach (var vendor in staleVendors)
+        {
+            vendor.OpeningBalance = 0m;
+            vendor.UpdatedAt = now;
+            vendor.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<Vendor>().Update(vendor);
+
+            var postResult = await QuickBooksIifImportSupport.PostVendorOpeningBalanceAsync(
+                _unitOfWork,
+                companyId,
+                vendor.Id,
+                vendor.VendorName,
+                0m,
+                entryDate,
+                now,
+                cancellationToken);
+
+            if (!postResult.Success)
+            {
+                throw new InvalidOperationException(
+                    postResult.Message ?? $"Failed to clear opening balance for {vendor.VendorName}.");
+            }
+
             updated++;
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var apAccount = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                a => a.CompanyId == companyId && a.AccountNumber == GlAccountNumbers.AccountsPayable && !a.IsDeleted,
+                cancellationToken);
+
+        if (apAccount is not null && apAccount.OpeningBalance != 0m)
+        {
+            apAccount.OpeningBalance = 0m;
+            apAccount.UpdatedAt = now;
+            apAccount.UpdatedBy = ImportUser;
+            _unitOfWork.Repository<ChartOfAccount>().Update(apAccount);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
         return updated;
     }
 

@@ -1,6 +1,7 @@
 using PakistanAccountingERP.Application;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
+using PakistanAccountingERP.Domain.Enums;
 using PakistanAccountingERP.Infrastructure;
 using PakistanAccountingERP.Infrastructure.Data.Seed;
 using PakistanAccountingERP.Infrastructure.Services;
@@ -116,6 +117,21 @@ if (TryRunRepairSalesTaxSubAccounts(args, out var repairSalesTaxSubAccountsExitC
 if (TryRunReplugOpeningBalanceEquity(args, out var replugObeExitCode))
 {
     Environment.Exit(replugObeExitCode);
+}
+
+if (TryRunAlignQbControlBalances(args, out var alignQbControlExitCode))
+{
+    Environment.Exit(alignQbControlExitCode);
+}
+
+if (TryRunAlignSalesTaxFromQuickBooks(args, out var alignSalesTaxExitCode))
+{
+    Environment.Exit(alignSalesTaxExitCode);
+}
+
+if (TryRunDatabaseBackup(args, out var runBackupExitCode))
+{
+    Environment.Exit(runBackupExitCode);
 }
 
 if (TryRunRepairInventoryAssetFromQuickBooks(args, out var repairInventoryAssetExitCode))
@@ -1021,10 +1037,12 @@ static bool TryRunRepairGlHistorical(string[] args, out int exitCode)
     try
     {
         var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
-        var result = repair.RepairCompany3SalesTaxGlAsync(companyId).GetAwaiter().GetResult();
+        var result = repair.RepairHistoricalEntriesForCompanyAsync(companyId).GetAwaiter().GetResult();
 
         Console.WriteLine(result.Message);
-        Console.WriteLine($"Invoices updated: {result.InvoicesUpdated}");
+        Console.WriteLine($"Legacy COA lines remapped: {result.LegacyCoaLinesRemapped}");
+        Console.WriteLine($"Duplicate journals removed: {result.DuplicateJournalsSoftDeleted}");
+        Console.WriteLine($"AR (11110) balance: {result.AccountsReceivableBalance:N2}");
 
         exitCode = result.Success ? 0 : 1;
     }
@@ -1392,6 +1410,206 @@ static bool TryRunRepairUnderstatedSalesInvoiceCogs(string[] args, out int exitC
     }
 
     return true;
+}
+
+static bool TryRunAlignQbControlBalances(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--align-qb-control-balances", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    if (!TryParseCliDecimal(args, "--ar", out var arBalance)
+        || !TryParseCliDecimal(args, "--ap", out var apBalance)
+        || !TryParseCliDecimal(args, "--inventory", out var inventoryBalance))
+    {
+        Console.WriteLine("Usage: --align-qb-control-balances --company-id N --ar <balance> --ap <balance> --inventory <balance> [--further-tax <balance>] [--sales-tax-18 <balance>]");
+        exitCode = 1;
+        return true;
+    }
+
+    decimal? furtherTax = null;
+    decimal? salesTax18 = null;
+    if (TryParseCliDecimal(args, "--further-tax", out var furtherTaxValue))
+    {
+        furtherTax = furtherTaxValue;
+    }
+
+    if (TryParseCliDecimal(args, "--sales-tax-18", out var salesTax18Value))
+    {
+        salesTax18 = salesTax18Value;
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.AlignControlAccountsToQuickBooksAsync(
+                companyId,
+                arBalance,
+                apBalance,
+                inventoryBalance,
+                furtherTax,
+                salesTax18)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
+        Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
+        Console.WriteLine($"Inventory (12110): {result.InventoryBalance:N2}");
+        if (result.FurtherTaxBalance.HasValue)
+        {
+            Console.WriteLine($"Further tax (25510): {result.FurtherTaxBalance:N2}");
+        }
+
+        if (result.SalesTax18Balance.HasValue)
+        {
+            Console.WriteLine($"Sales tax 18% (25520): {result.SalesTax18Balance:N2}");
+        }
+
+        Console.WriteLine($"OBE (30000): {result.OpeningBalanceEquity:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunDatabaseBackup(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 1
+        || !string.Equals(args[0], "--run-database-backup", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var companyId = 0;
+    for (var i = 1; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--company-id", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(args[i + 1], out companyId))
+        {
+            break;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var backup = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
+        var result = backup.RunBackupAsync(JobRunType.Manual, BackupDestination.Online)
+            .GetAwaiter()
+            .GetResult();
+        Console.WriteLine(result.Message ?? (result.Success ? "Backup completed." : "Backup failed."));
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryRunAlignSalesTaxFromQuickBooks(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 4
+        || !string.Equals(args[0], "--align-sales-tax-qb", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    var filePath = Path.GetFullPath(args[3]);
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.AlignSalesTaxFromQuickBooksAsync(companyId, filePath)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        if (result.FurtherTaxBalance.HasValue)
+        {
+            Console.WriteLine($"Further tax (25510): {result.FurtherTaxBalance:N2}");
+        }
+
+        if (result.SalesTax18Balance.HasValue)
+        {
+            Console.WriteLine($"Sales tax 18% (25520): {result.SalesTax18Balance:N2}");
+        }
+
+        if (result.FurtherTaxBalance.HasValue && result.SalesTax18Balance.HasValue)
+        {
+            Console.WriteLine(
+                $"Combined display payable: {-(result.FurtherTaxBalance.Value + result.SalesTax18Balance.Value):N2}");
+        }
+
+        Console.WriteLine($"OBE (30000): {result.OpeningBalanceEquity:N2}");
+        Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
+        Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static bool TryParseCliDecimal(string[] args, string flag, out decimal value)
+{
+    value = 0m;
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+        if (!string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        return decimal.TryParse(args[i + 1], out value);
+    }
+
+    return false;
 }
 
 static bool TryRunAlignInventoryToStockSummary(string[] args, out int exitCode)

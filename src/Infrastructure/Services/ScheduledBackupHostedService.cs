@@ -50,7 +50,10 @@ public class ScheduledBackupHostedService : BackgroundService
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 var backupService = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
-                await backupService.RunBackupAsync(JobRunType.Scheduled, stoppingToken);
+                await backupService.RunBackupAsync(
+                    JobRunType.Scheduled,
+                    BackupDestination.Online,
+                    stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

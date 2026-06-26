@@ -25,3 +25,8 @@ public record DataExportHistoryListItemDto(
     string? CreatedBy);
 
 public record JobActionResult(bool Success, string? Message, int? Id = null);
+
+public class RunBackupRequest
+{
+    public BackupDestination Destination { get; set; } = BackupDestination.Online;
+}

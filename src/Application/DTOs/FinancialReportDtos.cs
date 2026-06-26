@@ -35,6 +35,8 @@ public record TrialBalanceReportDto(
     int AccountCount,
     decimal TotalClosingDebit,
     decimal TotalClosingCredit,
+    bool IsBalanced,
+    decimal Difference,
     IReadOnlyList<TrialBalanceLineDto> Lines,
     IReadOnlyList<FinancialReportRowDto> Rows);
 
@@ -70,6 +72,8 @@ public record BalanceSheetReportDto(
     decimal TotalEquity,
     decimal NetIncomeYtd,
     decimal TotalLiabilitiesAndEquity,
+    bool IsBalanced,
+    decimal Difference,
     IReadOnlyList<BalanceSheetLineDto> Lines,
     IReadOnlyList<FinancialReportRowDto> Rows);
 

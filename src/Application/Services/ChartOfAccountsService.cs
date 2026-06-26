@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -204,8 +205,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
             leafBalanceMap,
             cancellationToken);
 
-        openingBalance = NormalizeBalanceForDisplay(openingBalance, account.TypeId);
-        runningBalance = NormalizeBalanceForDisplay(runningBalance, account.TypeId);
+        openingBalance = GlBalanceDisplay.NormalizeNetForDisplay(openingBalance, account.TypeId, account.AccountNumber);
+        runningBalance = GlBalanceDisplay.NormalizeNetForDisplay(runningBalance, account.TypeId, account.AccountNumber);
 
         return new ChartOfAccountDto(
             account.Id,
@@ -558,7 +559,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var from = fromDate?.Date;
         var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
-        var liabilityStyle = UsesCreditNormalDisplay(account.TypeId);
+        var invertedLineAccumulation = GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber);
 
         decimal rawPeriodOpening;
         if (from.HasValue)
@@ -570,7 +571,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
             rawPeriodOpening = rawOpening;
         }
 
-        var periodOpening = NormalizeBalanceForDisplay(rawPeriodOpening, account.TypeId);
+        var periodOpening = GlBalanceDisplay.NormalizeNetForDisplay(rawPeriodOpening, account.TypeId, account.AccountNumber);
         if (periodOpening != 0m)
         {
             var openingDate = from.HasValue ? from.Value.AddDays(-1) : DateTime.MinValue;
@@ -625,7 +626,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         {
             periodDebitTotal += line.Debit;
             periodCreditTotal += line.Credit;
-            balance += liabilityStyle ? line.Credit - line.Debit : line.Debit - line.Credit;
+            balance += invertedLineAccumulation ? line.Credit - line.Debit : line.Debit - line.Credit;
 
             var description = !string.IsNullOrWhiteSpace(line.Memo)
                 ? line.Memo
@@ -812,7 +813,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var openingBalances = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId)
-            .Select(a => new { a.Id, a.OpeningBalance })
+            .Select(a => new { a.Id, a.AccountNumber, a.TypeId, a.OpeningBalance })
             .ToListAsync(cancellationToken);
 
         var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
@@ -829,10 +830,19 @@ public class ChartOfAccountsService : IChartOfAccountsService
             })
             .ToListAsync(cancellationToken);
 
-        var journalLookup = journalTotals.ToDictionary(x => x.AccountId, x => x.Debit - x.Credit);
+        var journalLookup = journalTotals.ToDictionary(x => x.AccountId);
         return openingBalances.ToDictionary(
             x => x.Id,
-            x => x.OpeningBalance + journalLookup.GetValueOrDefault(x.Id, 0m));
+            x =>
+            {
+                var journal = journalLookup.GetValueOrDefault(x.Id);
+                return GlAccountBalance.ComputeNet(
+                    x.OpeningBalance,
+                    journal?.Debit ?? 0m,
+                    journal?.Credit ?? 0m,
+                    x.TypeId,
+                    x.AccountNumber);
+            });
     }
 
     private async Task<decimal> GetBalanceBeforeDateAsync(
@@ -841,23 +851,36 @@ public class ChartOfAccountsService : IChartOfAccountsService
         DateTime fromDate,
         CancellationToken cancellationToken)
     {
-        var openingBalance = await _unitOfWork.Repository<ChartOfAccount>()
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.Id == accountId && a.CompanyId == companyId)
-            .Select(a => a.OpeningBalance)
+            .Select(a => new { a.OpeningBalance, a.TypeId, a.AccountNumber })
             .FirstOrDefaultAsync(cancellationToken);
 
-        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+        if (account is null)
+        {
+            return 0m;
+        }
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.ChartOfAccountId == accountId
                         && l.JournalEntry.CompanyId == companyId
                         && l.JournalEntry.Status == JournalStatus.Posted
                         && !l.JournalEntry.IsDeleted
                         && l.JournalEntry.EntryDate < fromDate)
-            .Select(l => l.Debit - l.Credit)
-            .SumAsync(cancellationToken);
+            .GroupBy(_ => 1)
+            .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        return Math.Round(openingBalance + journalNet, 2);
+        return Math.Round(
+            GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journalTotals?.Debit ?? 0m,
+                journalTotals?.Credit ?? 0m,
+                account.TypeId,
+                account.AccountNumber),
+            2);
     }
 
     private async Task<bool> HasJournalLinesAsync(int accountId, CancellationToken cancellationToken) =>
@@ -1057,19 +1080,13 @@ public class ChartOfAccountsService : IChartOfAccountsService
             account.Id,
             account.AccountNumber,
             account.AccountName,
-            NormalizeBalanceForDisplay(account.OpeningBalance, account.TypeId),
-            NormalizeBalanceForDisplay(rawRunning, account.TypeId),
+            GlBalanceDisplay.NormalizeNetForDisplay(account.OpeningBalance, account.TypeId, account.AccountNumber),
+            GlBalanceDisplay.NormalizeNetForDisplay(rawRunning, account.TypeId, account.AccountNumber),
             account.IsActive,
             false,
             account.ParentAccountId,
             Array.Empty<ChartOfAccountTreeAccountDto>());
     }
-
-    private static bool UsesCreditNormalDisplay(int? typeId) =>
-        typeId is LiabilityTypeId or EquityTypeId;
-
-    private static decimal NormalizeBalanceForDisplay(decimal netBalance, int? typeId) =>
-        UsesCreditNormalDisplay(typeId) ? -netBalance : netBalance;
 
     private async Task<(decimal OpeningBalance, decimal RunningBalance)> GetDisplayBalancesAsync(
         int accountId,

@@ -86,6 +86,20 @@ public interface IGlRepairService
         int companyId,
         CancellationToken cancellationToken = default);
 
+    Task<QuickBooksControlBalanceAlignResult> AlignControlAccountsToQuickBooksAsync(
+        int companyId,
+        decimal accountsReceivableBalance,
+        decimal accountsPayableBalance,
+        decimal inventoryBalance,
+        decimal? furtherTaxBalance = null,
+        decimal? salesTax18Balance = null,
+        CancellationToken cancellationToken = default);
+
+    Task<QuickBooksControlBalanceAlignResult> AlignSalesTaxFromQuickBooksAsync(
+        int companyId,
+        string salesTaxPayableFilePath,
+        CancellationToken cancellationToken = default);
+
     Task<InventoryAssetRepairResult> RepairInventoryAssetFromQuickBooksAsync(
         int companyId,
         string quickBooksLedgerFilePath,

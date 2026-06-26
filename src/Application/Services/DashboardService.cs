@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -10,6 +11,8 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class DashboardService : IDashboardService
 {
+    private const int AssetTypeId = 1;
+    private const int LiabilityTypeId = 2;
     private const int RevenueTypeId = 4;
     private const int CogsTypeId = 5;
     private const int ExpenseTypeId = 6;
@@ -70,14 +73,20 @@ public class DashboardService : IDashboardService
             AccountsReceivable,
             cancellationToken);
 
-        // Imported QB openings store customer Dr balances as negative on AR; flip sign so the
-        // dashboard matches QuickBooks "outstanding receivables" presentation (positive amount).
-        var outstandingReceivables = -arGlBalance;
+        var outstandingReceivables = GlBalanceDisplay.NormalizeNetForDisplay(
+            arGlBalance,
+            AssetTypeId,
+            AccountsReceivable);
 
-        var outstandingPayables = await GetGlAccountBalanceAsync(
+        var apGlBalance = await GetGlAccountBalanceAsync(
             companyId,
             AccountsPayable,
             cancellationToken);
+
+        var outstandingPayables = GlBalanceDisplay.NormalizeNetForDisplay(
+            apGlBalance,
+            LiabilityTypeId,
+            AccountsPayable);
 
         var inventoryValue = await GetGlAccountBalanceAsync(
             companyId,
@@ -382,7 +391,7 @@ public class DashboardService : IDashboardService
         var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId && a.AccountNumber == accountNumber)
-            .Select(a => new { a.Id, a.OpeningBalance })
+            .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (account is null)
@@ -390,15 +399,24 @@ public class DashboardService : IDashboardService
             return 0m;
         }
 
-        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l => l.ChartOfAccountId == account.Id
                         && l.JournalEntry.CompanyId == companyId
                         && l.JournalEntry.Status == JournalStatus.Posted
                         && !l.JournalEntry.IsDeleted)
-            .SumAsync(l => (decimal?)(l.Debit - l.Credit), cancellationToken) ?? 0m;
+            .GroupBy(_ => 1)
+            .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        return Math.Round(account.OpeningBalance + journalNet, 2);
+        return Math.Round(
+            GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journalTotals?.Debit ?? 0m,
+                journalTotals?.Credit ?? 0m,
+                account.TypeId,
+                account.AccountNumber),
+            2);
     }
 
     private static string GetInvoiceStatusBadgeClass(InvoiceStatus status) =>

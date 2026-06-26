@@ -135,6 +135,18 @@ public record InventoryAssetAlignResult(
     decimal ItemValuation,
     decimal DifferenceVsQuickBooks);
 
+public record QuickBooksControlBalanceAlignResult(
+    bool Success,
+    string? Message,
+    decimal AccountsReceivableBalance,
+    decimal AccountsPayableBalance,
+    decimal InventoryBalance,
+    decimal? FurtherTaxBalance,
+    decimal? SalesTax18Balance,
+    decimal OpeningBalanceEquity,
+    decimal TrialBalanceDebits,
+    decimal TrialBalanceCredits);
+
 public record InventoryAssetRepairResult(
     bool Success,
     string? Message,

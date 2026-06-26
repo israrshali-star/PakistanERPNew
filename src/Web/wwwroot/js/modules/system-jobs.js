@@ -29,7 +29,12 @@
     }
 
     function statusBadge(status) {
-        var value = (status || '').toString().toLowerCase();
+        var value = status;
+        if (typeof value === 'number') {
+            value = value === 2 ? 'completed' : value === 3 ? 'failed' : 'running';
+        } else {
+            value = (value || '').toString().toLowerCase();
+        }
         if (value === 'completed') return '<span class="badge bg-success">Completed</span>';
         if (value === 'failed') return '<span class="badge bg-danger">Failed</span>';
         return '<span class="badge bg-warning text-dark">Running</span>';
@@ -133,16 +138,52 @@
             });
     }
 
-    function runBackup() {
-        $.post('/api/system-jobs/backups/run')
+    function runBackup(destination) {
+        var $confirm = $('#btn-confirm-backup');
+        var $run = $('#btn-run-backup');
+        $confirm.prop('disabled', true);
+        $run.prop('disabled', true);
+
+        $.ajax({
+            url: '/api/system-jobs/backups/run',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ destination: destination || 'Online' })
+        })
             .done(function (result) {
-                alert(result.message || 'Backup completed.');
                 if (backupsTable) backupsTable.ajax.reload(null, false);
+
+                if (result.shouldDownload && result.id) {
+                    window.location.href = '/api/system-jobs/backups/download/' + result.id;
+                }
+
+                alert(result.message || 'Backup completed.');
             })
             .fail(function (xhr) {
                 alert(getError(xhr, 'Backup failed.'));
                 if (backupsTable) backupsTable.ajax.reload(null, false);
+            })
+            .always(function () {
+                $confirm.prop('disabled', false);
+                $run.prop('disabled', false);
+                var modalEl = document.getElementById('backupDestinationModal');
+                if (modalEl && window.bootstrap) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
             });
+    }
+
+    function openBackupDialog() {
+        $('#backup-destination-online').prop('checked', true);
+        var modalEl = document.getElementById('backupDestinationModal');
+        if (modalEl && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function confirmBackup() {
+        var destination = $('input[name="backup-destination"]:checked').val() || 'Online';
+        runBackup(destination);
     }
 
     function deleteBackup(id) {
@@ -199,7 +240,8 @@
                     .text('Select a company from the top navbar.');
             });
 
-        $('#btn-run-backup').on('click', runBackup);
+        $('#btn-run-backup').on('click', openBackupDialog);
+        $('#btn-confirm-backup').on('click', confirmBackup);
         $('#btn-run-export').on('click', runExport);
         $('#backups-table').on('click', '.btn-delete-backup', function () { deleteBackup($(this).data('id')); });
         $('#exports-table').on('click', '.btn-delete-export', function () { deleteExport($(this).data('id')); });

@@ -8,6 +8,10 @@
             .text(text);
     }
 
+    function isDataTrue($el, name) {
+        return $el.attr('data-' + name) === 'true';
+    }
+
     function getApiErrorMessage(xhr, fallback) {
         var body = xhr && xhr.responseJSON;
         if (!body) {
@@ -50,7 +54,7 @@
             return;
         }
 
-        if ($detail.data('can-post') === true) {
+        if (isDataTrue($detail, 'can-post')) {
             $('#btn-post-entry').on('click', function () {
                 if (!confirm('Post this journal entry to the general ledger?')) {
                     return;
@@ -59,9 +63,9 @@
             });
         }
 
-        if ($detail.data('can-delete') === true) {
+        if (isDataTrue($detail, 'can-delete')) {
             $('#btn-delete-entry').on('click', function () {
-                var status = String($detail.data('status') || '');
+                var status = String($detail.attr('data-status') || '');
                 var confirmText = status === 'Posted'
                     ? 'Delete this posted journal entry? It will be removed from the general ledger.'
                     : 'Delete this draft journal entry? It cannot be undone.';

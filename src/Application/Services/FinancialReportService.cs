@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Entities;
 using PakistanAccountingERP.Domain.Enums;
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 
 namespace PakistanAccountingERP.Application.Services;
 
@@ -42,12 +44,28 @@ public class FinancialReportService : IFinancialReportService
             var journal = journalByAccount.GetValueOrDefault(account.Id) ?? EmptyJournal;
             var beforeFromDebit = journal.BeforeFromDebit(from);
             var beforeFromCredit = journal.BeforeFromCredit(from);
-            var openingNet = account.OpeningBalance + beforeFromDebit - beforeFromCredit;
+            var openingNet = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                beforeFromDebit,
+                beforeFromCredit,
+                account.TypeId,
+                account.AccountNumber);
             var periodDebit = journal.PeriodDebit(from, to);
             var periodCredit = journal.PeriodCredit(from, to);
-            var closingNet = account.OpeningBalance + journal.UpToToDebit(to) - journal.UpToToCredit(to);
+            var closingNet = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journal.UpToToDebit(to),
+                journal.UpToToCredit(to),
+                account.TypeId,
+                account.AccountNumber);
+            var displayClosing = GlBalanceDisplay.NormalizeNetForDisplay(closingNet, account.TypeId, account.AccountNumber);
+            var displayOpening = GlBalanceDisplay.NormalizeNetForDisplay(openingNet, account.TypeId, account.AccountNumber);
+            var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
+                closingNet,
+                account.TypeId,
+                account.AccountNumber);
 
-            if (openingNet == 0m && periodDebit == 0m && periodCredit == 0m && closingNet == 0m)
+            if (displayOpening == 0m && periodDebit == 0m && periodCredit == 0m && displayClosing == 0m)
             {
                 continue;
             }
@@ -57,24 +75,30 @@ public class FinancialReportService : IFinancialReportService
                 account.AccountNumber,
                 account.AccountName,
                 account.TypeName,
-                openingNet,
+                displayOpening,
                 periodDebit,
                 periodCredit,
-                closingNet,
-                closingNet >= 0m ? closingNet : 0m,
-                closingNet < 0m ? -closingNet : 0m));
+                displayClosing,
+                closingDebit,
+                closingCredit));
         }
 
         var orderedLines = lines.OrderBy(l => l.AccountNumber).ToList();
         var accountById = accounts.ToDictionary(a => a.Id);
         var rows = BuildTrialBalanceRows(orderedLines, accountById);
 
+        var totalClosingDebit = orderedLines.Sum(l => l.ClosingDebit);
+        var totalClosingCredit = orderedLines.Sum(l => l.ClosingCredit);
+        var difference = Math.Round(totalClosingDebit - totalClosingCredit, 2);
+
         return new TrialBalanceReportDto(
             request.FromDate.Date,
             request.ToDate.Date,
             orderedLines.Count,
-            orderedLines.Sum(l => l.ClosingDebit),
-            orderedLines.Sum(l => l.ClosingCredit),
+            totalClosingDebit,
+            totalClosingCredit,
+            Math.Abs(difference) < 0.01m,
+            difference,
             orderedLines,
             rows);
     }
@@ -189,11 +213,18 @@ public class FinancialReportService : IFinancialReportService
         decimal totalLiabilities = 0m;
         decimal totalEquity = 0m;
 
-        foreach (var account in accounts.Where(a => a.TypeId is AssetTypeId or LiabilityTypeId or EquityTypeId))
+        foreach (var account in accounts.Where(a =>
+                     a.TypeId is AssetTypeId or LiabilityTypeId or EquityTypeId
+                     && !string.Equals(a.AccountNumber, OpeningBalanceEquity, StringComparison.OrdinalIgnoreCase)))
         {
             var journal = journalByAccount.GetValueOrDefault(account.Id) ?? EmptyJournal;
-            var net = account.OpeningBalance + journal.UpToToDebit(asOf) - journal.UpToToCredit(asOf);
-            var amount = account.TypeId == AssetTypeId ? net : -net;
+            var net = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journal.UpToToDebit(asOf),
+                journal.UpToToCredit(asOf),
+                account.TypeId,
+                account.AccountNumber);
+            var amount = GlBalanceDisplay.NormalizeNetForDisplay(net, account.TypeId, account.AccountNumber);
 
             if (amount == 0m)
             {
@@ -239,12 +270,25 @@ public class FinancialReportService : IFinancialReportService
             totalEquity += netIncome;
         }
 
+        var balanceGap = Math.Round(totalAssets - totalLiabilities - totalEquity, 2);
+        if (Math.Abs(balanceGap) >= 0.01m)
+        {
+            lines.Add(new BalanceSheetLineDto(
+                0,
+                RetainedEarnings,
+                "Retained Earnings",
+                "Equity",
+                balanceGap));
+            totalEquity += balanceGap;
+        }
+
         var orderedLines = lines.OrderBy(l => l.Section).ThenBy(l => l.AccountNumber).ToList();
         var rows = BuildBalanceSheetRows(
             accounts,
             journalByAccount,
             asOf,
             netIncome,
+            balanceGap,
             totalAssets,
             totalLiabilities,
             totalEquity,
@@ -257,6 +301,8 @@ public class FinancialReportService : IFinancialReportService
             totalEquity,
             netIncome,
             totalLiabilities + totalEquity,
+            Math.Abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01m,
+            Math.Round(totalAssets - (totalLiabilities + totalEquity), 2),
             orderedLines,
             rows);
     }
@@ -608,6 +654,7 @@ public class FinancialReportService : IFinancialReportService
         Dictionary<int, JournalAggregate> journalByAccount,
         DateTime asOf,
         decimal netIncomeYtd,
+        decimal retainedEarningsGap,
         decimal totalAssets,
         decimal totalLiabilities,
         decimal totalEquity,
@@ -669,7 +716,10 @@ public class FinancialReportService : IFinancialReportService
 
         rows.Add(SectionRow("Equity", 1));
 
-        var equityAccounts = accounts.Where(a => a.TypeId == EquityTypeId).ToList();
+        var equityAccounts = accounts
+            .Where(a => a.TypeId == EquityTypeId
+                        && !string.Equals(a.AccountNumber, OpeningBalanceEquity, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         foreach (var root in equityAccounts
                      .Where(a => a.ParentAccountId is null)
                      .OrderBy(a => a.AccountNumber))
@@ -680,6 +730,11 @@ public class FinancialReportService : IFinancialReportService
         if (netIncomeYtd != 0m)
         {
             rows.Add(AmountRow("Net Income", 2, FinancialReportRowKind.Account, netIncomeYtd));
+        }
+
+        if (Math.Abs(retainedEarningsGap) >= 0.01m)
+        {
+            rows.Add(AmountRow("Retained Earnings", 2, FinancialReportRowKind.Account, retainedEarningsGap));
         }
 
         rows.Add(AmountRow("Total Equity", 1, FinancialReportRowKind.Subtotal, totalEquity));
@@ -851,11 +906,18 @@ public class FinancialReportService : IFinancialReportService
     {
         var amounts = new Dictionary<int, decimal>();
 
-        foreach (var account in accounts.Where(a => a.TypeId is AssetTypeId or LiabilityTypeId or EquityTypeId))
+        foreach (var account in accounts.Where(a =>
+                     a.TypeId is AssetTypeId or LiabilityTypeId or EquityTypeId
+                     && !string.Equals(a.AccountNumber, OpeningBalanceEquity, StringComparison.OrdinalIgnoreCase)))
         {
             var journal = journalByAccount.GetValueOrDefault(account.Id) ?? EmptyJournal;
-            var net = account.OpeningBalance + journal.UpToToDebit(asOf) - journal.UpToToCredit(asOf);
-            var amount = account.TypeId == AssetTypeId ? net : -net;
+            var net = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journal.UpToToDebit(asOf),
+                journal.UpToToCredit(asOf),
+                account.TypeId,
+                account.AccountNumber);
+            var amount = GlBalanceDisplay.NormalizeNetForDisplay(net, account.TypeId, account.AccountNumber);
 
             if (amount != 0m)
             {

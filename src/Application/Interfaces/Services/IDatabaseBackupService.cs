@@ -11,6 +11,7 @@ public interface IDatabaseBackupService
 
     Task<JobActionResult> RunBackupAsync(
         JobRunType runType,
+        BackupDestination destination = BackupDestination.Online,
         CancellationToken cancellationToken = default);
 
     Task<(byte[] Content, string FileName)?> DownloadAsync(int id, CancellationToken cancellationToken = default);

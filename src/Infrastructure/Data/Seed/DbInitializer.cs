@@ -51,7 +51,9 @@ public static class DbInitializer
         await SeedLookupsAsync(context, cancellationToken);
         await SeedRolesAsync(roleManager, cancellationToken);
         await EnsurePermissionsAsync(context, cancellationToken);
+        await EnsureMissingPermissionsAsync(context, cancellationToken);
         await EnsureSuperAdminRolePermissionsAsync(context, cancellationToken);
+        await EnsureJournalEntryRolePermissionsAsync(context, cancellationToken);
         await EnsureDemoAdminAccessAsync(context, userManager, cancellationToken);
 
         if (await context.Companies.AnyAsync(cancellationToken))
@@ -168,6 +170,81 @@ public static class DbInitializer
             context.Permissions.AddRange(permissions);
             return Task.CompletedTask;
         }, cancellationToken);
+    }
+
+    private static async Task EnsureMissingPermissionsAsync(AppDbContext context, CancellationToken cancellationToken)
+    {
+        var existingKeys = await context.Permissions
+            .AsNoTracking()
+            .Select(p => p.Key)
+            .ToListAsync(cancellationToken);
+
+        var missing = PermissionSeedData.GetPermissions()
+            .Where(p => !existingKeys.Contains(p.Key, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        var nextId = await context.Permissions.AsNoTracking().MaxAsync(p => (int?)p.Id, cancellationToken) ?? 0;
+        foreach (var permission in missing)
+        {
+            permission.Id = ++nextId;
+        }
+
+        await IdentityInsertHelper.SaveWithExplicitKeysAsync(context, "Permissions", () =>
+        {
+            context.Permissions.AddRange(missing);
+            return Task.CompletedTask;
+        }, cancellationToken);
+
+        context.ChangeTracker.Clear();
+    }
+
+    private static async Task EnsureJournalEntryRolePermissionsAsync(AppDbContext context, CancellationToken cancellationToken)
+    {
+        var journalPermissions = await context.Permissions
+            .AsNoTracking()
+            .Where(p => p.Module == "JournalEntries")
+            .Select(p => new { p.Id, p.Action })
+            .ToListAsync(cancellationToken);
+
+        if (journalPermissions.Count == 0)
+        {
+            return;
+        }
+
+        var roleIds = new[] { SeedConstants.AdminRoleId, SeedConstants.AccountantRoleId };
+        var added = false;
+        foreach (var roleId in roleIds)
+        {
+            var assignedIds = await context.RolePermissions
+                .AsNoTracking()
+                .Where(rp => rp.RoleId == roleId)
+                .Select(rp => rp.PermissionId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var permission in journalPermissions.Where(p => !assignedIds.Contains(p.Id)))
+            {
+                context.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = roleId,
+                    PermissionId = permission.Id,
+                    CanView = permission.Action == "View",
+                    CanCreate = permission.Action == "Create",
+                    CanEdit = permission.Action == "Edit",
+                    CanDelete = permission.Action == "Delete"
+                });
+                added = true;
+            }
+        }
+
+        if (added)
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private static async Task EnsureSuperAdminRolePermissionsAsync(AppDbContext context, CancellationToken cancellationToken)

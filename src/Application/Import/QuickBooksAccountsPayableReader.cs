@@ -44,7 +44,7 @@ public static class QuickBooksAccountsPayableReader
                 var billDate = row.Cell(7).TryGetValue<DateTime>(out var parsedDate)
                     ? parsedDate.Date
                     : (DateTime?)null;
-                var credit = ReadAmount(row.Cell(17));
+                var credit = ReadAmount(row.Cell(19));
                 if (credit <= 0m)
                 {
                     continue;
@@ -57,7 +57,7 @@ public static class QuickBooksAccountsPayableReader
                     credit));
             }
 
-            var balance = ReadNullableAmount(row.Cell(19));
+            var balance = ReadNullableAmount(row.Cell(21));
             if (balance.HasValue)
             {
                 closingBalance = balance.Value;

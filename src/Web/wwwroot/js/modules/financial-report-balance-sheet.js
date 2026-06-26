@@ -8,6 +8,12 @@
 
         var rows = data.rows || data.Rows || [];
         $('#report-lines').html(common.renderProformaRows(rows, 'amount'));
+        common.renderBalanceBanner(
+            $('#report-balance-banner'),
+            data.isBalanced ?? data.IsBalanced,
+            data.difference ?? data.Difference,
+            'Balance sheet is in balance.',
+            'Balance sheet is out of balance.');
         common.resetPrintFit();
     }
 

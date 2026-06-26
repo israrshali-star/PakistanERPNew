@@ -59,10 +59,29 @@ public class SystemJobsApiController : ControllerBase
     [HttpPost("backups/run")]
     [RequirePermission("Settings.Edit")]
     [IgnoreAntiforgeryToken]
-    public async Task<IActionResult> RunBackup(CancellationToken cancellationToken)
+    public async Task<IActionResult> RunBackup(
+        [FromBody] RunBackupRequest? request,
+        CancellationToken cancellationToken)
     {
-        var result = await _databaseBackupService.RunBackupAsync(JobRunType.Manual, cancellationToken);
-        return result.Success ? Ok(result) : BadRequest(result);
+        var destination = request?.Destination ?? BackupDestination.Online;
+        var result = await _databaseBackupService.RunBackupAsync(
+            JobRunType.Manual,
+            destination,
+            cancellationToken);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(new
+        {
+            result.Success,
+            result.Message,
+            result.Id,
+            destination,
+            shouldDownload = destination == BackupDestination.Local && result.Id.HasValue
+        });
     }
 
     [HttpGet("backups/download/{id:int}")]

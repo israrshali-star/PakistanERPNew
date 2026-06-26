@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Web.ViewModels;
@@ -179,6 +180,38 @@ public class AccountController : Controller
     public IActionResult AccessDenied()
     {
         return View();
+    }
+
+    [HttpPost]
+    [Authorize]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangePassword(
+        [FromForm] ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword)
+            || string.IsNullOrWhiteSpace(request.NewPassword)
+            || string.IsNullOrWhiteSpace(request.ConfirmPassword))
+        {
+            return BadRequest(new { message = "All password fields are required." });
+        }
+
+        if (!string.Equals(request.NewPassword, request.ConfirmPassword, StringComparison.Ordinal))
+        {
+            return BadRequest(new { message = "New password and confirmation do not match." });
+        }
+
+        var result = await _authService.ChangePasswordAsync(
+            request.CurrentPassword,
+            request.NewPassword,
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(new { message = result.ErrorMessage ?? "Could not change password." });
+        }
+
+        return Ok(new { message = "Password changed successfully." });
     }
 
     private async Task<IActionResult> CompleteCompanySelectionAsync(

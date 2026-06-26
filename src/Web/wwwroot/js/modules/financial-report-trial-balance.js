@@ -8,6 +8,12 @@
 
         var rows = data.rows || data.Rows || [];
         $('#report-lines').html(common.renderProformaRows(rows, 'debitCredit'));
+        common.renderBalanceBanner(
+            $('#report-balance-banner'),
+            data.isBalanced ?? data.IsBalanced,
+            data.difference ?? data.Difference,
+            'Trial balance is in balance.',
+            'Trial balance is out of balance.');
     }
 
     function loadReport() {

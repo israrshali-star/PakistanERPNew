@@ -18,8 +18,9 @@ public class GlRepairService : IGlRepairService
     private const string CartageItemCode = "ITEM-0002";
     private const int CogsTypeId = 5;
     // Option B: target closing balances (June collected) for company 3 sales tax sub-accounts.
-    private const decimal Company3FurtherTaxTargetClosing = 664_347.29m;
-    private const decimal Company3SalesTax18TargetClosing = 4_129_974.88m;
+    private const decimal Company3FurtherTaxTargetClosing = 2_864_761.24m;
+    private const decimal Company3SalesTax18TargetClosing = 17_964_781.89m;
+    private const decimal Company3SalesTaxParentTargetClosing = 20_829_543.13m;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
@@ -3904,23 +3905,8 @@ public class GlRepairService : IGlRepairService
         var accounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId && a.IsActive)
-            .Select(a => new { a.Id, a.OpeningBalance })
+            .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
             .ToListAsync(cancellationToken);
-
-        decimal debits = 0m;
-        decimal credits = 0m;
-
-        foreach (var account in accounts)
-        {
-            if (account.OpeningBalance > 0m)
-            {
-                debits += account.OpeningBalance;
-            }
-            else if (account.OpeningBalance < 0m)
-            {
-                credits += Math.Abs(account.OpeningBalance);
-            }
-        }
 
         var journalQuery = _unitOfWork.Repository<JournalEntryLine>()
             .Query()
@@ -3935,12 +3921,37 @@ public class GlRepairService : IGlRepairService
             journalQuery = journalQuery.Where(l => l.JournalEntry.EntryDate <= asOf);
         }
 
-        var lines = await journalQuery
-            .Select(l => new { l.Debit, l.Credit })
+        var journalTotals = await journalQuery
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit)
+            })
             .ToListAsync(cancellationToken);
 
-        debits += lines.Sum(l => l.Debit);
-        credits += lines.Sum(l => l.Credit);
+        var journalByAccount = journalTotals.ToDictionary(x => x.AccountId);
+
+        decimal debits = 0m;
+        decimal credits = 0m;
+
+        foreach (var account in accounts)
+        {
+            journalByAccount.TryGetValue(account.Id, out var journal);
+            var closingNet = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journal?.Debit ?? 0m,
+                journal?.Credit ?? 0m,
+                account.TypeId,
+                account.AccountNumber);
+            var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
+                closingNet,
+                account.TypeId,
+                account.AccountNumber);
+            debits += closingDebit;
+            credits += closingCredit;
+        }
 
         return (Math.Round(debits, 2), Math.Round(credits, 2));
     }
@@ -4015,23 +4026,35 @@ public class GlRepairService : IGlRepairService
             return 0m;
         }
 
-        var opening = await _unitOfWork.Repository<ChartOfAccount>()
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
-            .Where(a => a.Id == accountId.Value)
-            .Select(a => a.OpeningBalance)
+            .Where(a => a.Id == accountId.Value && a.CompanyId == companyId)
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (account is null)
+        {
+            return 0m;
+        }
 
         var totals = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
             .Where(l =>
-                l.ChartOfAccountId == accountId.Value
+                l.ChartOfAccountId == account.Id
                 && l.JournalEntry.CompanyId == companyId
                 && l.JournalEntry.Status == JournalStatus.Posted
                 && !l.JournalEntry.IsDeleted)
-            .Select(l => new { l.Debit, l.Credit })
-            .ToListAsync(cancellationToken);
+            .GroupBy(_ => 1)
+            .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        return Math.Round(opening + totals.Sum(t => t.Debit - t.Credit), 2);
+        return Math.Round(
+            GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                totals?.Debit ?? 0m,
+                totals?.Credit ?? 0m,
+                account.TypeId,
+                account.AccountNumber),
+            2);
     }
 
     private const decimal InventoryAssetOpeningFromQuickBooks = 7_497_916.51m;
@@ -4187,6 +4210,277 @@ public class GlRepairService : IGlRepairService
             _logger.LogError(ex, "Inventory asset repair failed for company {CompanyId}", companyId);
             return new InventoryAssetRepairResult(false, ex.Message, 0, 0, quickBooks.ClosingBalance, 0m, 0m);
         }
+    }
+
+    public async Task<QuickBooksControlBalanceAlignResult> AlignControlAccountsToQuickBooksAsync(
+        int companyId,
+        decimal accountsReceivableBalance,
+        decimal accountsPayableBalance,
+        decimal inventoryBalance,
+        decimal? furtherTaxBalance = null,
+        decimal? salesTax18Balance = null,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "qb-control-align";
+        var obeAccountId = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
+        if (!obeAccountId.HasValue)
+        {
+            return new QuickBooksControlBalanceAlignResult(
+                false,
+                "Opening Balance Equity account not found.",
+                0m,
+                0m,
+                0m,
+                null,
+                null,
+                0m,
+                0m,
+                0m);
+        }
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            await AlignAccountOpeningToClosingTargetAsync(
+                companyId,
+                AccountsReceivable,
+                accountsReceivableBalance,
+                now,
+                userName,
+                cancellationToken);
+            await AlignAccountOpeningToClosingTargetAsync(
+                companyId,
+                AccountsPayable,
+                accountsPayableBalance,
+                now,
+                userName,
+                cancellationToken);
+            await AlignAccountOpeningToClosingTargetAsync(
+                companyId,
+                InventoryAsset,
+                inventoryBalance,
+                now,
+                userName,
+                cancellationToken);
+
+            if (furtherTaxBalance.HasValue)
+            {
+                await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+                var parent = await _unitOfWork.Repository<ChartOfAccount>()
+                    .Query(asNoTracking: false)
+                    .FirstAsync(a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable, cancellationToken);
+                parent.OpeningBalance = 0m;
+                parent.UpdatedAt = now;
+                parent.UpdatedBy = userName;
+                _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+
+                await AlignAccountOpeningToClosingTargetAsync(
+                    companyId,
+                    FurtherTaxPayable,
+                    furtherTaxBalance.Value,
+                    now,
+                    userName,
+                    cancellationToken);
+            }
+
+            if (salesTax18Balance.HasValue)
+            {
+                await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+                await AlignAccountOpeningToClosingTargetAsync(
+                    companyId,
+                    SalesTaxPayable18,
+                    salesTax18Balance.Value,
+                    now,
+                    userName,
+                    cancellationToken);
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId.Value, now, userName, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            var (trialDebits, trialCredits) = await GetTrialBalanceTotalsAsync(companyId, cancellationToken);
+            var obe = await GetAccountBalanceAsync(companyId, OpeningBalanceEquity, cancellationToken);
+
+            return new QuickBooksControlBalanceAlignResult(
+                true,
+                "Control account openings aligned to QuickBooks closing balances.",
+                await GetAccountBalanceAsync(companyId, AccountsReceivable, cancellationToken),
+                await GetAccountBalanceAsync(companyId, AccountsPayable, cancellationToken),
+                await GetAccountBalanceAsync(companyId, InventoryAsset, cancellationToken),
+                furtherTaxBalance.HasValue
+                    ? await GetAccountBalanceAsync(companyId, FurtherTaxPayable, cancellationToken)
+                    : null,
+                salesTax18Balance.HasValue
+                    ? await GetAccountBalanceAsync(companyId, SalesTaxPayable18, cancellationToken)
+                    : null,
+                obe,
+                trialDebits,
+                trialCredits);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "QuickBooks control balance alignment failed for company {CompanyId}", companyId);
+            return new QuickBooksControlBalanceAlignResult(
+                false,
+                ex.Message,
+                0m,
+                0m,
+                0m,
+                null,
+                null,
+                0m,
+                0m,
+                0m);
+        }
+    }
+
+    public async Task<QuickBooksControlBalanceAlignResult> AlignSalesTaxFromQuickBooksAsync(
+        int companyId,
+        string salesTaxPayableFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(salesTaxPayableFilePath))
+        {
+            return new QuickBooksControlBalanceAlignResult(
+                false,
+                $"Sales tax payable file not found: {salesTaxPayableFilePath}",
+                0m,
+                0m,
+                0m,
+                null,
+                null,
+                0m,
+                0m,
+                0m);
+        }
+
+        var quickBooks = QuickBooksSalesTaxPayableReader.Read(salesTaxPayableFilePath);
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "sales-tax-qb-align";
+        var obeAccountId = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
+
+        if (!obeAccountId.HasValue)
+        {
+            return new QuickBooksControlBalanceAlignResult(
+                false,
+                "Opening Balance Equity account not found.",
+                0m,
+                0m,
+                0m,
+                null,
+                null,
+                0m,
+                0m,
+                0m);
+        }
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+
+            var parent = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query(asNoTracking: false)
+                .FirstAsync(a => a.CompanyId == companyId && a.AccountNumber == SalesTaxPayable, cancellationToken);
+            parent.OpeningBalance = 0m;
+            parent.UpdatedAt = now;
+            parent.UpdatedBy = userName;
+            _unitOfWork.Repository<ChartOfAccount>().Update(parent);
+
+            await AlignAccountOpeningToClosingTargetAsync(
+                companyId,
+                FurtherTaxPayable,
+                quickBooks.FurtherTaxClosingBalance,
+                now,
+                userName,
+                cancellationToken);
+            await AlignAccountOpeningToClosingTargetAsync(
+                companyId,
+                SalesTaxPayable18,
+                quickBooks.SalesTax18ClosingBalance,
+                now,
+                userName,
+                cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId.Value, now, userName, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            var (trialDebits, trialCredits) = await GetTrialBalanceTotalsAsync(companyId, cancellationToken);
+            var obe = await GetAccountBalanceAsync(companyId, OpeningBalanceEquity, cancellationToken);
+            var further = await GetAccountBalanceAsync(companyId, FurtherTaxPayable, cancellationToken);
+            var salesTax18 = await GetAccountBalanceAsync(companyId, SalesTaxPayable18, cancellationToken);
+
+            return new QuickBooksControlBalanceAlignResult(
+                true,
+                $"Sales tax aligned to QuickBooks closing {quickBooks.ClosingBalance:N2} " +
+                $"(4%/2% {quickBooks.FurtherTaxClosingBalance:N2}, 18% {quickBooks.SalesTax18ClosingBalance:N2}).",
+                await GetAccountBalanceAsync(companyId, AccountsReceivable, cancellationToken),
+                await GetAccountBalanceAsync(companyId, AccountsPayable, cancellationToken),
+                await GetAccountBalanceAsync(companyId, InventoryAsset, cancellationToken),
+                further,
+                salesTax18,
+                obe,
+                trialDebits,
+                trialCredits);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Sales tax QuickBooks alignment failed for company {CompanyId}", companyId);
+            return new QuickBooksControlBalanceAlignResult(
+                false,
+                ex.Message,
+                0m,
+                0m,
+                0m,
+                null,
+                null,
+                0m,
+                0m,
+                0m);
+        }
+    }
+
+    private async Task AlignAccountOpeningToClosingTargetAsync(
+        int companyId,
+        string accountNumber,
+        decimal targetClosingBalance,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstAsync(a => a.CompanyId == companyId && a.AccountNumber == accountNumber, cancellationToken);
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l =>
+                l.ChartOfAccountId == account.Id
+                && l.JournalEntry.CompanyId == companyId
+                && l.JournalEntry.Status == JournalStatus.Posted
+                && !l.JournalEntry.IsDeleted)
+            .GroupBy(_ => 1)
+            .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var journalDelta = GlAccountBalance.GetJournalDelta(
+            journalTotals?.Debit ?? 0m,
+            journalTotals?.Credit ?? 0m,
+            account.TypeId,
+            account.AccountNumber);
+
+        account.OpeningBalance = Math.Round(targetClosingBalance - journalDelta, 2);
+        account.UpdatedAt = now;
+        account.UpdatedBy = userName;
+        _unitOfWork.Repository<ChartOfAccount>().Update(account);
     }
 
     public async Task<InventoryAssetAlignResult> AlignInventoryAssetToQuickBooksAsync(
@@ -4392,10 +4686,49 @@ public class GlRepairService : IGlRepairService
         string userName,
         CancellationToken cancellationToken)
     {
-        var plug = -await _unitOfWork.Repository<ChartOfAccount>()
+        var otherAccounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId && a.Id != obeAccountId)
-            .SumAsync(a => a.OpeningBalance, cancellationToken);
+            .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
+            .ToListAsync(cancellationToken);
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l =>
+                l.JournalEntry.CompanyId == companyId
+                && l.JournalEntry.Status == JournalStatus.Posted
+                && !l.JournalEntry.IsDeleted)
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit)
+            })
+            .ToListAsync(cancellationToken);
+
+        var journalByAccount = journalTotals.ToDictionary(x => x.AccountId);
+
+        decimal closingDebits = 0m;
+        decimal closingCredits = 0m;
+        foreach (var account in otherAccounts)
+        {
+            journalByAccount.TryGetValue(account.Id, out var journal);
+            var closingNet = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                journal?.Debit ?? 0m,
+                journal?.Credit ?? 0m,
+                account.TypeId,
+                account.AccountNumber);
+            var (debit, credit) = GlTrialBalanceColumns.SplitClosingBalance(
+                closingNet,
+                account.TypeId,
+                account.AccountNumber);
+            closingDebits += debit;
+            closingCredits += credit;
+        }
+
+        var plug = Math.Round(closingCredits - closingDebits, 2);
 
         var obeAccount = await _unitOfWork.Repository<ChartOfAccount>()
             .Query(asNoTracking: false)

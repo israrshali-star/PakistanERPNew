@@ -54,6 +54,12 @@
                         <li><h6 class="dropdown-header">@(User.Identity?.Name)</h6></li>
                         <li><hr class="dropdown-divider" /></li>
                         <li>
+                            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+                                <i class="fa-solid fa-key me-2"></i>Change Password
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li>
                             <form asp-controller="Account" asp-action="Logout" method="post" class="px-3 py-1">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="dropdown-item text-danger">
@@ -91,6 +97,8 @@
         </footer>
     </div>
 
+    @await Html.PartialAsync("_ChangePasswordModal")
+
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
@@ -99,6 +107,7 @@
     <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/change-password.js" asp-append-version="true"></script>
     <script src="~/js/app.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

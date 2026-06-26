@@ -60,6 +60,6 @@ public class StoragePathsHealthCheck : IHealthCheck
     private static string ResolveStoragePath(string? configuredPath)
     {
         var raw = string.IsNullOrWhiteSpace(configuredPath) ? "App_Data" : configuredPath;
-        return Path.IsPathRooted(raw) ? raw : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, raw));
+        return Path.IsPathRooted(raw) ? raw : Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), raw));
     }
 }

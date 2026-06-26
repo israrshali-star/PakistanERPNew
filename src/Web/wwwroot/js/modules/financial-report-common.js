@@ -161,6 +161,26 @@
     window.addEventListener('beforeprint', applyPrintFit);
     window.addEventListener('afterprint', resetPrintFit);
 
+    function renderBalanceBanner($banner, isBalanced, difference, balancedText, unbalancedText) {
+        if (isBalanced === undefined || isBalanced === null) {
+            $banner.addClass('d-none').removeClass('alert-success alert-danger').text('');
+            return;
+        }
+
+        var balanced = isBalanced === true || isBalanced === 'true';
+        $banner.removeClass('d-none alert-success alert-danger');
+        if (balanced) {
+            $banner.addClass('alert-success').text(balancedText);
+        } else {
+            var diff = Math.abs(parseFloat(difference) || 0);
+            $banner.addClass('alert-danger').text(
+                unbalancedText + ' Difference: ' + diff.toLocaleString('en-PK', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }) + '.');
+        }
+    }
+
     window.FinancialReportCommon = {
         rowKind: rowKind,
         escapeHtml: escapeHtml,
@@ -170,6 +190,7 @@
         toInputDate: toInputDate,
         getApiErrorMessage: getApiErrorMessage,
         renderProformaRows: renderProformaRows,
+        renderBalanceBanner: renderBalanceBanner,
         setCompanyHeader: setCompanyHeader,
         applyPrintFit: applyPrintFit,
         resetPrintFit: resetPrintFit
