@@ -26,6 +26,11 @@ public interface IGlRepairService
         int companyId,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Success, string? Message, decimal AmountTransferred)> TransferKeptAsideOpeningToSalesTax18Async(
+        int companyId,
+        decimal? transferAmount = null,
+        CancellationToken cancellationToken = default);
+
     Task<CutoverReconcileResult> ReconcileToOpeningBalancesAsync(
         int companyId,
         DateTime removeTransactionsOnOrAfter,
@@ -113,5 +118,12 @@ public interface IGlRepairService
         int companyId,
         string accountsPayableFilePath,
         bool applyFixes = true,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Success, string? Message, int OpeningsFlipped, int PaymentsReposted, decimal SalesTax18Balance)> RepairSalesTaxPaymentGlAsync(
+        int companyId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<(int CompanyId, bool Success, string? Message, int OpeningsFlipped, int PaymentsReposted)>> RepairSalesTaxPaymentGlForSplitTaxCompaniesAsync(
         CancellationToken cancellationToken = default);
 }

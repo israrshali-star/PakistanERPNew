@@ -1,4 +1,5 @@
 using PakistanAccountingERP.Application;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Enums;
@@ -104,6 +105,11 @@ if (TryRunReallocateSalesTaxOpening(args, out var reallocateSalesTaxOpeningExitC
     Environment.Exit(reallocateSalesTaxOpeningExitCode);
 }
 
+if (TryRunTransferKeptAsideToSalesTax18(args, out var transferKeptAsideExitCode))
+{
+    Environment.Exit(transferKeptAsideExitCode);
+}
+
 if (TryRunRepairArGl(args, out var repairArGlExitCode))
 {
     Environment.Exit(repairArGlExitCode);
@@ -117,6 +123,11 @@ if (TryRunRepairSalesTaxSubAccounts(args, out var repairSalesTaxSubAccountsExitC
 if (TryRunReplugOpeningBalanceEquity(args, out var replugObeExitCode))
 {
     Environment.Exit(replugObeExitCode);
+}
+
+if (TryRunRepairSalesTaxPaymentGl(args, out var repairSalesTaxPaymentExitCode))
+{
+    Environment.Exit(repairSalesTaxPaymentExitCode);
 }
 
 if (TryRunAlignQbControlBalances(args, out var alignQbControlExitCode))
@@ -222,6 +233,7 @@ try
         pattern: "{controller=Home}/{action=Index}/{id?}");
 
     await DbInitializer.InitializeAsync(app.Services);
+    await EnsureSalesTaxPaymentGlConventionsAsync(app.Services);
 
     Log.Information("Pakistan Accounting ERP ready ({Environment})", app.Environment.EnvironmentName);
     app.Run();
@@ -827,11 +839,13 @@ static bool TryRunFixTrialBalanceMismatches(string[] args, out int exitCode)
         Console.WriteLine($"Customer receipt journals fixed: {result.CustomerReceiptJournalsFixed}");
         Console.WriteLine($"Duplicate vendor bills reversed: {result.DuplicateVendorBillsReversed}");
         Console.WriteLine($"Kept Aside opening set: {result.KeptAsideOpeningSet}");
+        Console.WriteLine($"Kept Aside -> Sales Tax 18%: {result.KeptAsideTransferredToSalesTax18:N2}");
         Console.WriteLine($"Cash (10015): {result.CashBalance:N2}");
         Console.WriteLine($"AR (11110): {result.AccountsReceivableBalance:N2}");
         Console.WriteLine($"Inventory (12110): {result.InventoryBalance:N2}");
         Console.WriteLine($"AP (20000): {result.AccountsPayableBalance:N2}");
         Console.WriteLine($"Kept Aside (10016): {result.KeptAsideBalance:N2}");
+        Console.WriteLine($"Sales Tax 18% (25520): {result.SalesTax18Balance:N2}");
         Console.WriteLine($"Trial balance debits: {result.TrialBalanceDebits:N2}");
         Console.WriteLine($"Trial balance credits: {result.TrialBalanceCredits:N2}");
 
@@ -1091,6 +1105,56 @@ static bool TryRunReallocateSalesTaxOpening(string[] args, out int exitCode)
     return true;
 }
 
+static bool TryRunTransferKeptAsideToSalesTax18(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 3
+        || !string.Equals(args[0], "--transfer-kept-aside-to-sales-tax-18", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+        || !int.TryParse(args[2], out var companyId))
+    {
+        return false;
+    }
+
+    decimal? transferAmount = null;
+    for (var i = 3; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--amount", StringComparison.OrdinalIgnoreCase)
+            && decimal.TryParse(args[i + 1], out var parsed))
+        {
+            transferAmount = parsed;
+            break;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+        var result = repair.TransferKeptAsideOpeningToSalesTax18Async(companyId, transferAmount)
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Amount transferred: {result.AmountTransferred:N2}");
+
+        exitCode = result.Success ? 0 : 1;
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
 static bool TryRunRepairArGl(string[] args, out int exitCode)
 {
     exitCode = 0;
@@ -1211,6 +1275,104 @@ static bool TryRunReplugOpeningBalanceEquity(string[] args, out int exitCode)
     }
 
     return true;
+}
+
+static bool TryRunRepairSalesTaxPaymentGl(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    if (args.Length < 2
+        || !string.Equals(args[0], "--repair-sales-tax-payment-gl", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var allSplitTaxCompanies = args.Length >= 2
+        && string.Equals(args[1], "--all-split-tax-companies", StringComparison.OrdinalIgnoreCase);
+
+    int companyId = 0;
+    if (!allSplitTaxCompanies)
+    {
+        if (args.Length < 3
+            || !string.Equals(args[1], "--company-id", StringComparison.OrdinalIgnoreCase)
+            || !int.TryParse(args[2], out companyId))
+        {
+            return false;
+        }
+    }
+
+    var builder = WebApplication.CreateBuilder();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+
+    var app = builder.Build();
+
+    var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+
+        if (allSplitTaxCompanies)
+        {
+            var results = repair.RepairSalesTaxPaymentGlForSplitTaxCompaniesAsync().GetAwaiter().GetResult();
+            foreach (var result in results)
+            {
+                Console.WriteLine($"Company {result.CompanyId}: {result.Message}");
+                Console.WriteLine($"  Openings flipped: {result.OpeningsFlipped}");
+                Console.WriteLine($"  Payments reposted: {result.PaymentsReposted}");
+                if (!result.Success)
+                {
+                    exitCode = 1;
+                }
+            }
+        }
+        else
+        {
+            var result = repair.RepairSalesTaxPaymentGlAsync(companyId).GetAwaiter().GetResult();
+
+            Console.WriteLine(result.Message);
+            Console.WriteLine($"Openings flipped: {result.OpeningsFlipped}");
+            Console.WriteLine($"Payments reposted: {result.PaymentsReposted}");
+            Console.WriteLine($"Sales Tax 18% payable: {result.SalesTax18Balance:N2}");
+
+            exitCode = result.Success ? 0 : 1;
+        }
+    }
+    finally
+    {
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    return true;
+}
+
+static async Task EnsureSalesTaxPaymentGlConventionsAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    foreach (var companyId in TradeInvoiceLayout.SplitTaxGlCompanyIds)
+    {
+        var result = await repair.RepairSalesTaxPaymentGlAsync(companyId);
+        if (!result.Success)
+        {
+            logger.LogWarning(
+                "Sales tax payment GL repair failed for company {CompanyId}: {Message}",
+                companyId,
+                result.Message);
+            continue;
+        }
+
+        if (result.OpeningsFlipped > 0 || result.PaymentsReposted > 0)
+        {
+            logger.LogInformation(
+                "Sales tax payment GL repaired for company {CompanyId}: openings flipped {OpeningsFlipped}, payments reposted {PaymentsReposted}",
+                companyId,
+                result.OpeningsFlipped,
+                result.PaymentsReposted);
+        }
+    }
 }
 
 static bool TryRunRepairInventoryAssetFromQuickBooks(string[] args, out int exitCode)

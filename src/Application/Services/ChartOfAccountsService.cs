@@ -370,7 +370,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
             SubTypeId = request.SubTypeId,
             ParentAccountId = request.ParentAccountId,
             Description = request.Description?.Trim(),
-            OpeningBalance = request.OpeningBalance,
+            OpeningBalance = GlOpeningBalanceNormalizer.NormalizeForStorage(
+                request.OpeningBalance,
+                request.TypeId,
+                request.AccountNumber.Trim()),
             IsActive = request.IsActive,
             CreatedAt = now,
             CreatedBy = user
@@ -455,7 +458,12 @@ public class ChartOfAccountsService : IChartOfAccountsService
         entity.SubTypeId = request.SubTypeId;
         entity.ParentAccountId = request.ParentAccountId;
         entity.Description = request.Description?.Trim();
-        entity.OpeningBalance = hasChildren ? 0m : request.OpeningBalance;
+        entity.OpeningBalance = hasChildren
+            ? 0m
+            : GlOpeningBalanceNormalizer.NormalizeForStorage(
+                request.OpeningBalance,
+                request.TypeId,
+                entity.AccountNumber);
         entity.IsActive = request.IsActive;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedBy = _currentUser.UserName;

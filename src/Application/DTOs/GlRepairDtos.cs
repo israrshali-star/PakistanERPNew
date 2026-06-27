@@ -74,11 +74,13 @@ public record TrialBalanceMismatchFixResult(
     int CustomerReceiptJournalsFixed,
     int DuplicateVendorBillsReversed,
     bool KeptAsideOpeningSet,
+    decimal KeptAsideTransferredToSalesTax18,
     decimal CashBalance,
     decimal AccountsReceivableBalance,
     decimal InventoryBalance,
     decimal AccountsPayableBalance,
     decimal KeptAsideBalance,
+    decimal SalesTax18Balance,
     decimal TrialBalanceDebits,
     decimal TrialBalanceCredits);
 

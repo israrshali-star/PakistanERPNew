@@ -92,7 +92,11 @@ public static class QuickBooksReportCsvParser
                 continue;
             }
 
-            var label = row[0].Trim().Trim('"');
+            var label = row
+                .Select(cell => cell.Trim().Trim('"'))
+                .FirstOrDefault(cell => !string.IsNullOrWhiteSpace(cell)
+                    && !string.IsNullOrWhiteSpace(ExtractTrialBalanceAccountNumber(cell)))
+                ?? row[0].Trim().Trim('"');
             if (string.IsNullOrWhiteSpace(label)
                 || label.StartsWith("TOTAL", StringComparison.OrdinalIgnoreCase)
                 || label.Equals("Debit", StringComparison.OrdinalIgnoreCase))
@@ -116,8 +120,36 @@ public static class QuickBooksReportCsvParser
                 continue;
             }
 
-            var debit = row.Count > 1 ? ParseDecimal(row[1]) : 0m;
-            var credit = row.Count > 2 ? ParseDecimal(row[2]) : 0m;
+            var labelIndex = row.FindIndex(cell =>
+                string.Equals(cell.Trim().Trim('"'), label, StringComparison.OrdinalIgnoreCase));
+            if (labelIndex < 0)
+            {
+                labelIndex = 0;
+            }
+
+            decimal debit = 0m;
+            decimal credit = 0m;
+            for (var columnIndex = labelIndex + 1; columnIndex < row.Count; columnIndex++)
+            {
+                var amount = ParseDecimal(row[columnIndex]);
+                if (amount == 0m && string.IsNullOrWhiteSpace(row[columnIndex]))
+                {
+                    continue;
+                }
+
+                if (debit == 0m && amount != 0m)
+                {
+                    debit = amount;
+                    continue;
+                }
+
+                if (credit == 0m && amount != 0m)
+                {
+                    credit = amount;
+                    break;
+                }
+            }
+
             openings[accountNumber] = Math.Round(debit - credit, 2);
         }
 
@@ -646,14 +678,69 @@ public static class QuickBooksReportCsvParser
             throw new InvalidOperationException("Inventory valuation CSV is missing an On Hand quantity column.");
         }
 
+        var qbItemIndex = InferQuickBooksValuationItemColumnIndex(rows, headerIndex, onHandIndex);
+
         return (
             headerIndex,
-            0,
+            qbItemIndex,
             -1,
             onHandIndex,
             FindColumnIndex(qbHeaders, ["u/m", "um", "unit", "unit of measure"]),
             FindColumnIndex(qbHeaders, ["average cost", "avg cost", "cost"]),
             FindColumnIndex(qbHeaders, ["asset value", "total value", "value"]));
+    }
+
+    private static int InferQuickBooksValuationItemColumnIndex(
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        int headerIndex,
+        int onHandIndex)
+    {
+        var bestIndex = onHandIndex > 0 ? onHandIndex - 1 : 2;
+        var bestScore = 0;
+
+        var maxColumn = Math.Min(onHandIndex >= 0 ? onHandIndex : 6, 8);
+        for (var columnIndex = 0; columnIndex < maxColumn; columnIndex++)
+        {
+            var score = 0;
+            for (var rowIndex = headerIndex + 1;
+                 rowIndex < rows.Count && rowIndex < headerIndex + 40;
+                 rowIndex++)
+            {
+                if (LooksLikeInventoryItemLabel(GetCell(rows[rowIndex], columnIndex)))
+                {
+                    score++;
+                }
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestIndex = columnIndex;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private static bool LooksLikeInventoryItemLabel(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim().Trim('"');
+        if (trimmed.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("Inventory", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("TOTAL", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var itemKey = NormalizeInventoryItemKey(trimmed);
+        return itemKey.Length >= 2
+               && char.IsLetter(itemKey[0])
+               && itemKey.Any(char.IsDigit);
     }
 
     private static int FindInventoryValuationHeaderRowIndex(IReadOnlyList<IReadOnlyList<string>> rows)
@@ -702,8 +789,10 @@ public static class QuickBooksReportCsvParser
     {
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets
+            .Where(ws => !IsQuickBooksExportTipsWorksheet(ws.Name))
             .OrderByDescending(ws => ws.LastRowUsed()?.RowNumber() ?? 0)
-            .First();
+            .FirstOrDefault()
+            ?? workbook.Worksheets.First();
         var usedRange = worksheet.RangeUsed();
         if (usedRange is null)
         {
@@ -736,6 +825,10 @@ public static class QuickBooksReportCsvParser
 
         return rows;
     }
+
+    private static bool IsQuickBooksExportTipsWorksheet(string worksheetName) =>
+        worksheetName.Contains("export tips", StringComparison.OrdinalIgnoreCase)
+        || worksheetName.Contains("quickbooks desktop export", StringComparison.OrdinalIgnoreCase);
 
     private static string GetExcelCellValue(IXLCell cell)
     {

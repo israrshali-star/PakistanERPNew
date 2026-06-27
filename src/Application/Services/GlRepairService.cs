@@ -542,6 +542,390 @@ public class GlRepairService : IGlRepairService
         }
     }
 
+    public async Task<(bool Success, string? Message, decimal AmountTransferred)> TransferKeptAsideOpeningToSalesTax18Async(
+        int companyId,
+        decimal? transferAmount = null,
+        CancellationToken cancellationToken = default)
+    {
+        var amountToTransfer = transferAmount ?? KeptAsideOpeningFromQuickBooks;
+        if (amountToTransfer <= 0m)
+        {
+            return (false, "Transfer amount must be greater than zero.", 0m);
+        }
+
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "gl-repair";
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            var transferred = await TransferKeptAsideOpeningToSalesTax18CoreAsync(
+                companyId,
+                amountToTransfer,
+                now,
+                userName,
+                cancellationToken);
+            await RecalculateOpeningBalanceEquityPlugAsync(companyId, now, userName, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return (
+                true,
+                transferred == 0m
+                    ? $"No Kept Aside ({KeptAside}) opening balance to transfer to {SalesTaxPayable18}."
+                    : $"Transferred Kept Aside B/F {transferred:N2} to {SalesTaxPayable18} (Sales Tax @ 18%).",
+                transferred);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Kept Aside to sales tax 18% transfer failed for company {CompanyId}", companyId);
+            return (false, ex.Message, 0m);
+        }
+    }
+
+    public async Task<IReadOnlyList<(int CompanyId, bool Success, string? Message, int OpeningsFlipped, int PaymentsReposted)>> RepairSalesTaxPaymentGlForSplitTaxCompaniesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<(int CompanyId, bool Success, string? Message, int OpeningsFlipped, int PaymentsReposted)>();
+
+        foreach (var companyId in TradeInvoiceLayout.SplitTaxGlCompanyIds)
+        {
+            var result = await RepairSalesTaxPaymentGlAsync(companyId, cancellationToken);
+            results.Add((companyId, result.Success, result.Message, result.OpeningsFlipped, result.PaymentsReposted));
+        }
+
+        return results;
+    }
+
+    public async Task<(bool Success, string? Message, int OpeningsFlipped, int PaymentsReposted, decimal SalesTax18Balance)> RepairSalesTaxPaymentGlAsync(
+        int companyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            return (
+                false,
+                $"Sales tax payment GL repair is only available for companies {string.Join(", ", TradeInvoiceLayout.SplitTaxGlCompanyIds)}.",
+                0,
+                0,
+                0m);
+        }
+
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "sales-tax-payment-repair";
+        var salesTaxNumbers = new[] { SalesTaxPayable, FurtherTaxPayable, SalesTaxPayable18 };
+
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            var openingsFlipped = 0;
+            var taxAccounts = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query(asNoTracking: false)
+                .Where(a =>
+                    a.CompanyId == companyId
+                    && !a.IsDeleted
+                    && salesTaxNumbers.Contains(a.AccountNumber)
+                    && a.OpeningBalance > 0m)
+                .ToListAsync(cancellationToken);
+
+            foreach (var account in taxAccounts)
+            {
+                account.OpeningBalance = GlOpeningBalanceNormalizer.NormalizeForStorage(
+                    account.OpeningBalance,
+                    account.TypeId,
+                    account.AccountNumber);
+                account.UpdatedAt = now;
+                account.UpdatedBy = userName;
+                _unitOfWork.Repository<ChartOfAccount>().Update(account);
+                openingsFlipped++;
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            var taxAccountIds = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query()
+                .Where(a => a.CompanyId == companyId && !a.IsDeleted && salesTaxNumbers.Contains(a.AccountNumber))
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken);
+
+            var payments = await _unitOfWork.Repository<BankTransaction>()
+                .Query(asNoTracking: false)
+                .Where(bt =>
+                    bt.CompanyId == companyId
+                    && !bt.IsDeleted
+                    && bt.TransactionType == BankTransactionType.Withdrawal
+                    && (
+                        (bt.CounterChartOfAccountId.HasValue && taxAccountIds.Contains(bt.CounterChartOfAccountId.Value))
+                        || (bt.PartyName != null && (bt.PartyName.Contains("Sales Tax") || bt.PartyName.Contains("Used Tax")))))
+                .OrderBy(bt => bt.TransactionDate)
+                .ThenBy(bt => bt.Id)
+                .ToListAsync(cancellationToken);
+
+            var reposted = 0;
+            foreach (var payment in payments)
+            {
+                if (!await SalesTaxPaymentNeedsRepostAsync(payment, taxAccountIds, cancellationToken))
+                {
+                    continue;
+                }
+
+                var postResult = await _bankGlPosting.PostBankTransactionAsync(payment, cancellationToken);
+                if (!postResult.Success)
+                {
+                    return (false, postResult.Message, openingsFlipped, reposted, 0m);
+                }
+
+                reposted++;
+            }
+
+            var openingsConsolidated = await ConsolidateFullyPaidSalesTaxOpeningsAsync(
+                companyId,
+                now,
+                userName,
+                cancellationToken);
+
+            if (openingsFlipped > 0 || reposted > 0 || openingsConsolidated > 0)
+            {
+                await _unitOfWork.BeginTransactionAsync(cancellationToken);
+                await RecalculateOpeningBalanceEquityPlugAsync(companyId, now, userName, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            }
+
+            var salesTax18 = await GetAccountBalanceAsync(companyId, SalesTaxPayable18, cancellationToken);
+            var furtherTax = await GetAccountBalanceAsync(companyId, FurtherTaxPayable, cancellationToken);
+            var parentTax = await GetAccountBalanceAsync(companyId, SalesTaxPayable, cancellationToken);
+
+            return (
+                true,
+                $"Sales tax payment GL repaired. Openings flipped: {openingsFlipped}. Payments reposted: {reposted}. " +
+                $"Openings consolidated: {openingsConsolidated}. " +
+                $"{SalesTaxPayable18}={GlBalanceDisplay.NormalizeNetForDisplay(salesTax18, 2, SalesTaxPayable18):N2}, " +
+                $"{FurtherTaxPayable}={GlBalanceDisplay.NormalizeNetForDisplay(furtherTax, 2, FurtherTaxPayable):N2}, " +
+                $"{SalesTaxPayable}={GlBalanceDisplay.NormalizeNetForDisplay(parentTax, 2, SalesTaxPayable):N2}.",
+                openingsFlipped,
+                reposted,
+                GlBalanceDisplay.NormalizeNetForDisplay(salesTax18, 2, SalesTaxPayable18));
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Sales tax payment GL repair failed for company {CompanyId}", companyId);
+            return (false, ex.Message, 0, 0, 0m);
+        }
+    }
+
+    private async Task<bool> SalesTaxPaymentNeedsRepostAsync(
+        BankTransaction payment,
+        IReadOnlyList<int> taxAccountIds,
+        CancellationToken cancellationToken)
+    {
+        if (!payment.JournalEntryId.HasValue)
+        {
+            return true;
+        }
+
+        var taxLines = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l =>
+                l.JournalEntryId == payment.JournalEntryId.Value
+                && taxAccountIds.Contains(l.ChartOfAccountId))
+            .ToListAsync(cancellationToken);
+
+        if (taxLines.Count == 0)
+        {
+            return true;
+        }
+
+        return taxLines.Any(l => l.Debit > 0m);
+    }
+
+    private async Task<int> ConsolidateFullyPaidSalesTaxOpeningsAsync(
+        int companyId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        var obeAccountId = await GetAccountIdAsync(companyId, OpeningBalanceEquity, cancellationToken);
+        if (!obeAccountId.HasValue)
+        {
+            return 0;
+        }
+
+        const string consolidationDescription = "Sales tax opening consolidated after payment";
+        var consolidated = 0;
+
+        foreach (var accountNumber in new[] { FurtherTaxPayable, SalesTaxPayable18 })
+        {
+            var account = await _unitOfWork.Repository<ChartOfAccount>()
+                .Query(asNoTracking: false)
+                .FirstOrDefaultAsync(
+                    a => a.CompanyId == companyId && a.AccountNumber == accountNumber && !a.IsDeleted,
+                    cancellationToken);
+
+            if (account is null || account.OpeningBalance == 0m)
+            {
+                continue;
+            }
+
+            var netBalance = await GetAccountBalanceAsync(companyId, accountNumber, cancellationToken);
+            if (Math.Abs(netBalance) >= 0.01m)
+            {
+                continue;
+            }
+
+            var amount = Math.Round(Math.Abs(account.OpeningBalance), 2);
+            if (amount <= 0m)
+            {
+                continue;
+            }
+
+            var hasConsolidationJournal = await _unitOfWork.Repository<JournalEntry>()
+                .Query()
+                .AnyAsync(
+                    j => j.CompanyId == companyId
+                         && !j.IsDeleted
+                         && j.ReferenceType == ReferenceTypes.Manual
+                         && j.ReferenceId == account.Id
+                         && j.Description == consolidationDescription,
+                    cancellationToken);
+
+            if (!hasConsolidationJournal)
+            {
+                if (account.OpeningBalance < 0m)
+                {
+                    await PostManualRepairJournalAsync(
+                        companyId,
+                        new DateTime(2026, 5, 31),
+                        consolidationDescription,
+                        account.Id,
+                        [
+                            new JournalEntryLine
+                            {
+                                ChartOfAccountId = account.Id,
+                                Debit = amount,
+                                Credit = 0m,
+                                Memo = $"{accountNumber} opening payable"
+                            },
+                            new JournalEntryLine
+                            {
+                                ChartOfAccountId = obeAccountId.Value,
+                                Debit = 0m,
+                                Credit = amount,
+                                Memo = "Opening Balance Equity"
+                            }
+                        ],
+                        cancellationToken);
+                }
+                else
+                {
+                    await PostManualRepairJournalAsync(
+                        companyId,
+                        new DateTime(2026, 5, 31),
+                        consolidationDescription,
+                        account.Id,
+                        [
+                            new JournalEntryLine
+                            {
+                                ChartOfAccountId = obeAccountId.Value,
+                                Debit = amount,
+                                Credit = 0m,
+                                Memo = "Opening Balance Equity"
+                            },
+                            new JournalEntryLine
+                            {
+                                ChartOfAccountId = account.Id,
+                                Debit = 0m,
+                                Credit = amount,
+                                Memo = $"{accountNumber} opening payable"
+                            }
+                        ],
+                        cancellationToken);
+                }
+            }
+
+            if (account.OpeningBalance != 0m)
+            {
+                account.OpeningBalance = 0m;
+                account.UpdatedAt = now;
+                account.UpdatedBy = userName;
+                _unitOfWork.Repository<ChartOfAccount>().Update(account);
+                consolidated++;
+            }
+        }
+
+        return consolidated;
+    }
+
+    private async Task PostManualRepairJournalAsync(
+        int companyId,
+        DateTime entryDate,
+        string description,
+        int referenceId,
+        IReadOnlyList<JournalEntryLine> lines,
+        CancellationToken cancellationToken)
+    {
+        var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "sales-tax-payment-repair";
+
+        var journalEntry = new JournalEntry
+        {
+            CompanyId = companyId,
+            EntryNumber = entryNumber,
+            EntryDate = entryDate.Date,
+            Description = description,
+            ReferenceType = ReferenceTypes.Manual,
+            ReferenceId = referenceId,
+            Status = JournalStatus.Posted,
+            CreatedAt = now,
+            CreatedBy = userName
+        };
+
+        await _unitOfWork.Repository<JournalEntry>().AddAsync(journalEntry, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        foreach (var line in lines)
+        {
+            line.JournalEntryId = journalEntry.Id;
+        }
+
+        await _unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(lines, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<string> GenerateNextJournalEntryNumberAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var prefix = AppConstants.JournalEntryNumberPrefix;
+        var numbers = await _unitOfWork.Repository<JournalEntry>()
+            .Query()
+            .Where(j => j.CompanyId == companyId && j.EntryNumber.StartsWith(prefix))
+            .Select(j => j.EntryNumber)
+            .ToListAsync(cancellationToken);
+
+        var max = 0;
+        foreach (var number in numbers)
+        {
+            if (!number.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var suffix = number[prefix.Length..];
+            if (int.TryParse(suffix, out var seq))
+            {
+                max = Math.Max(max, seq);
+            }
+        }
+
+        return $"{prefix}{(max + 1):D4}";
+    }
+
     public async Task<CutoverReconcileResult> ReconcileToOpeningBalancesAsync(
         int companyId,
         DateTime removeTransactionsOnOrAfter,
@@ -938,6 +1322,8 @@ public class GlRepairService : IGlRepairService
                 0m,
                 0m,
                 0m,
+                0m,
+                0m,
                 0m);
         }
 
@@ -964,6 +1350,18 @@ public class GlRepairService : IGlRepairService
                 userName,
                 cancellationToken);
 
+            var keptAsideTransferred = await TransferKeptAsideOpeningToSalesTax18CoreAsync(
+                companyId,
+                KeptAsideOpeningFromQuickBooks,
+                now,
+                userName,
+                cancellationToken);
+
+            if (keptAsideTransferred > 0m)
+            {
+                await RecalculateOpeningBalanceEquityPlugAsync(companyId, now, userName, cancellationToken);
+            }
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -978,21 +1376,26 @@ public class GlRepairService : IGlRepairService
             var inventoryBalance = await GetAccountBalanceAsync(companyId, InventoryAsset, cancellationToken);
             var apBalance = await GetAccountBalanceAsync(companyId, AccountsPayable, cancellationToken);
             var keptAsideBalance = await GetAccountBalanceAsync(companyId, KeptAside, cancellationToken);
+            var salesTax18Balance = await GetAccountBalanceAsync(companyId, SalesTaxPayable18, cancellationToken);
             var (trialDebits, trialCredits) = await GetTrialBalanceTotalsAsync(companyId, cancellationToken);
 
             return new TrialBalanceMismatchFixResult(
                 true,
-                itemsStockRecalculated > 0
-                    ? $"Trial balance mismatches corrected. Recalculated stock for {itemsStockRecalculated} item(s)."
-                    : "Trial balance mismatches corrected.",
+                keptAsideTransferred > 0m
+                    ? $"Trial balance mismatches corrected. Kept Aside B/F {keptAsideTransferred:N2} moved to {SalesTaxPayable18}."
+                    : itemsStockRecalculated > 0
+                        ? $"Trial balance mismatches corrected. Recalculated stock for {itemsStockRecalculated} item(s)."
+                        : "Trial balance mismatches corrected.",
                 receiptJournalsFixed,
                 duplicateBillsReversed,
                 keptAsideSet,
+                keptAsideTransferred,
                 cashBalance,
                 arBalance,
                 inventoryBalance,
                 apBalance,
                 keptAsideBalance,
+                salesTax18Balance,
                 trialDebits,
                 trialCredits);
         }
@@ -1006,6 +1409,8 @@ public class GlRepairService : IGlRepairService
                 0,
                 0,
                 false,
+                0m,
+                0m,
                 0m,
                 0m,
                 0m,
@@ -1791,6 +2196,69 @@ public class GlRepairService : IGlRepairService
         return true;
     }
 
+    private async Task<decimal> TransferKeptAsideOpeningToSalesTax18CoreAsync(
+        int companyId,
+        decimal transferAmount,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken)
+    {
+        if (transferAmount <= 0m)
+        {
+            return 0m;
+        }
+
+        var keptAsideAccount = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(
+                a => a.CompanyId == companyId && a.AccountNumber == KeptAside && !a.IsDeleted,
+                cancellationToken);
+
+        if (keptAsideAccount is null || keptAsideAccount.OpeningBalance <= 0m)
+        {
+            return 0m;
+        }
+
+        if (TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            await EnsureSalesTaxAccountHierarchyAsync(companyId, now, userName, cancellationToken);
+        }
+
+        var salesTax18AccountId = await EnsureSalesTaxPayable18AccountAsync(
+            companyId,
+            now,
+            userName,
+            cancellationToken);
+
+        if (!salesTax18AccountId.HasValue)
+        {
+            return 0m;
+        }
+
+        var salesTax18Account = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query(asNoTracking: false)
+            .FirstAsync(a => a.Id == salesTax18AccountId.Value, cancellationToken);
+
+        var amount = Math.Min(keptAsideAccount.OpeningBalance, transferAmount);
+        if (amount <= 0m)
+        {
+            return 0m;
+        }
+
+        keptAsideAccount.OpeningBalance = Math.Round(keptAsideAccount.OpeningBalance - amount, 2);
+        keptAsideAccount.UpdatedAt = now;
+        keptAsideAccount.UpdatedBy = userName;
+
+        salesTax18Account.OpeningBalance = Math.Round(salesTax18Account.OpeningBalance + amount, 2);
+        salesTax18Account.UpdatedAt = now;
+        salesTax18Account.UpdatedBy = userName;
+
+        _unitOfWork.Repository<ChartOfAccount>().Update(keptAsideAccount);
+        _unitOfWork.Repository<ChartOfAccount>().Update(salesTax18Account);
+
+        return amount;
+    }
+
     public async Task<TrialBalanceGapChaseResult> ChaseTrialBalanceGapAsync(
         int companyId,
         CancellationToken cancellationToken = default)
@@ -1862,25 +2330,18 @@ public class GlRepairService : IGlRepairService
         string userName,
         CancellationToken cancellationToken)
     {
-        var accounts = await _unitOfWork.Repository<ChartOfAccount>()
-            .Query(asNoTracking: false)
-            .Where(a => a.CompanyId == companyId && !a.IsDeleted)
-            .ToListAsync(cancellationToken);
+        var obeAccountId = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == OpeningBalanceEquity && !a.IsDeleted)
+            .Select(a => (int?)a.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        var obeAccount = accounts.FirstOrDefault(a => a.AccountNumber == OpeningBalanceEquity);
-        if (obeAccount is null)
+        if (!obeAccountId.HasValue)
         {
             return;
         }
 
-        var plug = -accounts
-            .Where(a => a.Id != obeAccount.Id)
-            .Sum(a => a.OpeningBalance);
-
-        obeAccount.OpeningBalance = Math.Round(plug, 2);
-        obeAccount.UpdatedAt = now;
-        obeAccount.UpdatedBy = userName;
-        _unitOfWork.Repository<ChartOfAccount>().Update(obeAccount);
+        await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId.Value, now, userName, cancellationToken);
     }
 
     private async Task<int> ReclassifyMispostedSalesTaxPaymentsAsync(
@@ -2049,7 +2510,10 @@ public class GlRepairService : IGlRepairService
                     continue;
                 }
 
-                account.OpeningBalance = row.OpeningBalance;
+                account.OpeningBalance = GlOpeningBalanceNormalizer.NormalizeForStorage(
+                    row.OpeningBalance,
+                    account.TypeId,
+                    account.AccountNumber);
                 account.UpdatedAt = now;
                 account.UpdatedBy = userName;
                 _unitOfWork.Repository<ChartOfAccount>().Update(account);

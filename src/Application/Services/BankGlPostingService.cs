@@ -73,11 +73,16 @@ public partial class BankGlPostingService : IBankGlPostingService
         int chartOfAccountId,
         CancellationToken cancellationToken = default)
     {
-        var openingBalance = await _unitOfWork.Repository<ChartOfAccount>()
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.Id == chartOfAccountId && a.CompanyId == companyId)
-            .Select(a => (decimal?)a.OpeningBalance)
-            .FirstOrDefaultAsync(cancellationToken) ?? 0m;
+            .Select(a => new { a.OpeningBalance, a.TypeId, a.AccountNumber })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (account is null)
+        {
+            return 0m;
+        }
 
         var lines = await _unitOfWork.Repository<JournalEntryLine>()
             .Query()
@@ -90,7 +95,12 @@ public partial class BankGlPostingService : IBankGlPostingService
 
         var debits = lines.Sum(l => l.Debit);
         var credits = lines.Sum(l => l.Credit);
-        return Math.Round(openingBalance + debits - credits, 2);
+        return GlAccountBalance.ComputeNet(
+            account.OpeningBalance,
+            debits,
+            credits,
+            account.TypeId,
+            account.AccountNumber);
     }
 
     public async Task<GlPostingResult> PostBankTransactionAsync(
@@ -383,8 +393,8 @@ public partial class BankGlPostingService : IBankGlPostingService
         {
             lines.Add(CreateLine(
                 furtherTaxAccountId.Value,
-                furtherPay,
                 0m,
+                furtherPay,
                 $"{party} — Further Tax (4%)"));
         }
 
@@ -392,14 +402,14 @@ public partial class BankGlPostingService : IBankGlPostingService
         {
             lines.Add(CreateLine(
                 salesTax18AccountId.Value,
-                salesTax18Pay,
                 0m,
+                salesTax18Pay,
                 $"{party} — Sales Tax (18%)"));
         }
 
         if (lines.Count == 0)
         {
-            lines.Add(CreateLine(salesTax18AccountId.Value, amount, 0m, $"{party} — Sales Tax (18%)"));
+            lines.Add(CreateLine(salesTax18AccountId.Value, 0m, amount, $"{party} — Sales Tax (18%)"));
         }
 
         lines.Add(CreateLine(transaction.ChartOfAccountId, 0m, amount, payFromMemo));

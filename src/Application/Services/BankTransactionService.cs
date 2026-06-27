@@ -192,6 +192,7 @@ public class BankTransactionService : IBankTransactionService
                 a.Id,
                 a.AccountNumber,
                 a.AccountName,
+                a.TypeId,
                 a.SubTypeId,
                 a.ParentAccountId,
                 ParentNumber = a.ParentAccount != null ? a.ParentAccount.AccountNumber : null
@@ -371,11 +372,27 @@ public class BankTransactionService : IBankTransactionService
         var withBalances = new List<WriteChequePartyLookupDto>();
         foreach (var item in result)
         {
-            var balance = item.CustomerId.HasValue
-                ? await GetCustomerOutstandingAsync(companyId, item.CustomerId.Value, cancellationToken)
-                : item.VendorId.HasValue
-                    ? await GetVendorOutstandingAsync(companyId, item.VendorId.Value, cancellationToken)
-                    : await _bankGlPostingService.GetAccountBalanceAsync(companyId, item.ChartOfAccountId, cancellationToken);
+            decimal balance;
+            if (item.CustomerId.HasValue)
+            {
+                balance = await GetCustomerOutstandingAsync(companyId, item.CustomerId.Value, cancellationToken);
+            }
+            else if (item.VendorId.HasValue)
+            {
+                balance = await GetVendorOutstandingAsync(companyId, item.VendorId.Value, cancellationToken);
+            }
+            else
+            {
+                var rawBalance = await _bankGlPostingService.GetAccountBalanceAsync(
+                    companyId,
+                    item.ChartOfAccountId,
+                    cancellationToken);
+                var accountTypeId = accounts.FirstOrDefault(a => a.Id == item.ChartOfAccountId)?.TypeId;
+                balance = accountTypeId == 2
+                    ? SalesTaxPaymentGlHelper.LiabilityOutstanding(rawBalance)
+                    : rawBalance;
+            }
+
             withBalances.Add(item with { Balance = balance });
         }
 

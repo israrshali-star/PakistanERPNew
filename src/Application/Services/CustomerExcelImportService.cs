@@ -74,9 +74,11 @@ public class CustomerExcelImportService : ICustomerExcelImportService
         var batch = new List<Customer>();
 
         using var workbook = new XLWorkbook(filePath);
-        var worksheet = workbook.Worksheets.TryGetWorksheet(DefaultSheetName, out var namedSheet)
-            ? namedSheet
-            : workbook.Worksheets.First();
+        var worksheet = FindWorksheetWithCustomerHeader(workbook);
+        if (worksheet is null)
+        {
+            return new CustomerExcelImportResult(false, "Excel sheet is empty or missing a customer name column.");
+        }
 
         var headerRow = FindHeaderRow(worksheet);
         if (headerRow is null)
@@ -183,13 +185,32 @@ public class CustomerExcelImportService : ICustomerExcelImportService
         return new CustomerExcelImportResult(true, message, imported, skipped, updated);
     }
 
+    private static IXLWorksheet? FindWorksheetWithCustomerHeader(XLWorkbook workbook)
+    {
+        if (workbook.Worksheets.TryGetWorksheet(DefaultSheetName, out var namedSheet)
+            && FindHeaderRow(namedSheet) is not null)
+        {
+            return namedSheet;
+        }
+
+        foreach (var worksheet in workbook.Worksheets)
+        {
+            if (FindHeaderRow(worksheet) is not null)
+            {
+                return worksheet;
+            }
+        }
+
+        return null;
+    }
+
     private static IXLRow? FindHeaderRow(IXLWorksheet worksheet)
     {
         var lastRow = worksheet.LastRowUsed()?.RowNumber()
             ?? worksheet.RangeUsed()?.LastRow().RowNumber()
-            ?? 20;
+            ?? 50;
 
-        lastRow = Math.Min(lastRow, 20);
+        lastRow = Math.Min(lastRow, 50);
         for (var rowNumber = 1; rowNumber <= lastRow; rowNumber++)
         {
             var row = worksheet.Row(rowNumber);
