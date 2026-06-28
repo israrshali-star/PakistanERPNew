@@ -343,6 +343,7 @@ public static class DbInitializer
         foreach (var companyId in companyIds)
         {
             var existingNumbers = await context.ChartOfAccounts
+                .IgnoreQueryFilters()
                 .Where(a => a.CompanyId == companyId)
                 .Select(a => a.AccountNumber)
                 .ToListAsync(cancellationToken);

@@ -24,7 +24,9 @@ public static class GlOpeningBalanceNormalizer
             return Math.Round(-openingBalance, 2);
         }
 
-        if (typeId.Value == LiabilityTypeId && openingBalance > 0m)
+        if (typeId.Value == LiabilityTypeId
+            && openingBalance > 0m
+            && !string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase))
         {
             return Math.Round(-openingBalance, 2);
         }

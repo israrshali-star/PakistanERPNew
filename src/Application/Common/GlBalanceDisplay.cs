@@ -22,7 +22,8 @@ public static class GlBalanceDisplay
 
     public static bool UsesInvertedStorageDisplay(int? typeId, string? accountNumber) =>
         string.Equals(accountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase)
-        || typeId == LiabilityTypeId;
+        || (typeId == LiabilityTypeId
+            && !string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase));
 
     public static bool UsesInvertedLineAccumulation(int? typeId, string? accountNumber) =>
         UsesInvertedStorageDisplay(typeId, accountNumber);

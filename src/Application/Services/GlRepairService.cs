@@ -2621,7 +2621,11 @@ public class GlRepairService : IGlRepairService
             var vendorObTotal = await _unitOfWork.Repository<Vendor>()
                 .Query()
                 .Where(v => v.CompanyId == companyId && !v.IsDeleted)
-                .SumAsync(v => v.OpeningBalance, cancellationToken);
+                .Select(v => v.OpeningBalance)
+                .ToListAsync(cancellationToken);
+
+            var apOpeningTotal = vendorObTotal
+                .Sum(QuickBooksSubledgerBalance.NormalizeVendorOpeningForControlAccount);
 
             var obJournals = await _unitOfWork.Repository<JournalEntry>()
                 .Query(asNoTracking: false)
@@ -2652,7 +2656,7 @@ public class GlRepairService : IGlRepairService
             }
 
             arAccount.OpeningBalance = Math.Round(customerObTotal, 2);
-            apAccount.OpeningBalance = Math.Round(vendorObTotal, 2);
+            apAccount.OpeningBalance = Math.Round(apOpeningTotal, 2);
 
             var plug = -accounts
                 .Where(a => a.Id != obeAccount.Id)

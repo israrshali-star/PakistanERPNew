@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Domain.Entities;
@@ -137,13 +138,13 @@ internal static partial class QuickBooksIifImportSupport
         List<JournalEntryLine> lines = openingBalance > 0m
             ?
             [
-                CreateJournalLine(apAccountId.Value, amount, 0m, "Accounts Payable"),
-                CreateJournalLine(equityAccountId.Value, 0m, amount, "Opening balance offset")
+                CreateJournalLine(equityAccountId.Value, amount, 0m, "Opening balance offset"),
+                CreateJournalLine(apAccountId.Value, 0m, amount, "Accounts Payable")
             ]
             :
             [
-                CreateJournalLine(equityAccountId.Value, amount, 0m, "Opening balance offset"),
-                CreateJournalLine(apAccountId.Value, 0m, amount, "Accounts Payable")
+                CreateJournalLine(apAccountId.Value, amount, 0m, "Accounts Payable"),
+                CreateJournalLine(equityAccountId.Value, 0m, amount, "Opening balance offset")
             ];
 
         return await CreatePostedJournalAsync(

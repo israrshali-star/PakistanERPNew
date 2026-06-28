@@ -1830,7 +1830,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 .Query(asNoTracking: false)
                 .FirstAsync(v => v.Id == vendorId, cancellationToken);
 
-            vendor.OpeningBalance = row.Balance;
+            vendor.OpeningBalance = QuickBooksSubledgerBalance.NormalizeVendorOpeningFromQuickBooks(row.Balance);
             vendor.UpdatedAt = now;
             vendor.UpdatedBy = ImportUser;
             _unitOfWork.Repository<Vendor>().Update(vendor);
@@ -1840,7 +1840,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 companyId,
                 vendorId,
                 vendor.VendorName,
-                row.Balance,
+                vendor.OpeningBalance,
                 entryDate,
                 now,
                 cancellationToken);
