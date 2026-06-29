@@ -26,6 +26,12 @@ public record RecentInvoiceDto(
     string Status,
     string StatusBadgeClass);
 
+public record CompanyApClosingBalanceDto(
+    int CompanyId,
+    string CompanyName,
+    decimal ClosingBalance,
+    bool IsCurrentCompany);
+
 public record DashboardDataDto(
     DashboardSummaryDto Summary,
     IReadOnlyList<DailySalesPointDto> DailySales,
@@ -33,4 +39,5 @@ public record DashboardDataDto(
     IReadOnlyList<MonthlySalesPointDto> MonthlySales,
     IReadOnlyList<TopCustomerBalanceDto> TopCustomers,
     IReadOnlyList<LowStockItemDto> LowStockItems,
-    IReadOnlyList<RecentInvoiceDto> RecentInvoices);
+    IReadOnlyList<RecentInvoiceDto> RecentInvoices,
+    IReadOnlyList<CompanyApClosingBalanceDto> ApClosingBalances);

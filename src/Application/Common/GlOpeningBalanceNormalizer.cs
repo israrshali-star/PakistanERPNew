@@ -25,6 +25,14 @@ public static class GlOpeningBalanceNormalizer
         }
 
         if (typeId.Value == LiabilityTypeId
+            && string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase)
+            && openingBalance < 0m)
+        {
+            // QuickBooks vendor/AP balances are negative when owed; ERP stores payables as positive.
+            return Math.Round(-openingBalance, 2);
+        }
+
+        if (typeId.Value == LiabilityTypeId
             && openingBalance > 0m
             && !string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase))
         {

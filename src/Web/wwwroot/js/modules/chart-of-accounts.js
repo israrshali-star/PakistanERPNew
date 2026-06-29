@@ -597,7 +597,7 @@
 
                 '<td class="text-end text-currency' + openingClass + '">' + formatCurrency(acc.openingBalance) + '</td>' +
 
-                '<td class="text-end text-currency' + balanceClass + '">' + formatCurrency(acc.runningBalance) + '</td>' +
+                '<td class="text-end text-currency' + balanceClass + '">' + formatCurrency(acc.closingBalance) + '</td>' +
 
                 '<td>' + statusBadge + '</td>' +
 
@@ -741,7 +741,7 @@
 
                     '<th>Number</th><th>Name</th>' +
 
-                    '<th class="text-end">Opening</th><th class="text-end">Balance</th>' +
+                    '<th class="text-end">Opening</th><th class="text-end">Closing Balance</th>' +
 
                     '<th>Status</th><th class="text-end">Actions</th>' +
 

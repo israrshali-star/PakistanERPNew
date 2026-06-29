@@ -34,6 +34,12 @@ public static class GlTrialBalanceColumns
             return storedNet < 0m;
         }
 
+        if (string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            // AP is stored positive when owed; credit column is the normal payable side.
+            return storedNet < 0m;
+        }
+
         if (string.Equals(accountNumber, OpeningBalanceEquity, StringComparison.OrdinalIgnoreCase))
         {
             return storedNet > 0m;

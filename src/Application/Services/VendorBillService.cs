@@ -684,26 +684,51 @@ public partial class VendorBillService : IVendorBillService
         }
 
         var journalLines = new List<JournalEntryLine>();
+        var usesPurchaseWithholdingTax = PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId);
         AddJournalLine(journalLines, accounts.InventoryAccountId, subTotal, 0m, "Inventory Asset");
         AddJournalLine(journalLines, accounts.InputTaxAccountId, taxAmount, 0m, "Pre Paid Sales Tax");
         if (withholdingTaxAmount > 0m)
         {
-            AddJournalLine(
-                journalLines,
-                accounts.WithholdingTaxAccountId,
-                withholdingTaxAmount,
-                0m,
-                $"W/H Tax u/s {PurchaseWithholdingTaxLayout.SectionCode}");
+            if (usesPurchaseWithholdingTax)
+            {
+                AddJournalLine(
+                    journalLines,
+                    accounts.WithholdingTaxAccountId,
+                    0m,
+                    withholdingTaxAmount,
+                    $"W/H Tax u/s {PurchaseWithholdingTaxLayout.SectionCode}");
+            }
+            else
+            {
+                AddJournalLine(
+                    journalLines,
+                    accounts.WithholdingTaxAccountId,
+                    withholdingTaxAmount,
+                    0m,
+                    $"W/H Tax u/s {PurchaseWithholdingTaxLayout.SectionCode}");
+            }
         }
 
         if (incomeTax236GAmount > 0m)
         {
-            AddJournalLine(
-                journalLines,
-                accounts.IncomeTax236GAccountId,
-                incomeTax236GAmount,
-                0m,
-                $"Income Tax u/s {PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode}");
+            if (usesPurchaseWithholdingTax)
+            {
+                AddJournalLine(
+                    journalLines,
+                    accounts.IncomeTax236GAccountId,
+                    0m,
+                    incomeTax236GAmount,
+                    $"Income Tax u/s {PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode}");
+            }
+            else
+            {
+                AddJournalLine(
+                    journalLines,
+                    accounts.IncomeTax236GAccountId,
+                    incomeTax236GAmount,
+                    0m,
+                    $"Income Tax u/s {PurchaseWithholdingTaxLayout.IncomeTax236GSectionCode}");
+            }
         }
 
         AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Account Payable");
@@ -1397,11 +1422,14 @@ public partial class VendorBillService : IVendorBillService
                 Math.Round(subTotal + taxAmount, 2));
         }
 
+        var billGrossAmount = Math.Round(subTotal + taxAmount, 2);
         var withholdingTaxRate = Math.Max(0m, request.WithholdingTaxRate ?? 0m);
-        var withholdingTaxAmount = Math.Max(0m, Math.Round(request.WithholdingTaxAmount ?? 0m, 2));
+        var withholdingTaxAmount = withholdingTaxRate > 0m
+            ? PurchaseWithholdingTaxLayout.SuggestWithholdingTaxAmount(billGrossAmount, withholdingTaxRate)
+            : Math.Max(0m, Math.Round(request.WithholdingTaxAmount ?? 0m, 2));
         var incomeTax236GRate = Math.Max(0m, request.IncomeTax236GRate ?? 0m);
         var incomeTax236GAmount = Math.Max(0m, Math.Round(request.IncomeTax236GAmount ?? 0m, 2));
-        var netAmount = Math.Round(subTotal + taxAmount - withholdingTaxAmount - incomeTax236GAmount, 2);
+        var netAmount = Math.Round(billGrossAmount - withholdingTaxAmount - incomeTax236GAmount, 2);
 
         return new VendorBillAmounts(
             taxAmount,

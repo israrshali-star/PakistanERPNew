@@ -282,6 +282,30 @@
         });
     }
 
+    function renderApClosingBalances(rows) {
+        var $card = $('#ap-closing-balances-card');
+        var $tbody = $('#ap-closing-balances-table tbody');
+        $tbody.empty();
+
+        if (!rows || rows.length === 0) {
+            $card.addClass('d-none');
+            return;
+        }
+
+        $card.removeClass('d-none');
+        rows.forEach(function (row) {
+            var rowClass = row.isCurrentCompany ? 'table-primary' : '';
+            $tbody.append(
+                '<tr class="' + rowClass + '">' +
+                '<td>' + $('<div>').text(row.companyName).html() +
+                (row.isCurrentCompany ? ' <span class="badge bg-primary">Current</span>' : '') +
+                '</td>' +
+                '<td class="text-end text-currency fw-semibold">' + formatCurrency(row.closingBalance) + '</td>' +
+                '</tr>'
+            );
+        });
+    }
+
     function showError() {
         $('[data-kpi]').text('—');
         $('#top-customers-list').html('<li class="list-group-item text-danger small">Failed to load dashboard.</li>');
@@ -299,6 +323,7 @@
                 renderProfitLossChart(data.monthlyProfitLoss);
                 renderChart(data.monthlySales);
                 renderTopCustomers(data.topCustomers);
+                renderApClosingBalances(data.apClosingBalances);
                 renderLowStock(data.lowStockItems);
                 renderRecentInvoices(data.recentInvoices);
             })

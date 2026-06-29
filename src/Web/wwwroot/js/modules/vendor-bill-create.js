@@ -89,17 +89,18 @@
         return taxableSubtotal;
     }
 
-    function suggestPurchaseTaxAmounts() {
+    function suggestPurchaseTaxAmounts(subtotal, taxAmount) {
         if (!purchaseTaxSettings.supportsPurchaseWithholdingTax) {
             return;
         }
 
         var taxableSubtotal = getTaxableSubtotal();
+        var billGrossAmount = (subtotal || 0) + (taxAmount || 0);
         var whtRate = parseFloat($('#wht-rate').val()) || 0;
         var it236gRate = parseFloat($('#it236g-rate').val()) || 0;
 
         if (!whtAmountManual) {
-            $('#wht-amount').val((taxableSubtotal * whtRate / 100).toFixed(2));
+            $('#wht-amount').val((billGrossAmount * whtRate / 100).toFixed(2));
         }
 
         if (!it236gAmountManual) {
@@ -121,9 +122,8 @@
             subtotal += amount;
         });
 
-        suggestPurchaseTaxAmounts();
-
         var tax = getTaxableSubtotal() * taxRate / 100;
+        suggestPurchaseTaxAmounts(subtotal, tax);
         var wht = purchaseTaxSettings.supportsPurchaseWithholdingTax
             ? (parseFloat($('#wht-amount').val()) || 0)
             : 0;

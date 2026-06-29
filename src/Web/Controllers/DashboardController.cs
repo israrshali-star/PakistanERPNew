@@ -66,6 +66,13 @@ public class DashboardController : Controller
         return Ok(await _dashboardService.GetLowStockItemsAsync(cancellationToken));
     }
 
+    [HttpGet("ap-closing-balances")]
+    [RequirePermission("Dashboard.View")]
+    public async Task<IActionResult> ApClosingBalances(CancellationToken cancellationToken)
+    {
+        return Ok(await _dashboardService.GetApClosingBalancesAsync(cancellationToken));
+    }
+
     [HttpGet("recent-invoices")]
     [RequirePermission("Dashboard.View")]
     public async Task<IActionResult> RecentInvoices(CancellationToken cancellationToken)

@@ -24,7 +24,7 @@
     </div>
     <div class="col-6 col-lg-6 col-xl">
         <div class="card card-kpi p-3">
-            <div class="kpi-label">Outstanding Payables</div>
+            <div class="kpi-label">AP Closing Balance</div>
             <div class="kpi-value text-currency" data-kpi="outstandingPayables">—</div>
         </div>
     </div>
@@ -92,6 +92,23 @@
                 <ul class="list-group list-group-flush" id="top-customers-list">
                     <li class="list-group-item text-muted small">Loading...</li>
                 </ul>
+            </div>
+        </div>
+        <div class="card p-3 mt-3" id="ap-closing-balances-card">
+            <h6 class="text-primary">AP Closing Balance by Company</h6>
+            <p class="text-muted small mb-2">Account 20000 — net vendor payable (W/H tax on 12810). Negative = owed.</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="ap-closing-balances-table">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th class="text-end">Closing Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="2" class="text-muted text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         <div class="card p-3 mt-3">

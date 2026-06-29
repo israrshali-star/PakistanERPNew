@@ -31,6 +31,10 @@ public interface IDashboardService
         int count = 5,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Returns GL AP (20000) closing balances for purchase-tax companies the user can access.</summary>
+    Task<IReadOnlyList<CompanyApClosingBalanceDto>> GetApClosingBalancesAsync(
+        CancellationToken cancellationToken = default);
+
     /// <summary>Returns all dashboard sections in one payload.</summary>
     Task<DashboardDataDto> GetDashboardDataAsync(CancellationToken cancellationToken = default);
 }

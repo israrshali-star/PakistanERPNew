@@ -19,11 +19,16 @@ public class DashboardService : IDashboardService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
+    private readonly ICompanyService _companyService;
 
-    public DashboardService(IUnitOfWork unitOfWork, ICurrentCompanyService currentCompany)
+    public DashboardService(
+        IUnitOfWork unitOfWork,
+        ICurrentCompanyService currentCompany,
+        ICompanyService companyService)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
+        _companyService = companyService;
     }
 
     private IQueryable<CustomerBalanceRow> CustomerBalanceQuery(int companyId) =>
@@ -78,15 +83,7 @@ public class DashboardService : IDashboardService
             AssetTypeId,
             AccountsReceivable);
 
-        var apGlBalance = await GetGlAccountBalanceAsync(
-            companyId,
-            AccountsPayable,
-            cancellationToken);
-
-        var outstandingPayables = GlBalanceDisplay.NormalizeNetForDisplay(
-            apGlBalance,
-            LiabilityTypeId,
-            AccountsPayable);
+        var outstandingPayables = await GetApDashboardClosingBalanceAsync(companyId, cancellationToken);
 
         var inventoryValue = await GetGlAccountBalanceAsync(
             companyId,
@@ -363,6 +360,28 @@ public class DashboardService : IDashboardService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<CompanyApClosingBalanceDto>> GetApClosingBalancesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var currentCompanyId = _currentCompany.CompanyId;
+        var targetCompanyIds = PurchaseWithholdingTaxLayout.PurchaseWithholdingTaxCompanyIds.ToHashSet();
+        var userCompanies = await _companyService.GetUserCompaniesAsync(cancellationToken);
+
+        var rows = new List<CompanyApClosingBalanceDto>();
+        foreach (var company in userCompanies
+                     .Where(c => targetCompanyIds.Contains(c.Id))
+                     .OrderBy(c => c.Id))
+        {
+            rows.Add(new CompanyApClosingBalanceDto(
+                company.Id,
+                company.CompanyName,
+                await GetApDashboardClosingBalanceAsync(company.Id, cancellationToken),
+                currentCompanyId == company.Id));
+        }
+
+        return rows;
+    }
+
     public async Task<DashboardDataDto> GetDashboardDataAsync(CancellationToken cancellationToken = default)
     {
         var summary = await GetSummaryAsync(cancellationToken);
@@ -372,6 +391,7 @@ public class DashboardService : IDashboardService
         var topCustomers = await GetTopCustomersByBalanceAsync(cancellationToken: cancellationToken);
         var lowStock = await GetLowStockItemsAsync(cancellationToken);
         var recent = await GetRecentInvoicesAsync(cancellationToken: cancellationToken);
+        var apClosingBalances = await GetApClosingBalancesAsync(cancellationToken);
 
         return new DashboardDataDto(
             summary,
@@ -380,7 +400,54 @@ public class DashboardService : IDashboardService
             monthlySales,
             topCustomers,
             lowStock,
-            recent);
+            recent,
+            apClosingBalances);
+    }
+
+    private async Task<decimal> GetApDashboardClosingBalanceAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var account = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == AccountsPayable)
+            .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (account is null)
+        {
+            return 0m;
+        }
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.ChartOfAccountId == account.Id
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
+            .GroupBy(_ => 1)
+            .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var debits = journalTotals?.Debit ?? 0m;
+        var credits = journalTotals?.Credit ?? 0m;
+
+        if (PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId))
+        {
+            return PurchaseApBalance.ToSignedDisplay(
+                account.OpeningBalance,
+                debits,
+                credits);
+        }
+
+        return Math.Round(
+            GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                debits,
+                credits,
+                account.TypeId,
+                account.AccountNumber),
+            2);
     }
 
     private async Task<decimal> GetGlAccountBalanceAsync(

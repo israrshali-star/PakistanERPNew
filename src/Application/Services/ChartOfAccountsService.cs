@@ -53,7 +53,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
-        var leafBalanceMap = await GetRunningBalanceMapAsync(companyId, cancellationToken);
+        var leafBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
 
         var accounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
@@ -92,7 +92,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 st => st.SubTypeId,
                 st => accounts
                     .Where(a => a.SubTypeId == st.SubTypeId && a.ParentAccountId is null)
-                    .Select(a => BuildTreeNode(a, childrenLookup, leafBalanceMap))
+                    .Select(a => BuildTreeNode(companyId, a, childrenLookup, leafBalanceMap))
                     .OrderBy(a => a.AccountNumber)
                     .ToList());
 
@@ -124,7 +124,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                     subTypeRoots[subTypeId.Value] = roots;
                 }
 
-                var orphanNode = BuildTreeNode(orphan, childrenLookup, leafBalanceMap);
+                var orphanNode = BuildTreeNode(companyId, orphan, childrenLookup, leafBalanceMap);
                 roots.Add(orphanNode);
                 CollectTreeAccountIds(orphanNode, includedIds);
             }
@@ -195,18 +195,28 @@ public class ChartOfAccountsService : IChartOfAccountsService
             return null;
         }
 
-        var leafBalanceMap = await GetRunningBalanceMapAsync(companyId, cancellationToken);
+        var leafBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
         var hasJournalLines = await HasJournalLinesAsync(id, cancellationToken);
         var isLinkedToBank = await IsLinkedToBankAsync(id, companyId, cancellationToken);
-        var (openingBalance, runningBalance) = await GetDisplayBalancesAsync(
+        var (openingBalance, closingBalance) = await GetDisplayBalancesAsync(
             id,
             account.OpeningBalance,
             account.HasChildren,
             leafBalanceMap,
             cancellationToken);
 
-        openingBalance = GlBalanceDisplay.NormalizeNetForDisplay(openingBalance, account.TypeId, account.AccountNumber);
-        runningBalance = GlBalanceDisplay.NormalizeNetForDisplay(runningBalance, account.TypeId, account.AccountNumber);
+        openingBalance = NormalizeAccountBalanceForDisplay(
+            companyId,
+            account.TypeId,
+            account.AccountNumber,
+            openingBalance,
+            account.OpeningBalance);
+        closingBalance = NormalizeAccountBalanceForDisplay(
+            companyId,
+            account.TypeId,
+            account.AccountNumber,
+            closingBalance,
+            account.OpeningBalance);
 
         return new ChartOfAccountDto(
             account.Id,
@@ -220,7 +230,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
             account.ParentAccountName,
             account.Description,
             openingBalance,
-            runningBalance,
+            closingBalance,
             account.IsActive,
             account.HasChildren,
             account.HasChildren,
@@ -567,7 +577,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var from = fromDate?.Date;
         var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
-        var invertedLineAccumulation = GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber);
+        var invertedLineAccumulation = PurchaseApBalance.UsesInvertedLineAccumulation(
+            companyId,
+            account.AccountNumber)
+            || GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber);
 
         decimal rawPeriodOpening;
         if (from.HasValue)
@@ -579,7 +592,12 @@ public class ChartOfAccountsService : IChartOfAccountsService
             rawPeriodOpening = rawOpening;
         }
 
-        var periodOpening = GlBalanceDisplay.NormalizeNetForDisplay(rawPeriodOpening, account.TypeId, account.AccountNumber);
+        var periodOpening = NormalizeAccountBalanceForDisplay(
+            companyId,
+            account.TypeId,
+            account.AccountNumber,
+            rawPeriodOpening,
+            rawOpening);
         if (periodOpening != 0m)
         {
             var openingDate = from.HasValue ? from.Value.AddDays(-1) : DateTime.MinValue;
@@ -744,7 +762,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var headers = new[]
         {
             "Account Type", "Sub Type", "Account Number", "Account Name", "Parent Account",
-            "Opening Balance", "Running Balance", "Group Account", "Active"
+            "Opening Balance", "Closing Balance", "Group Account", "Active"
         };
 
         for (var col = 0; col < headers.Length; col++)
@@ -795,7 +813,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         sheet.Cell(rowIndex, 4).Value = indent + account.AccountName;
         sheet.Cell(rowIndex, 5).Value = parentLabel;
         sheet.Cell(rowIndex, 6).Value = account.OpeningBalance;
-        sheet.Cell(rowIndex, 7).Value = account.RunningBalance;
+        sheet.Cell(rowIndex, 7).Value = account.ClosingBalance;
         sheet.Cell(rowIndex, 8).Value = account.IsGroupAccount ? "Yes" : "No";
         sheet.Cell(rowIndex, 9).Value = account.IsActive ? "Yes" : "No";
 
@@ -814,7 +832,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         return rowIndex;
     }
 
-    private async Task<Dictionary<int, decimal>> GetRunningBalanceMapAsync(
+    private async Task<Dictionary<int, decimal>> GetClosingBalanceMapAsync(
         int companyId,
         CancellationToken cancellationToken)
     {
@@ -1059,44 +1077,87 @@ public class ChartOfAccountsService : IChartOfAccountsService
     }
 
     private static ChartOfAccountTreeAccountDto BuildTreeNode(
+        int companyId,
         AccountRow account,
         ILookup<int?, AccountRow> childrenLookup,
         IReadOnlyDictionary<int, decimal> leafBalanceMap)
     {
-        var children = childrenLookup[account.Id]
+        var childRows = childrenLookup[account.Id]
             .OrderBy(c => c.AccountNumber)
-            .Select(c => BuildTreeNode(c, childrenLookup, leafBalanceMap))
+            .ToList();
+
+        var children = childRows
+            .Select(c => BuildTreeNode(companyId, c, childrenLookup, leafBalanceMap))
             .ToList();
 
         if (children.Count > 0)
         {
+            var rawOpening = childRows.Sum(c => SumRawOpening(c, childrenLookup));
+            var groupRawClosing = childRows.Sum(c => SumRawClosing(c, childrenLookup, leafBalanceMap));
+
             return new ChartOfAccountTreeAccountDto(
                 account.Id,
                 account.AccountNumber,
                 account.AccountName,
-                children.Sum(c => c.OpeningBalance),
-                children.Sum(c => c.RunningBalance),
+                NormalizeAccountBalanceForDisplay(companyId, account.TypeId, account.AccountNumber, rawOpening, account.OpeningBalance),
+                NormalizeAccountBalanceForDisplay(companyId, account.TypeId, account.AccountNumber, groupRawClosing, account.OpeningBalance),
                 account.IsActive,
                 true,
                 account.ParentAccountId,
                 children);
         }
 
-        var rawRunning = leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance);
+        var rawClosing = leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance);
 
         return new ChartOfAccountTreeAccountDto(
             account.Id,
             account.AccountNumber,
             account.AccountName,
-            GlBalanceDisplay.NormalizeNetForDisplay(account.OpeningBalance, account.TypeId, account.AccountNumber),
-            GlBalanceDisplay.NormalizeNetForDisplay(rawRunning, account.TypeId, account.AccountNumber),
+            NormalizeAccountBalanceForDisplay(companyId, account.TypeId, account.AccountNumber, account.OpeningBalance, account.OpeningBalance),
+            NormalizeAccountBalanceForDisplay(companyId, account.TypeId, account.AccountNumber, rawClosing, account.OpeningBalance),
             account.IsActive,
             false,
             account.ParentAccountId,
             Array.Empty<ChartOfAccountTreeAccountDto>());
     }
 
-    private async Task<(decimal OpeningBalance, decimal RunningBalance)> GetDisplayBalancesAsync(
+    private static decimal NormalizeAccountBalanceForDisplay(
+        int companyId,
+        int? typeId,
+        string? accountNumber,
+        decimal storedNet,
+        decimal chartOpeningBalance)
+    {
+        if (PurchaseApBalance.UsesQuickBooksSignedPresentation(companyId, accountNumber))
+        {
+            return PurchaseApBalance.ToSignedDisplayFromStoredNet(chartOpeningBalance, storedNet);
+        }
+
+        return GlBalanceDisplay.NormalizeNetForDisplay(storedNet, typeId, accountNumber);
+    }
+
+    private static decimal SumRawOpening(
+        AccountRow account,
+        ILookup<int?, AccountRow> childrenLookup)
+    {
+        var children = childrenLookup[account.Id].ToList();
+        return children.Count == 0
+            ? account.OpeningBalance
+            : children.Sum(c => SumRawOpening(c, childrenLookup));
+    }
+
+    private static decimal SumRawClosing(
+        AccountRow account,
+        ILookup<int?, AccountRow> childrenLookup,
+        IReadOnlyDictionary<int, decimal> leafBalanceMap)
+    {
+        var children = childrenLookup[account.Id].ToList();
+        return children.Count == 0
+            ? leafBalanceMap.GetValueOrDefault(account.Id, account.OpeningBalance)
+            : children.Sum(c => SumRawClosing(c, childrenLookup, leafBalanceMap));
+    }
+
+    private async Task<(decimal OpeningBalance, decimal ClosingBalance)> GetDisplayBalancesAsync(
         int accountId,
         decimal ownOpening,
         bool hasChildren,
@@ -1115,7 +1176,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
             .ToListAsync(cancellationToken);
 
         decimal opening = 0m;
-        decimal running = 0m;
+        decimal closing = 0m;
 
         foreach (var child in childIds)
         {
@@ -1127,10 +1188,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 leafBalanceMap,
                 cancellationToken);
             opening += childBalances.OpeningBalance;
-            running += childBalances.RunningBalance;
+            closing += childBalances.ClosingBalance;
         }
 
-        return (opening, running);
+        return (opening, closing);
     }
 
     private async Task<bool> HasChildrenAsync(int accountId, CancellationToken cancellationToken) =>

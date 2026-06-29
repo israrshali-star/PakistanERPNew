@@ -40,4 +40,13 @@ public static class GlAccountBalance
 
     public static bool UsesCreditMinusDebitJournalDelta(int? typeId, string? accountNumber) =>
         typeId is LiabilityTypeId or EquityTypeId;
+
+    /// <summary>
+    /// AP dashboard closing for purchase-tax companies: opening + debits − credits.
+    /// </summary>
+    public static decimal ComputeDebitMinusCreditClosing(
+        decimal openingBalance,
+        decimal journalDebits,
+        decimal journalCredits) =>
+        Math.Round(openingBalance + journalDebits - journalCredits, 2);
 }

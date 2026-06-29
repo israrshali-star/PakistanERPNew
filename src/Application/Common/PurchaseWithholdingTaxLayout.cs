@@ -19,6 +19,12 @@ public static class PurchaseWithholdingTaxLayout
     public static bool SupportsPurchaseWithholdingTax(int companyId) =>
         PurchaseWithholdingTaxCompanyIds.Contains(companyId);
 
+    /// <summary>
+    /// W/H tax is calculated on the bill gross (item subtotal + sales tax), not on item value alone.
+    /// </summary>
+    public static decimal SuggestWithholdingTaxAmount(decimal billGrossAmount, decimal rate) =>
+        rate <= 0m ? 0m : Math.Round(billGrossAmount * rate / 100m, 2);
+
     public static decimal SuggestTaxAmount(decimal taxableSubTotal, decimal rate) =>
         rate <= 0m ? 0m : Math.Round(taxableSubTotal * rate / 100m, 2);
 }
