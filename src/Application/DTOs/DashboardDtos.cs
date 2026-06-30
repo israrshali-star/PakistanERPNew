@@ -5,7 +5,13 @@ public record DashboardSummaryDto(
     decimal MonthSales,
     decimal OutstandingReceivables,
     decimal OutstandingPayables,
-    decimal InventoryValue);
+    decimal InventoryValue,
+    decimal CashAndBankBalance);
+
+public record BankCoaClosingBalanceDto(
+    string AccountNumber,
+    string AccountName,
+    decimal ClosingBalance);
 
 public record MonthlySalesPointDto(string Label, decimal Cartons);
 
@@ -40,4 +46,5 @@ public record DashboardDataDto(
     IReadOnlyList<TopCustomerBalanceDto> TopCustomers,
     IReadOnlyList<LowStockItemDto> LowStockItems,
     IReadOnlyList<RecentInvoiceDto> RecentInvoices,
-    IReadOnlyList<CompanyApClosingBalanceDto> ApClosingBalances);
+    IReadOnlyList<CompanyApClosingBalanceDto> ApClosingBalances,
+    IReadOnlyList<BankCoaClosingBalanceDto> BankClosingBalances);

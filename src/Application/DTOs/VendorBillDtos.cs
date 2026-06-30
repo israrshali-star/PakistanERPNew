@@ -25,7 +25,9 @@ public record VendorBillLineDto(
     decimal Quantity,
     decimal Cartons,
     decimal Rate,
-    decimal Amount);
+    decimal Amount,
+    bool IsLocked,
+    decimal SoldQuantity);
 
 public record VendorBillDetailDto(
     int Id,
@@ -51,6 +53,7 @@ public record VendorBillDetailDto(
     BillStatus Status,
     int? JournalEntryId,
     string? JournalEntryNumber,
+    bool CanRevertToDraft,
     IReadOnlyList<VendorBillLineDto> Lines,
     IReadOnlyList<DocumentAttachmentDto> Attachments);
 

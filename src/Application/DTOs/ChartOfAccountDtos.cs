@@ -81,4 +81,5 @@ public record ChartOfAccountLedgerDto(
     IReadOnlyList<ChartOfAccountLedgerEntryDto> Entries,
     decimal ClosingBalance,
     decimal PeriodDebitTotal,
-    decimal PeriodCreditTotal);
+    decimal PeriodCreditTotal,
+    bool UsesBankLedgerFormula);

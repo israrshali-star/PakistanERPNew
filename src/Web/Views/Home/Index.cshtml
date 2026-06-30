@@ -34,6 +34,12 @@
             <div class="kpi-value text-currency" data-kpi="inventoryValue">—</div>
         </div>
     </div>
+    <div class="col-6 col-lg-6 col-xl">
+        <div class="card card-kpi p-3">
+            <div class="kpi-label">Cash &amp; Bank (COA)</div>
+            <div class="kpi-value text-currency" data-kpi="cashAndBankBalance">—</div>
+        </div>
+    </div>
 </div>
 
 <div class="row g-3">
@@ -92,6 +98,23 @@
                 <ul class="list-group list-group-flush" id="top-customers-list">
                     <li class="list-group-item text-muted small">Loading...</li>
                 </ul>
+            </div>
+        </div>
+        <div class="card p-3 mt-3" id="bank-closing-balances-card">
+            <h6 class="text-primary">Cash &amp; Bank Balances (COA)</h6>
+            <p class="text-muted small mb-2">GL closing balance per cash and bank account — same as Chart of Accounts.</p>
+            <div class="table-responsive dashboard-customer-balances-scroll">
+                <table class="table table-sm table-hover mb-0" id="bank-closing-balances-table">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th class="text-end">Closing Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="2" class="text-muted text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         <div class="card p-3 mt-3" id="ap-closing-balances-card">

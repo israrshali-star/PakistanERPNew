@@ -33,6 +33,7 @@
         $('[data-kpi="outstandingReceivables"]').text(formatCurrency(summary.outstandingReceivables));
         $('[data-kpi="outstandingPayables"]').text(formatCurrency(summary.outstandingPayables));
         $('[data-kpi="inventoryValue"]').text(formatCurrency(summary.inventoryValue));
+        $('[data-kpi="cashAndBankBalance"]').text(formatCurrency(summary.cashAndBankBalance));
     }
 
     function renderDailySalesChart(dailySales) {
@@ -282,6 +283,28 @@
         });
     }
 
+    function renderBankClosingBalances(rows) {
+        var $card = $('#bank-closing-balances-card');
+        var $tbody = $('#bank-closing-balances-table tbody');
+        $tbody.empty();
+
+        if (!rows || rows.length === 0) {
+            $card.addClass('d-none');
+            return;
+        }
+
+        $card.removeClass('d-none');
+        rows.forEach(function (row) {
+            $tbody.append(
+                '<tr>' +
+                '<td><code>' + $('<div>').text(row.accountNumber).html() + '</code> ' +
+                $('<span>').text(row.accountName).html() + '</td>' +
+                '<td class="text-end text-currency fw-semibold">' + formatCurrency(row.closingBalance) + '</td>' +
+                '</tr>'
+            );
+        });
+    }
+
     function renderApClosingBalances(rows) {
         var $card = $('#ap-closing-balances-card');
         var $tbody = $('#ap-closing-balances-table tbody');
@@ -323,6 +346,7 @@
                 renderProfitLossChart(data.monthlyProfitLoss);
                 renderChart(data.monthlySales);
                 renderTopCustomers(data.topCustomers);
+                renderBankClosingBalances(data.bankClosingBalances);
                 renderApClosingBalances(data.apClosingBalances);
                 renderLowStock(data.lowStockItems);
                 renderRecentInvoices(data.recentInvoices);

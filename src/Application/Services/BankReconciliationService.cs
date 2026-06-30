@@ -15,6 +15,7 @@ public class BankReconciliationService : IBankReconciliationService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly IBankGlPostingService _bankGlPosting;
     private readonly ILogger<BankReconciliationService> _logger;
 
     public BankReconciliationService(
@@ -22,12 +23,14 @@ public class BankReconciliationService : IBankReconciliationService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        IBankGlPostingService bankGlPosting,
         ILogger<BankReconciliationService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _bankGlPosting = bankGlPosting;
         _logger = logger;
     }
 
@@ -85,13 +88,17 @@ public class BankReconciliationService : IBankReconciliationService
         var bank = await _unitOfWork.Repository<Bank>()
             .Query()
             .Where(b => b.Id == bankId && b.CompanyId == companyId)
-            .Select(b => new { b.Id, b.BankName, b.AccountNumber, b.CurrentBalance })
+            .Select(b => new { b.Id, b.BankName, b.AccountNumber, b.ChartOfAccountId })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (bank is null)
         {
             return null;
         }
+
+        var bookBalance = bank.ChartOfAccountId.HasValue
+            ? await _bankGlPosting.GetAccountBalanceAsync(companyId, bank.ChartOfAccountId.Value, cancellationToken)
+            : 0m;
 
         var unreconciled = await _unitOfWork.Repository<BankTransaction>()
             .Query()
@@ -111,7 +118,7 @@ public class BankReconciliationService : IBankReconciliationService
             bank.Id,
             bank.BankName,
             bank.AccountNumber,
-            bank.CurrentBalance,
+            bookBalance,
             unreconciled.Count,
             unreconciled);
     }
@@ -178,6 +185,10 @@ public class BankReconciliationService : IBankReconciliationService
                 null);
         }
 
+        var bookBalance = bank.ChartOfAccountId.HasValue
+            ? await _bankGlPosting.GetAccountBalanceAsync(companyId, bank.ChartOfAccountId.Value, cancellationToken)
+            : bank.CurrentBalance;
+
         var now = DateTime.UtcNow;
         var reconciliation = new BankReconciliation
         {
@@ -185,7 +196,7 @@ public class BankReconciliationService : IBankReconciliationService
             BankId = request.BankId,
             StatementDate = statementDate,
             StatementBalance = request.StatementBalance,
-            BookBalance = bank.CurrentBalance,
+            BookBalance = bookBalance,
             IsCompleted = true,
             CreatedAt = now,
             CreatedBy = _currentUser.UserName

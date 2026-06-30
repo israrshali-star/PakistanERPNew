@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Entities;
 using System.Text.Json;
+using PakistanAccountingERP.Domain.Enums;
 
 namespace PakistanAccountingERP.Application.Services;
 
@@ -64,16 +66,31 @@ public class BankService : IBankService
             query = query.Skip(request.Start).Take(request.Length);
         }
 
-        var rows = await query
+        var pageRows = await query
+            .Select(b => new
+            {
+                b.Id,
+                b.BankName,
+                b.AccountTitle,
+                b.AccountNumber,
+                b.ChartOfAccountId,
+                b.OpeningBalance,
+                b.IsActive,
+                TransactionCount = b.BankTransactions.Count
+            })
+            .ToListAsync(cancellationToken);
+
+        var closingBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
+        var rows = pageRows
             .Select(b => new BankListItemDto(
                 b.Id,
                 b.BankName,
                 b.AccountTitle,
                 b.AccountNumber,
-                b.CurrentBalance,
+                ResolveGlBalance(b.ChartOfAccountId, b.OpeningBalance, closingBalanceMap),
                 b.IsActive,
-                b.BankTransactions.Count))
-            .ToListAsync(cancellationToken);
+                b.TransactionCount))
+            .ToList();
 
         return new DataTableResponse<BankListItemDto>(
             request.Draw,
@@ -112,6 +129,9 @@ public class BankService : IBankService
             return null;
         }
 
+        var closingBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
+        var glBalance = ResolveGlBalance(row.ChartOfAccountId, row.OpeningBalance, closingBalanceMap);
+
         var isUsedOnPayments =
             await _unitOfWork.Repository<CustomerReceipt>().Query()
                 .AnyAsync(r => r.BankId == id && r.CompanyId == companyId, cancellationToken)
@@ -127,7 +147,7 @@ public class BankService : IBankService
             row.ChartOfAccountId,
             row.ChartOfAccountLabel,
             row.OpeningBalance,
-            row.CurrentBalance,
+            glBalance,
             row.IsActive,
             row.TransactionCount,
             isUsedOnPayments);
@@ -139,7 +159,7 @@ public class BankService : IBankService
         var companyId = _currentCompany.GetRequiredCompanyId();
         await SyncBanksFromCashAndBankAccountsAsync(companyId, cancellationToken);
 
-        return await _unitOfWork.Repository<Bank>()
+        var banks = await _unitOfWork.Repository<Bank>()
             .Query()
             .Where(b =>
                 b.CompanyId == companyId
@@ -156,12 +176,25 @@ public class BankService : IBankService
                         && b.ChartOfAccount.ParentAccount.TypeId == AssetsTypeId)))
             .OrderBy(b => b.ChartOfAccount!.AccountNumber)
             .ThenBy(b => b.BankName)
+            .Select(b => new
+            {
+                b.Id,
+                b.BankName,
+                b.OpeningBalance,
+                CoaName = b.ChartOfAccount != null ? b.ChartOfAccount.AccountName : b.BankName,
+                CoaNumber = b.ChartOfAccount != null ? b.ChartOfAccount.AccountNumber : b.AccountNumber,
+                b.ChartOfAccountId
+            })
+            .ToListAsync(cancellationToken);
+
+        var closingBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
+        return banks
             .Select(b => new BankLookupDto(
                 b.Id,
-                b.ChartOfAccount != null ? b.ChartOfAccount.AccountName : b.BankName,
-                b.ChartOfAccount != null ? b.ChartOfAccount.AccountNumber : b.AccountNumber,
-                b.CurrentBalance))
-            .ToListAsync(cancellationToken);
+                b.CoaName,
+                b.CoaNumber,
+                ResolveGlBalance(b.ChartOfAccountId, b.OpeningBalance, closingBalanceMap)))
+            .ToList();
     }
 
     public async Task<IReadOnlyList<BankChartOfAccountLookupDto>> GetChartOfAccountLookupsAsync(
@@ -555,6 +588,75 @@ public class BankService : IBankService
         {
             _logger.LogWarning(ex, "Audit log failed for bank {EntityId}", entityId);
         }
+    }
+
+    private static decimal ResolveGlBalance(
+        int? chartOfAccountId,
+        decimal openingBalance,
+        IReadOnlyDictionary<int, decimal> closingBalanceMap) =>
+        chartOfAccountId.HasValue
+            ? Math.Round(closingBalanceMap.GetValueOrDefault(chartOfAccountId.Value, openingBalance), 2)
+            : openingBalance;
+
+    private async Task<Dictionary<int, decimal>> GetClosingBalanceMapAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var openingBalances = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId)
+            .Select(a => new
+            {
+                a.Id,
+                a.AccountNumber,
+                a.TypeId,
+                a.SubTypeId,
+                a.OpeningBalance,
+                ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
+                ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
+                IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
+            })
+            .ToListAsync(cancellationToken);
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit)
+            })
+            .ToListAsync(cancellationToken);
+
+        var journalLookup = journalTotals.ToDictionary(x => x.AccountId);
+        return openingBalances.ToDictionary(
+            x => x.Id,
+            x =>
+            {
+                var journal = journalLookup.GetValueOrDefault(x.Id);
+                var debit = journal?.Debit ?? 0m;
+                var credit = journal?.Credit ?? 0m;
+                if (BankLedgerBalance.UsesDebitMinusCreditLedger(
+                        x.TypeId,
+                        x.SubTypeId,
+                        x.IsLinkedToBank,
+                        x.ParentTypeId,
+                        x.ParentSubTypeId))
+                {
+                    return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
+                }
+
+                return GlAccountBalance.ComputeNet(
+                    x.OpeningBalance,
+                    debit,
+                    credit,
+                    x.TypeId,
+                    x.AccountNumber);
+            });
     }
 
     private static IQueryable<Bank> ApplyOrdering(IQueryable<Bank> query, DataTableRequest request)

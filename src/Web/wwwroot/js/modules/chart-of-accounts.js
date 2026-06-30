@@ -327,21 +327,46 @@
 
         ledgerAccountNumber = account.accountNumber;
 
+        var isFullLedger = !ledger.fromDate && !ledger.toDate;
+        var isBankLedger = !!ledger.usesBankLedgerFormula;
+
         $('#accountLedgerModalLabel').text('Account Ledger');
 
-        $('#account-ledger-subtitle').html(
+        var openingBalance = isFullLedger && account.openingBalance != null
+            ? account.openingBalance
+            : ledger.openingBalance;
 
-            '<code>' + escapeHtml(account.accountNumber) + '</code> — ' + escapeHtml(account.accountName)
+        var closingBalance = isFullLedger && account.closingBalance != null
+            ? account.closingBalance
+            : ledger.closingBalance;
 
-        );
+        if (isBankLedger) {
+            $('#account-ledger-kpi-debit-label').text('Received (Dr)');
+            $('#account-ledger-kpi-credit-label').text('Paid (Cr)');
+        } else {
+            $('#account-ledger-kpi-debit-label').text('Period Debits');
+            $('#account-ledger-kpi-credit-label').text('Period Credits');
+        }
 
-        $('#account-ledger-opening').text(formatCurrency(ledger.openingBalance));
+        $('#account-ledger-opening').text(formatCurrency(openingBalance));
 
         $('#account-ledger-period-debit').text(formatCurrency(ledger.periodDebitTotal || 0));
 
         $('#account-ledger-period-credit').text(formatCurrency(ledger.periodCreditTotal || 0));
 
-        $('#account-ledger-closing').text(formatCurrency(ledger.closingBalance));
+        $('#account-ledger-closing').text(formatCurrency(closingBalance));
+
+        var periodNote = '';
+        if (ledger.fromDate || ledger.toDate) {
+            periodNote = ' <span class="text-muted">(filtered period)</span>';
+        } else if (isBankLedger) {
+            periodNote = ' <span class="text-muted">(Opening Dr + Received − Paid)</span>';
+        } else {
+            periodNote = ' <span class="text-muted">(full ledger)</span>';
+        }
+        $('#account-ledger-subtitle').html(
+            '<code>' + escapeHtml(account.accountNumber) + '</code> — ' + escapeHtml(account.accountName) + periodNote
+        );
 
 
 
@@ -469,13 +494,10 @@
 
         ledgerAccountId = id;
 
-        var today = new Date();
+        // Full ledger by default so closing matches COA tree (QuickBooks-aligned).
+        $('#account-ledger-from').val('');
 
-        var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-        $('#account-ledger-from').val(firstOfMonth.toISOString().slice(0, 10));
-
-        $('#account-ledger-to').val(today.toISOString().slice(0, 10));
+        $('#account-ledger-to').val('');
 
         accountLedgerModal.show();
 

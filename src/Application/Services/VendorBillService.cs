@@ -133,18 +133,20 @@ public partial class VendorBillService : IVendorBillService
                 b.Status,
                 b.JournalEntryId,
                 JournalEntryNumber = b.JournalEntry != null ? b.JournalEntry.EntryNumber : null,
-                Lines = b.Lines.Select(l => new VendorBillLineDto(
+                Lines = b.Lines.Select(l => new
+                {
                     l.Id,
                     l.ItemId,
-                    l.Item != null ? l.Item.ItemCode : null,
-                    l.Item != null ? l.Item.ItemName : null,
+                    ItemCode = l.Item != null ? l.Item.ItemCode : null,
+                    ItemName = l.Item != null ? l.Item.ItemName : null,
                     l.Description,
                     l.StackNo,
                     l.LotNo,
                     l.Quantity,
                     l.Cartons,
                     l.Rate,
-                    l.Amount)).ToList(),
+                    l.Amount
+                }).ToList(),
                 Attachments = b.Attachments.Select(a => new DocumentAttachmentDto(
                     a.Id,
                     a.FileName,
@@ -162,6 +164,65 @@ public partial class VendorBillService : IVendorBillService
 
         var subTotal = Math.Round(bill.SubTotal, 2);
         var grossAmount = Math.Round(subTotal + bill.TaxAmount, 2);
+
+        var lineEntities = bill.Lines
+            .Select(l => new VendorBillLine
+            {
+                Id = l.Id,
+                ItemId = l.ItemId,
+                Description = l.Description,
+                StackNo = l.StackNo,
+                LotNo = l.LotNo,
+                Quantity = l.Quantity,
+                Cartons = l.Cartons,
+                Rate = l.Rate,
+                Amount = l.Amount
+            })
+            .ToList();
+
+        var hasBillInventoryHistory = bill.Status == BillStatus.Approved
+            || await _unitOfWork.Repository<InventoryTransaction>()
+                .Query()
+                .AnyAsync(
+                    t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber,
+                    cancellationToken);
+
+        var inventoryContext = hasBillInventoryHistory
+            ? await GetBillInventoryContextAsync(
+                companyId,
+                bill.BillNumber,
+                lineEntities,
+                cancellationToken)
+            : null;
+
+        var lineDtos = bill.Lines
+            .Select(l =>
+            {
+                var lineEntity = lineEntities.First(x => x.Id == l.Id);
+                var soldQuantity = lineEntity.ItemId is > 0
+                    ? inventoryContext?.SoldQuantityByItemId.GetValueOrDefault(lineEntity.ItemId.Value) ?? 0m
+                    : 0m;
+                var isLocked = bill.Status == BillStatus.Draft && IsLineSold(lineEntity, inventoryContext);
+
+                return new VendorBillLineDto(
+                    l.Id,
+                    l.ItemId,
+                    l.ItemCode,
+                    l.ItemName,
+                    l.Description,
+                    l.StackNo,
+                    l.LotNo,
+                    l.Quantity,
+                    l.Cartons,
+                    l.Rate,
+                    l.Amount,
+                    isLocked,
+                    soldQuantity);
+            })
+            .ToList();
+
+        var canRevertToDraft = bill.Status == BillStatus.Approved
+            && (inventoryContext is null || lineEntities.Any(l => IsLineEditable(l, inventoryContext)));
 
         return new VendorBillDetailDto(
             bill.Id,
@@ -187,7 +248,8 @@ public partial class VendorBillService : IVendorBillService
             bill.Status,
             bill.JournalEntryId,
             bill.JournalEntryNumber,
-            bill.Lines,
+            canRevertToDraft,
+            lineDtos,
             bill.Attachments);
     }
 
@@ -507,6 +569,35 @@ public partial class VendorBillService : IVendorBillService
             .Where(l => l.VendorBillId == entity.Id)
             .ToListAsync(cancellationToken);
 
+        var hasBillInventoryHistory = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .AnyAsync(
+                t => t.CompanyId == companyId && t.ReferenceNo == entity.BillNumber,
+                cancellationToken);
+
+        var inventoryContext = hasBillInventoryHistory
+            ? await GetBillInventoryContextAsync(
+                companyId,
+                entity.BillNumber,
+                existingLines,
+                cancellationToken)
+            : null;
+
+        var lockedLines = existingLines.Where(l => IsLineSold(l, inventoryContext)).ToList();
+        foreach (var lockedLine in lockedLines)
+        {
+            var matchingRequests = request.Lines.Where(r => LinesEqual(r, lockedLine)).ToList();
+            if (matchingRequests.Count != 1)
+            {
+                var label = lockedLine.Description
+                    ?? (lockedLine.ItemId.HasValue ? $"item #{lockedLine.ItemId}" : "bill line");
+                return new VendorBillSaveResult(
+                    false,
+                    $"\"{label}\" has already been sold and cannot be changed or removed.",
+                    null);
+            }
+        }
+
         foreach (var existingLine in existingLines)
         {
             _unitOfWork.Repository<VendorBillLine>().Remove(existingLine);
@@ -764,55 +855,60 @@ public partial class VendorBillService : IVendorBillService
 
             if (warehouseId.HasValue)
             {
-                var hasExistingInventory = await _unitOfWork.Repository<InventoryTransaction>()
+                var existingBillInventory = await _unitOfWork.Repository<InventoryTransaction>()
                     .Query()
-                    .AnyAsync(
-                        t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber,
-                        cancellationToken);
+                    .Where(t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber)
+                    .ToListAsync(cancellationToken);
 
-                if (!hasExistingInventory)
+                var inventoryTransactions = new List<InventoryTransaction>();
+                foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
                 {
-                    var inventoryTransactions = new List<InventoryTransaction>();
-                    foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
+                    var item = items[line.ItemId!.Value];
+                    var quantity = Math.Round(line.Quantity, 2);
+                    if (quantity <= 0m)
                     {
-                        var item = items[line.ItemId!.Value];
-                        var quantity = Math.Round(line.Quantity, 2);
-                        if (quantity <= 0m)
-                        {
-                            continue;
-                        }
-
-                        var unitCost = Math.Round(line.Rate, 2);
-                        inventoryTransactions.Add(new InventoryTransaction
-                        {
-                            CompanyId = companyId,
-                            ItemId = item.Id,
-                            WarehouseId = warehouseId.Value,
-                            TransactionType = InventoryTransactionType.StockIn,
-                            StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
-                            LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
-                            Quantity = quantity,
-                            UnitCost = unitCost,
-                            TotalCost = Math.Round(quantity * unitCost, 2),
-                            TransactionDate = bill.BillDate,
-                            ReferenceNo = bill.BillNumber,
-                            Notes = $"Vendor bill {bill.BillNumber}",
-                            CreatedAt = now,
-                            CreatedBy = userName
-                        });
-
-                        item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
-                        item.UpdatedAt = now;
-                        item.UpdatedBy = userName;
-                        _unitOfWork.Repository<Item>().Update(item);
+                        continue;
                     }
 
-                    if (inventoryTransactions.Count > 0)
+                    var hasExistingTransaction = existingBillInventory.Any(
+                        t => t.ItemId == item.Id
+                             && InventoryDimensionsMatch(t.StackNo, line.StackNo)
+                             && InventoryDimensionsMatch(t.LotNo, line.LotNo));
+                    if (hasExistingTransaction)
                     {
-                        await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
-                            inventoryTransactions,
-                            cancellationToken);
+                        continue;
                     }
+
+                    var unitCost = Math.Round(line.Rate, 2);
+                    inventoryTransactions.Add(new InventoryTransaction
+                    {
+                        CompanyId = companyId,
+                        ItemId = item.Id,
+                        WarehouseId = warehouseId.Value,
+                        TransactionType = InventoryTransactionType.StockIn,
+                        StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
+                        LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
+                        Quantity = quantity,
+                        UnitCost = unitCost,
+                        TotalCost = Math.Round(quantity * unitCost, 2),
+                        TransactionDate = bill.BillDate,
+                        ReferenceNo = bill.BillNumber,
+                        Notes = $"Vendor bill {bill.BillNumber}",
+                        CreatedAt = now,
+                        CreatedBy = userName
+                    });
+
+                    item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
+                    item.UpdatedAt = now;
+                    item.UpdatedBy = userName;
+                    _unitOfWork.Repository<Item>().Update(item);
+                }
+
+                if (inventoryTransactions.Count > 0)
+                {
+                    await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                        inventoryTransactions,
+                        cancellationToken);
                 }
             }
 
@@ -881,26 +977,25 @@ public partial class VendorBillService : IVendorBillService
             .Where(t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber)
             .ToListAsync(cancellationToken);
 
-        var affectedItemIds = inventoryTransactions.Select(t => t.ItemId).Distinct().ToList();
-        if (affectedItemIds.Count > 0)
-        {
-            var stockByItemId = await BuildStockByItemIdAsync(companyId, affectedItemIds, cancellationToken);
-            var billQtyByItemId = inventoryTransactions
-                .GroupBy(t => t.ItemId)
-                .ToDictionary(g => g.Key, g => g.Sum(t => t.Quantity));
+        var inventoryContext = await GetBillInventoryContextAsync(
+            companyId,
+            bill.BillNumber,
+            bill.Lines.ToList(),
+            cancellationToken);
 
-            foreach (var itemId in affectedItemIds)
-            {
-                var stockWithoutBill = stockByItemId.GetValueOrDefault(itemId)
-                    - billQtyByItemId.GetValueOrDefault(itemId);
-                if (stockWithoutBill < -0.01m)
-                {
-                    return new VendorBillActionResult(
-                        false,
-                        "Inventory from this bill has already been sold or used. Cannot reopen for editing.",
-                        null);
-                }
-            }
+        var affectedItemIds = bill.Lines
+            .Where(l => l.ItemId is > 0)
+            .Select(l => l.ItemId!.Value)
+            .Union(inventoryTransactions.Select(t => t.ItemId))
+            .Distinct()
+            .ToList();
+        if (inventoryContext is not null
+            && !bill.Lines.Any(l => IsLineEditable(l, inventoryContext)))
+        {
+            return new VendorBillActionResult(
+                false,
+                "All inventory items on this bill have been sold. Cannot reopen for editing.",
+                null);
         }
 
         var now = DateTime.UtcNow;
@@ -923,6 +1018,12 @@ public partial class VendorBillService : IVendorBillService
 
         foreach (var transaction in inventoryTransactions)
         {
+            if (inventoryContext is not null
+                && inventoryContext.SoldQuantityByItemId.GetValueOrDefault(transaction.ItemId) > 0.01m)
+            {
+                continue;
+            }
+
             _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
         }
 
@@ -970,10 +1071,12 @@ public partial class VendorBillService : IVendorBillService
         }
 
         var detail = await GetDetailAsync(id, cancellationToken);
-        return new VendorBillActionResult(
-            true,
-            "Bill reopened as draft. You can edit it and approve again when ready.",
-            detail);
+        var lockedCount = detail?.Lines.Count(l => l.IsLocked) ?? 0;
+        var message = lockedCount > 0
+            ? $"Bill reopened as draft. {lockedCount} sold line(s) are locked; other lines can be edited."
+            : "Bill reopened as draft. You can edit it and approve again when ready.";
+
+        return new VendorBillActionResult(true, message, detail);
     }
 
     public async Task<VendorBillActionResult> CancelAsync(int id, CancellationToken cancellationToken = default)
@@ -1477,6 +1580,75 @@ public partial class VendorBillService : IVendorBillService
             _unitOfWork.Repository<Item>().Update(item);
         }
     }
+
+    private sealed record BillInventoryContext(Dictionary<int, decimal> SoldQuantityByItemId);
+
+    private async Task<BillInventoryContext?> GetBillInventoryContextAsync(
+        int companyId,
+        string billNumber,
+        IReadOnlyList<VendorBillLine> lines,
+        CancellationToken cancellationToken)
+    {
+        var itemIds = lines
+            .Where(l => l.ItemId is > 0)
+            .Select(l => l.ItemId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (itemIds.Count == 0)
+        {
+            return null;
+        }
+
+        var billQtyByItemId = lines
+            .Where(l => l.ItemId is > 0)
+            .GroupBy(l => l.ItemId!.Value)
+            .ToDictionary(g => g.Key, g => Math.Round(g.Sum(l => l.Quantity), 2));
+
+        var stockByItemId = await BuildStockByItemIdAsync(companyId, itemIds, cancellationToken);
+        var soldQuantityByItemId = new Dictionary<int, decimal>();
+
+        foreach (var itemId in itemIds)
+        {
+            var billQty = billQtyByItemId.GetValueOrDefault(itemId);
+            if (billQty <= 0m)
+            {
+                continue;
+            }
+
+            var totalStock = stockByItemId.GetValueOrDefault(itemId);
+            var stockWithoutBill = totalStock - billQty;
+            var sold = stockWithoutBill < -0.01m
+                ? Math.Min(billQty, Math.Round(-stockWithoutBill, 2))
+                : 0m;
+            soldQuantityByItemId[itemId] = sold;
+        }
+
+        return new BillInventoryContext(soldQuantityByItemId);
+    }
+
+    private static bool IsLineSold(VendorBillLine line, BillInventoryContext? context) =>
+        context is not null
+        && line.ItemId is > 0
+        && context.SoldQuantityByItemId.GetValueOrDefault(line.ItemId.Value) > 0.01m;
+
+    private static bool IsLineEditable(VendorBillLine line, BillInventoryContext? context) =>
+        !IsLineSold(line, context);
+
+    private static bool LinesEqual(VendorBillLineSaveRequest request, VendorBillLine existing) =>
+        request.ItemId == existing.ItemId
+        && Math.Round(request.Quantity, 2) == Math.Round(existing.Quantity, 2)
+        && Math.Round(request.Rate, 2) == Math.Round(existing.Rate, 2)
+        && Math.Round(request.Cartons, 2) == Math.Round(existing.Cartons, 2)
+        && string.Equals(NormalizeOptional(request.Description), NormalizeOptional(existing.Description), StringComparison.Ordinal)
+        && string.Equals(NormalizeOptional(request.StackNo), NormalizeOptional(existing.StackNo), StringComparison.Ordinal)
+        && string.Equals(NormalizeOptional(request.LotNo), NormalizeOptional(existing.LotNo), StringComparison.Ordinal);
+
+    private static string NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+
+    private static bool InventoryDimensionsMatch(string? left, string? right) =>
+        string.Equals(NormalizeOptional(left), NormalizeOptional(right), StringComparison.OrdinalIgnoreCase);
 
     private async Task<Dictionary<int, decimal>> BuildStockByItemIdAsync(
         int companyId,

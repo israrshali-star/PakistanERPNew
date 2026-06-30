@@ -219,6 +219,9 @@
                         <label class="form-label" for="account-ledger-to">To Date</label>
                         <input type="date" class="form-control" id="account-ledger-to" />
                     </div>
+                    <div class="col-12">
+                        <p class="text-muted small mb-0">Bank/cash accounts: Closing = Opening (Dr) + Received (Dr) − Paid (Cr). Leave dates empty for the full ledger.</p>
+                    </div>
                     <div class="col-md-3">
                         <button type="button" class="btn btn-primary w-100" id="btn-apply-ledger-filter">
                             <i class="fa-solid fa-filter me-1"></i>Apply
@@ -237,13 +240,13 @@
                     </div>
                     <div class="col-md-3">
                         <div class="card card-kpi p-3">
-                            <div class="kpi-label">Period Debits</div>
+                            <div class="kpi-label" id="account-ledger-kpi-debit-label">Period Debits</div>
                             <div class="kpi-value text-currency" id="account-ledger-period-debit">0.00</div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="card card-kpi p-3">
-                            <div class="kpi-label">Period Credits</div>
+                            <div class="kpi-label" id="account-ledger-kpi-credit-label">Period Credits</div>
                             <div class="kpi-value text-currency" id="account-ledger-period-credit">0.00</div>
                         </div>
                     </div>

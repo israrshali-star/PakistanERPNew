@@ -138,6 +138,19 @@
         $('#total-net').text(formatCurrency(net));
     }
 
+    function lockBillLineRow($row) {
+        $row.addClass('bill-line-locked').attr('data-locked', 'true');
+        $row.find('input, select').prop('disabled', true);
+        $row.find('.btn-remove-line')
+            .prop('disabled', true)
+            .removeClass('text-danger')
+            .addClass('text-muted')
+            .attr('title', 'Sold — cannot remove');
+        $row.find('td:last').append(
+            '<div class="small text-muted mt-1"><i class="fa-solid fa-lock me-1"></i>Sold</div>'
+        );
+    }
+
     function addLine(prefill) {
         lineCounter += 1;
         var rowId = 'line-' + lineCounter;
@@ -272,6 +285,10 @@
                 $row.data('is-taxable', false);
             }
             window.LotStackLine.onLotChange($row, $.extend({}, lineOptions(), { preserveLineFields: true }));
+
+            if (line.isLocked === true || line.IsLocked === true) {
+                lockBillLineRow($row);
+            }
         });
         recalcTotals();
     }
@@ -642,6 +659,9 @@
         });
         $('#bill-lines-body').on('click', '.btn-remove-line', function () {
             var $row = $(this).closest('tr');
+            if ($row.data('locked') === true || $row.attr('data-locked') === 'true') {
+                return;
+            }
             var rowId = $row.data('line-id');
             if (rowId && window.LotStackLine.stockHintTimers[rowId]) {
                 clearTimeout(window.LotStackLine.stockHintTimers[rowId]);

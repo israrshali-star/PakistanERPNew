@@ -104,6 +104,7 @@ public class ChartOfAccountsApiController : ControllerBase
 
     [HttpGet("{id:int}/ledger")]
     [RequirePermission("ChartOfAccounts.View")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public async Task<IActionResult> Ledger(
         int id,
         DateTime? fromDate,

@@ -51,7 +51,7 @@
 
         if ($detail.data('can-revert-to-draft') === true) {
             $('#btn-revert-bill').on('click', function () {
-                if (!confirm('Reopen this bill as a draft? GL posting and inventory from this bill will be reversed so you can edit it again.')) {
+                if (!confirm('Reopen this bill as a draft? Unsold lines can be edited. Lines with sold inventory will stay locked.')) {
                     return;
                 }
                 postAction('/revert-to-draft', 'POST', 'Bill reopened as draft.', function () {

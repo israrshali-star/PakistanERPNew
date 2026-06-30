@@ -35,6 +35,10 @@ public interface IDashboardService
     Task<IReadOnlyList<CompanyApClosingBalanceDto>> GetApClosingBalancesAsync(
         CancellationToken cancellationToken = default);
 
+    /// <summary>Returns GL closing balances for cash and bank COA leaf accounts.</summary>
+    Task<IReadOnlyList<BankCoaClosingBalanceDto>> GetBankClosingBalancesAsync(
+        CancellationToken cancellationToken = default);
+
     /// <summary>Returns all dashboard sections in one payload.</summary>
     Task<DashboardDataDto> GetDashboardDataAsync(CancellationToken cancellationToken = default);
 }

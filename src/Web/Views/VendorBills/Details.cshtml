@@ -9,7 +9,7 @@
     var canDelete = await PermissionService.HasPermissionAsync("Purchase.Delete");
     var canApprove = canEdit && Model.Status == BillStatus.Draft;
     var canDeleteBill = canDelete && Model.Status == BillStatus.Draft;
-    var canRevertToDraft = canEdit && Model.Status == BillStatus.Approved;
+    var canRevertToDraft = canEdit && Model.CanRevertToDraft;
 }
 
 <div id="bill-detail"
@@ -121,7 +121,7 @@
             <tbody>
                 @foreach (var line in Model.Lines)
                 {
-                    <tr>
+                    <tr class="@(line.IsLocked ? "table-secondary" : line.SoldQuantity > 0 ? "table-warning" : null)">
                         <td>
                             @if (!string.IsNullOrWhiteSpace(line.ItemCode))
                             {
@@ -130,6 +130,12 @@
                             @if (!string.IsNullOrWhiteSpace(line.Description))
                             {
                                 <div class="text-muted small">@line.Description</div>
+                            }
+                            @if (line.SoldQuantity > 0)
+                            {
+                                <div class="small text-warning-emphasis mt-1">
+                                    <i class="fa-solid fa-lock me-1"></i>@line.SoldQuantity.ToString("N2") sold — locked on reopen
+                                </div>
                             }
                         </td>
                         <td>@(line.StackNo ?? "—")</td>

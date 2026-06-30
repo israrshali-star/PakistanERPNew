@@ -568,24 +568,52 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         var companyId = _currentCompany.GetRequiredCompanyId();
-        var rawOpening = await _unitOfWork.Repository<ChartOfAccount>()
+        var ledgerContext = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.Id == id && a.CompanyId == companyId)
-            .Select(a => a.OpeningBalance)
+            .Select(a => new
+            {
+                a.OpeningBalance,
+                a.TypeId,
+                a.SubTypeId,
+                ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
+                ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
+                IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
+            })
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (ledgerContext is null)
+        {
+            return null;
+        }
+
+        var usesBankLedgerFormula = BankLedgerBalance.UsesDebitMinusCreditLedger(
+            ledgerContext.TypeId,
+            ledgerContext.SubTypeId,
+            ledgerContext.IsLinkedToBank,
+            ledgerContext.ParentTypeId,
+            ledgerContext.ParentSubTypeId);
+
+        var rawOpening = ledgerContext.OpeningBalance;
 
         var from = fromDate?.Date;
         var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
-        var invertedLineAccumulation = PurchaseApBalance.UsesInvertedLineAccumulation(
-            companyId,
-            account.AccountNumber)
-            || GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber);
+        var invertedLineAccumulation = !usesBankLedgerFormula
+            && (PurchaseApBalance.UsesInvertedLineAccumulation(
+                    companyId,
+                    account.AccountNumber)
+                || GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber));
 
         decimal rawPeriodOpening;
         if (from.HasValue)
         {
-            rawPeriodOpening = await GetBalanceBeforeDateAsync(id, companyId, from.Value, cancellationToken);
+            rawPeriodOpening = await GetBalanceBeforeDateAsync(
+                id,
+                companyId,
+                from.Value,
+                usesBankLedgerFormula,
+                cancellationToken);
         }
         else
         {
@@ -607,8 +635,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 openingDate,
                 openingRef,
                 openingDesc,
-                periodOpening > 0 ? 0m : Math.Abs(periodOpening),
-                periodOpening > 0 ? periodOpening : 0m,
+                periodOpening > 0m ? periodOpening : 0m,
+                periodOpening < 0m ? Math.Abs(periodOpening) : 0m,
                 periodOpening));
         }
 
@@ -652,7 +680,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
         {
             periodDebitTotal += line.Debit;
             periodCreditTotal += line.Credit;
-            balance += invertedLineAccumulation ? line.Credit - line.Debit : line.Debit - line.Credit;
+            balance = usesBankLedgerFormula
+                ? BankLedgerBalance.Accumulate(balance, line.Debit, line.Credit)
+                : balance + (invertedLineAccumulation ? line.Credit - line.Debit : line.Debit - line.Credit);
 
             var description = !string.IsNullOrWhiteSpace(line.Memo)
                 ? line.Memo
@@ -667,7 +697,56 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 balance));
         }
 
-        var closingBalance = entries.Count > 0 ? entries[^1].Balance : periodOpening;
+        decimal closingBalance;
+        if (usesBankLedgerFormula)
+        {
+            closingBalance = BankLedgerBalance.ComputeClosing(
+                periodOpening,
+                periodDebitTotal,
+                periodCreditTotal);
+            ApplyDebitMinusCreditRunningBalances(entries);
+        }
+        else
+        {
+            closingBalance = entries.Count > 0 ? entries[^1].Balance : periodOpening;
+        }
+
+        if (!from.HasValue && !to.HasValue)
+        {
+            var chartOpening = NormalizeAccountBalanceForDisplay(
+                companyId,
+                account.TypeId,
+                account.AccountNumber,
+                rawOpening,
+                rawOpening);
+
+            periodOpening = chartOpening;
+            if (usesBankLedgerFormula)
+            {
+                closingBalance = BankLedgerBalance.ComputeClosing(
+                    periodOpening,
+                    periodDebitTotal,
+                    periodCreditTotal);
+                ApplyDebitMinusCreditRunningBalances(entries, chartOpening);
+            }
+            else
+            {
+                var leafBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
+                var rawChartClosing = leafBalanceMap.GetValueOrDefault(id, rawOpening);
+                closingBalance = NormalizeAccountBalanceForDisplay(
+                    companyId,
+                    account.TypeId,
+                    account.AccountNumber,
+                    rawChartClosing,
+                    rawOpening);
+            }
+
+            account = account with
+            {
+                OpeningBalance = periodOpening,
+                ClosingBalance = closingBalance
+            };
+        }
 
         return new ChartOfAccountLedgerDto(
             account,
@@ -677,7 +756,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
             entries,
             closingBalance,
             periodDebitTotal,
-            periodCreditTotal);
+            periodCreditTotal,
+            usesBankLedgerFormula);
     }
 
     public async Task<byte[]?> ExportLedgerToExcelAsync(
@@ -706,12 +786,27 @@ public class ChartOfAccountsService : IChartOfAccountsService
         sheet.Cell(5, 1).Value = "Opening Balance:";
         sheet.Cell(5, 2).Value = ledger.OpeningBalance;
         sheet.Cell(5, 2).Style.NumberFormat.Format = "#,##0.00";
-        sheet.Cell(5, 4).Value = "Closing Balance:";
-        sheet.Cell(5, 5).Value = ledger.ClosingBalance;
-        sheet.Cell(5, 5).Style.NumberFormat.Format = "#,##0.00";
+        if (ledger.UsesBankLedgerFormula)
+        {
+            sheet.Cell(6, 1).Value = "Received (Dr):";
+            sheet.Cell(6, 2).Value = ledger.PeriodDebitTotal;
+            sheet.Cell(6, 2).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(6, 4).Value = "Paid (Cr):";
+            sheet.Cell(6, 5).Value = ledger.PeriodCreditTotal;
+            sheet.Cell(6, 5).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(7, 1).Value = "Closing Balance:";
+            sheet.Cell(7, 2).Value = ledger.ClosingBalance;
+            sheet.Cell(7, 2).Style.NumberFormat.Format = "#,##0.00";
+        }
+        else
+        {
+            sheet.Cell(5, 4).Value = "Closing Balance:";
+            sheet.Cell(5, 5).Value = ledger.ClosingBalance;
+            sheet.Cell(5, 5).Style.NumberFormat.Format = "#,##0.00";
+        }
 
         var headers = new[] { "Date", "Reference", "Description", "Debit", "Credit", "Balance" };
-        const int headerRow = 7;
+        var headerRow = ledger.UsesBankLedgerFormula ? 9 : 7;
         for (var col = 0; col < headers.Length; col++)
         {
             sheet.Cell(headerRow, col + 1).Value = headers[col];
@@ -839,7 +934,17 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var openingBalances = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId)
-            .Select(a => new { a.Id, a.AccountNumber, a.TypeId, a.OpeningBalance })
+            .Select(a => new
+            {
+                a.Id,
+                a.AccountNumber,
+                a.TypeId,
+                a.SubTypeId,
+                a.OpeningBalance,
+                ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
+                ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
+                IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
+            })
             .ToListAsync(cancellationToken);
 
         var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
@@ -862,10 +967,22 @@ public class ChartOfAccountsService : IChartOfAccountsService
             x =>
             {
                 var journal = journalLookup.GetValueOrDefault(x.Id);
+                var debit = journal?.Debit ?? 0m;
+                var credit = journal?.Credit ?? 0m;
+                if (BankLedgerBalance.UsesDebitMinusCreditLedger(
+                        x.TypeId,
+                        x.SubTypeId,
+                        x.IsLinkedToBank,
+                        x.ParentTypeId,
+                        x.ParentSubTypeId))
+                {
+                    return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
+                }
+
                 return GlAccountBalance.ComputeNet(
                     x.OpeningBalance,
-                    journal?.Debit ?? 0m,
-                    journal?.Credit ?? 0m,
+                    debit,
+                    credit,
                     x.TypeId,
                     x.AccountNumber);
             });
@@ -875,6 +992,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         int accountId,
         int companyId,
         DateTime fromDate,
+        bool usesBankLedgerFormula,
         CancellationToken cancellationToken)
     {
         var account = await _unitOfWork.Repository<ChartOfAccount>()
@@ -899,11 +1017,19 @@ public class ChartOfAccountsService : IChartOfAccountsService
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
             .FirstOrDefaultAsync(cancellationToken);
 
+        var debit = journalTotals?.Debit ?? 0m;
+        var credit = journalTotals?.Credit ?? 0m;
+
+        if (usesBankLedgerFormula)
+        {
+            return BankLedgerBalance.ComputeClosing(account.OpeningBalance, debit, credit);
+        }
+
         return Math.Round(
             GlAccountBalance.ComputeNet(
                 account.OpeningBalance,
-                journalTotals?.Debit ?? 0m,
-                journalTotals?.Credit ?? 0m,
+                debit,
+                credit,
                 account.TypeId,
                 account.AccountNumber),
             2);
@@ -1119,6 +1245,51 @@ public class ChartOfAccountsService : IChartOfAccountsService
             false,
             account.ParentAccountId,
             Array.Empty<ChartOfAccountTreeAccountDto>());
+    }
+
+    private static void ApplyDebitMinusCreditRunningBalances(
+        List<ChartOfAccountLedgerEntryDto> entries,
+        decimal? openingBalanceOverride = null)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        if (openingBalanceOverride.HasValue)
+        {
+            var openingEntry = entries[0];
+            if (string.Equals(openingEntry.Reference, "OPENING", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(openingEntry.Reference, "B/F", StringComparison.OrdinalIgnoreCase))
+            {
+                var opening = openingBalanceOverride.Value;
+                entries[0] = openingEntry with
+                {
+                    Debit = opening > 0m ? opening : 0m,
+                    Credit = opening < 0m ? Math.Abs(opening) : 0m,
+                    Balance = opening
+                };
+            }
+        }
+
+        decimal balance = 0m;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var isOpeningRow = i == 0
+                && (string.Equals(entry.Reference, "OPENING", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(entry.Reference, "B/F", StringComparison.OrdinalIgnoreCase));
+
+            if (isOpeningRow)
+            {
+                balance = Math.Round(entry.Debit - entry.Credit, 2);
+                entries[i] = entry with { Balance = balance };
+                continue;
+            }
+
+            balance = BankLedgerBalance.Accumulate(balance, entry.Debit, entry.Credit);
+            entries[i] = entry with { Balance = balance };
+        }
     }
 
     private static decimal NormalizeAccountBalanceForDisplay(

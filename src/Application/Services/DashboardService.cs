@@ -12,6 +12,7 @@ namespace PakistanAccountingERP.Application.Services;
 public class DashboardService : IDashboardService
 {
     private const int AssetTypeId = 1;
+    private const int CashAndBankSubTypeId = 1;
     private const int LiabilityTypeId = 2;
     private const int RevenueTypeId = 4;
     private const int CogsTypeId = 5;
@@ -90,12 +91,16 @@ public class DashboardService : IDashboardService
             InventoryAsset,
             cancellationToken);
 
+        var bankClosingBalances = await GetBankClosingBalancesAsync(cancellationToken);
+        var cashAndBankBalance = bankClosingBalances.Sum(b => b.ClosingBalance);
+
         return new DashboardSummaryDto(
             todaySales,
             monthSales,
             outstandingReceivables,
             outstandingPayables,
-            inventoryValue);
+            inventoryValue,
+            cashAndBankBalance);
     }
 
     public async Task<IReadOnlyList<DailySalesPointDto>> GetDailySalesAsync(CancellationToken cancellationToken = default)
@@ -382,6 +387,33 @@ public class DashboardService : IDashboardService
         return rows;
     }
 
+    public async Task<IReadOnlyList<BankCoaClosingBalanceDto>> GetBankClosingBalancesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var closingBalanceMap = await GetClosingBalanceMapAsync(companyId, cancellationToken);
+
+        var accounts = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a =>
+                a.CompanyId == companyId
+                && a.IsActive
+                && !a.IsDeleted
+                && a.TypeId == AssetTypeId
+                && a.SubTypeId == CashAndBankSubTypeId
+                && !a.ChildAccounts.Any(c => !c.IsDeleted))
+            .OrderBy(a => a.AccountNumber)
+            .Select(a => new { a.Id, a.AccountNumber, a.AccountName })
+            .ToListAsync(cancellationToken);
+
+        return accounts
+            .Select(a => new BankCoaClosingBalanceDto(
+                a.AccountNumber,
+                a.AccountName,
+                Math.Round(closingBalanceMap.GetValueOrDefault(a.Id, 0m), 2)))
+            .ToList();
+    }
+
     public async Task<DashboardDataDto> GetDashboardDataAsync(CancellationToken cancellationToken = default)
     {
         var summary = await GetSummaryAsync(cancellationToken);
@@ -392,6 +424,7 @@ public class DashboardService : IDashboardService
         var lowStock = await GetLowStockItemsAsync(cancellationToken);
         var recent = await GetRecentInvoicesAsync(cancellationToken: cancellationToken);
         var apClosingBalances = await GetApClosingBalancesAsync(cancellationToken);
+        var bankClosingBalances = await GetBankClosingBalancesAsync(cancellationToken);
 
         return new DashboardDataDto(
             summary,
@@ -401,7 +434,8 @@ public class DashboardService : IDashboardService
             topCustomers,
             lowStock,
             recent,
-            apClosingBalances);
+            apClosingBalances,
+            bankClosingBalances);
     }
 
     private async Task<decimal> GetApDashboardClosingBalanceAsync(
@@ -484,6 +518,67 @@ public class DashboardService : IDashboardService
                 account.TypeId,
                 account.AccountNumber),
             2);
+    }
+
+    private async Task<Dictionary<int, decimal>> GetClosingBalanceMapAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var openingBalances = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId)
+            .Select(a => new
+            {
+                a.Id,
+                a.AccountNumber,
+                a.TypeId,
+                a.SubTypeId,
+                a.OpeningBalance,
+                ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
+                ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
+                IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
+            })
+            .ToListAsync(cancellationToken);
+
+        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit)
+            })
+            .ToListAsync(cancellationToken);
+
+        var journalLookup = journalTotals.ToDictionary(x => x.AccountId);
+        return openingBalances.ToDictionary(
+            x => x.Id,
+            x =>
+            {
+                var journal = journalLookup.GetValueOrDefault(x.Id);
+                var debit = journal?.Debit ?? 0m;
+                var credit = journal?.Credit ?? 0m;
+                if (BankLedgerBalance.UsesDebitMinusCreditLedger(
+                        x.TypeId,
+                        x.SubTypeId,
+                        x.IsLinkedToBank,
+                        x.ParentTypeId,
+                        x.ParentSubTypeId))
+                {
+                    return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
+                }
+
+                return GlAccountBalance.ComputeNet(
+                    x.OpeningBalance,
+                    debit,
+                    credit,
+                    x.TypeId,
+                    x.AccountNumber);
+            });
     }
 
     private static string GetInvoiceStatusBadgeClass(InvoiceStatus status) =>
