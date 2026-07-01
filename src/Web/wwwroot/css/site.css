@@ -442,3 +442,64 @@ body.app-body {
     0% { background-color: #ffe69c; }
     100% { background-color: transparent; }
 }
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 10mm 12mm;
+    }
+
+    .sidebar,
+    .top-navbar,
+    .app-header,
+    .content-header,
+    .app-footer,
+    .no-print {
+        display: none !important;
+    }
+
+    .main-wrapper {
+        margin: 0 !important;
+    }
+
+    .content-area {
+        padding: 0 !important;
+    }
+
+    .ledger-print-area,
+    .statement-print-area {
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    body.modal-print-account-ledger * {
+        visibility: hidden;
+    }
+
+    body.modal-print-account-ledger #accountLedgerModal,
+    body.modal-print-account-ledger #accountLedgerModal * {
+        visibility: visible;
+    }
+
+    body.modal-print-account-ledger #accountLedgerModal {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        overflow: visible;
+    }
+
+    body.modal-print-account-ledger #accountLedgerModal .modal-dialog {
+        max-width: 100%;
+        margin: 0;
+    }
+
+    body.modal-print-account-ledger #accountLedgerModal .modal-content {
+        border: none;
+        box-shadow: none;
+    }
+
+    body.modal-print-account-ledger .modal-backdrop {
+        display: none !important;
+    }
+}

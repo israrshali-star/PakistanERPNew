@@ -2453,7 +2453,7 @@ public class GlRepairService : IGlRepairService
                 0m);
         }
 
-        var parsedRows = QuickBooksReportCsvParser.ParseTrialBalanceCoaOpenings(trialBalanceFilePath);
+        var parsedRows = QuickBooksReportCsvParser.ParseTrialBalanceCoaOpenings(trialBalanceFilePath, companyId);
         if (parsedRows.Count == 0)
         {
             return new TrialBalanceCoaApplyResult(
@@ -4416,7 +4416,8 @@ public class GlRepairService : IGlRepairService
             var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
                 closingNet,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             debits += closingDebit;
             credits += closingCredit;
         }
@@ -5191,7 +5192,8 @@ public class GlRepairService : IGlRepairService
             var (debit, credit) = GlTrialBalanceColumns.SplitClosingBalance(
                 closingNet,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             closingDebits += debit;
             closingCredits += credit;
         }

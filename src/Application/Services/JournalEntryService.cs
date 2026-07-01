@@ -16,6 +16,9 @@ public partial class JournalEntryService : IJournalEntryService
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
+    private readonly ICustomerGlPostingService _customerGlPosting;
+    private readonly IVendorGlPostingService _vendorGlPosting;
+    private readonly IBankGlPostingService _bankGlPosting;
     private readonly ILogger<JournalEntryService> _logger;
 
     public JournalEntryService(
@@ -23,12 +26,18 @@ public partial class JournalEntryService : IJournalEntryService
         ICurrentCompanyService currentCompany,
         ICurrentUserService currentUser,
         IAuditService auditService,
+        ICustomerGlPostingService customerGlPosting,
+        IVendorGlPostingService vendorGlPosting,
+        IBankGlPostingService bankGlPosting,
         ILogger<JournalEntryService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _currentUser = currentUser;
         _auditService = auditService;
+        _customerGlPosting = customerGlPosting;
+        _vendorGlPosting = vendorGlPosting;
+        _bankGlPosting = bankGlPosting;
         _logger = logger;
     }
 
@@ -87,6 +96,7 @@ public partial class JournalEntryService : IJournalEntryService
             var isManual = IsManualEntry(entry.ReferenceType);
             var canEdit = CanEditEntry(entry.Status, isManual);
             var canDelete = CanDeleteEntry(entry.Status, isManual);
+            var canRepost = CanRepostFromSource(entry.Status, isManual, entry.ReferenceId, entry.ReferenceType);
             rows.Add(new JournalEntryListItemDto(
                 entry.Id,
                 entry.EntryNumber,
@@ -97,7 +107,8 @@ public partial class JournalEntryService : IJournalEntryService
                 entry.Status.ToString(),
                 entry.Status == JournalStatus.Draft && isManual,
                 canDelete,
-                canEdit));
+                canEdit,
+                canRepost));
         }
 
         return new DataTableResponse<JournalEntryListItemDto>(
@@ -151,6 +162,7 @@ public partial class JournalEntryService : IJournalEntryService
 
         var canEdit = CanEditEntry(entry.Status, isManual);
         var canDelete = CanDeleteEntry(entry.Status, isManual);
+        var canRepost = CanRepostFromSource(entry.Status, isManual, entry.ReferenceId, entry.ReferenceType);
 
         return new JournalEntryDetailDto(
             entry.Id,
@@ -167,6 +179,8 @@ public partial class JournalEntryService : IJournalEntryService
             entry.Status == JournalStatus.Draft && isManual,
             canDelete,
             canEdit,
+            canRepost,
+            isManual,
             entry.Lines);
     }
 
@@ -457,6 +471,174 @@ public partial class JournalEntryService : IJournalEntryService
         return new JournalEntryActionResult(true, GetDeleteSuccessMessage(entry.Status), null);
     }
 
+    public async Task<JournalEntryActionResult> RepostFromSourceAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCompanyId(out var companyId, out var companyError))
+        {
+            return ToActionError(companyError!);
+        }
+
+        var entry = await _unitOfWork.Repository<JournalEntry>()
+            .Query()
+            .Where(j => j.Id == id && j.CompanyId == companyId)
+            .Select(j => new { j.Id, j.EntryNumber, j.ReferenceType, j.ReferenceId, j.Status })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (entry is null)
+        {
+            return new JournalEntryActionResult(false, "Journal entry not found.", null);
+        }
+
+        var isManual = IsManualEntry(entry.ReferenceType);
+        if (!CanRepostFromSource(entry.Status, isManual, entry.ReferenceId, entry.ReferenceType))
+        {
+            return new JournalEntryActionResult(
+                false,
+                "This journal entry cannot be reposted from its source document.",
+                null);
+        }
+
+        var repostResult = await RepostSourceDocumentAsync(
+            companyId,
+            entry.ReferenceType!,
+            entry.ReferenceId!.Value,
+            cancellationToken);
+
+        if (!repostResult.Success)
+        {
+            return new JournalEntryActionResult(false, repostResult.Message, null);
+        }
+
+        try
+        {
+            await _auditService.LogAsync(
+                "RepostFromSource",
+                "JournalEntries",
+                id.ToString(),
+                entry.EntryNumber,
+                entry.ReferenceType,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit log failed for journal entry repost {EntryId}", id);
+        }
+
+        var newEntryId = await _unitOfWork.Repository<JournalEntry>()
+            .Query()
+            .Where(j =>
+                j.CompanyId == companyId
+                && j.ReferenceType == entry.ReferenceType
+                && j.ReferenceId == entry.ReferenceId
+                && !j.IsDeleted)
+            .OrderByDescending(j => j.Id)
+            .Select(j => j.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var detail = await GetDetailAsync(newEntryId > 0 ? newEntryId : id, cancellationToken);
+        return new JournalEntryActionResult(
+            true,
+            "Journal entry reposted from the source document.",
+            detail);
+    }
+
+    private async Task<(bool Success, string? Message)> RepostSourceDocumentAsync(
+        int companyId,
+        string referenceType,
+        int referenceId,
+        CancellationToken cancellationToken)
+    {
+        switch (referenceType)
+        {
+            case ReferenceTypes.CustomerReceipt:
+            {
+                var receipt = await _unitOfWork.Repository<CustomerReceipt>()
+                    .Query()
+                    .FirstOrDefaultAsync(r => r.Id == referenceId && r.CompanyId == companyId, cancellationToken);
+                if (receipt is null)
+                {
+                    return (false, "Customer receipt not found.");
+                }
+
+                var result = await _customerGlPosting.PostCustomerReceiptAsync(receipt, cancellationToken: cancellationToken);
+                return (result.Success, result.Message);
+            }
+
+            case ReferenceTypes.VendorPayment:
+            {
+                var payment = await _unitOfWork.Repository<VendorPayment>()
+                    .Query()
+                    .FirstOrDefaultAsync(p => p.Id == referenceId && p.CompanyId == companyId, cancellationToken);
+                if (payment is null)
+                {
+                    return (false, "Vendor payment not found.");
+                }
+
+                var result = await _vendorGlPosting.PostVendorPaymentAsync(payment, cancellationToken);
+                return (result.Success, result.Message);
+            }
+
+            case ReferenceTypes.BankTransaction:
+            {
+                var transaction = await _unitOfWork.Repository<BankTransaction>()
+                    .Query()
+                    .FirstOrDefaultAsync(t => t.Id == referenceId && t.CompanyId == companyId, cancellationToken);
+                if (transaction is null)
+                {
+                    return (false, "Bank transaction not found.");
+                }
+
+                var result = await _bankGlPosting.PostBankTransactionAsync(transaction, cancellationToken);
+                return (result.Success, result.Message);
+            }
+
+            case ReferenceTypes.Customer:
+            {
+                var customer = await _unitOfWork.Repository<Customer>()
+                    .Query()
+                    .Where(c => c.Id == referenceId && c.CompanyId == companyId)
+                    .Select(c => new { c.BuyerName, c.OpeningBalance })
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (customer is null)
+                {
+                    return (false, "Customer not found.");
+                }
+
+                var result = await _customerGlPosting.SyncCustomerOpeningBalanceAsync(
+                    referenceId,
+                    customer.BuyerName,
+                    customer.OpeningBalance,
+                    cancellationToken: cancellationToken);
+                return (result.Success, result.Message);
+            }
+
+            case ReferenceTypes.Vendor:
+            {
+                var vendor = await _unitOfWork.Repository<Vendor>()
+                    .Query()
+                    .Where(v => v.Id == referenceId && v.CompanyId == companyId)
+                    .Select(v => new { v.VendorName, v.OpeningBalance })
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (vendor is null)
+                {
+                    return (false, "Vendor not found.");
+                }
+
+                var result = await _vendorGlPosting.SyncVendorOpeningBalanceAsync(
+                    referenceId,
+                    vendor.VendorName,
+                    vendor.OpeningBalance,
+                    cancellationToken: cancellationToken);
+                return (result.Success, result.Message);
+            }
+
+            default:
+                return (false, "Repost is not supported for this source type. Edit the source document instead.");
+        }
+    }
+
     private static string GetDeleteSuccessMessage(JournalStatus status) =>
         status == JournalStatus.Posted
             ? "Posted journal entry removed from the general ledger."
@@ -566,6 +748,17 @@ public partial class JournalEntryService : IJournalEntryService
             return number is null ? "Vendor Bill" : $"Vendor Bill {number}";
         }
 
+        if (referenceType == ReferenceTypes.CustomerReceipt)
+        {
+            var number = await _unitOfWork.Repository<CustomerReceipt>()
+                .Query()
+                .Where(r => r.Id == referenceId.Value && r.CompanyId == companyId)
+                .Select(r => r.ReceiptNumber)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return number is null ? "Customer Receipt" : $"Customer Receipt {number}";
+        }
+
         return referenceType;
     }
 
@@ -580,6 +773,9 @@ public partial class JournalEntryService : IJournalEntryService
         {
             ReferenceTypes.SalesInvoice => $"/SalesInvoices/Details/{referenceId.Value}",
             ReferenceTypes.VendorBill => $"/VendorBills/Details/{referenceId.Value}",
+            ReferenceTypes.CustomerReceipt => $"/CustomerReceipts",
+            ReferenceTypes.VendorPayment => $"/VendorPayments",
+            ReferenceTypes.BankTransaction => $"/BankTransactions",
             _ => null
         };
     }
@@ -591,8 +787,25 @@ public partial class JournalEntryService : IJournalEntryService
         _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 
     private bool CanEditEntry(JournalStatus status, bool isManual) =>
-        status != JournalStatus.Reversed
-        && (IsSuperAdmin() || (status == JournalStatus.Draft && isManual));
+        status is JournalStatus.Draft or JournalStatus.Posted
+        && (isManual || IsSuperAdmin());
+
+    private static bool CanRepostFromSource(
+        JournalStatus status,
+        bool isManual,
+        int? referenceId,
+        string? referenceType) =>
+        status == JournalStatus.Posted
+        && !isManual
+        && referenceId.HasValue
+        && SupportsRepostFromSource(referenceType);
+
+    private static bool SupportsRepostFromSource(string? referenceType) =>
+        referenceType is ReferenceTypes.CustomerReceipt
+            or ReferenceTypes.VendorPayment
+            or ReferenceTypes.BankTransaction
+            or ReferenceTypes.Customer
+            or ReferenceTypes.Vendor;
 
     private static bool CanDeleteEntry(JournalStatus status, bool isManual) =>
         isManual
@@ -607,10 +820,10 @@ public partial class JournalEntryService : IJournalEntryService
 
         if (!isManual)
         {
-            return "System-generated entries cannot be edited.";
+            return "This entry was created from a receipt, payment, or other document. Use Repost from source on the details page, or edit the source document. SuperAdmin can edit lines directly.";
         }
 
-        return "Only draft entries can be edited.";
+        return "This journal entry cannot be edited.";
     }
 
     private static string GetDeleteDeniedMessage(JournalStatus status, bool isManual)

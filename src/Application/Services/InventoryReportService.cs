@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
+using PakistanAccountingERP.Application.Common;
+
 using PakistanAccountingERP.Application.Common.Constants;
 
 using PakistanAccountingERP.Application.DTOs;
@@ -767,7 +769,7 @@ public class InventoryReportService : IInventoryReportService
 
 
 
-        var cartonLookup = await BuildMovementCartonLookupAsync(
+        var cartonResolver = await BuildMovementCartonResolverAsync(
 
             companyId,
 
@@ -797,9 +799,9 @@ public class InventoryReportService : IInventoryReportService
 
                 var isOut = t.TransactionType == InventoryTransactionType.StockOut;
 
-                var cartons = ResolveMovementCartons(
+                var movementQty = isIn || isOut ? t.Quantity : 0m;
 
-                    cartonLookup,
+                var cartons = cartonResolver.Resolve(
 
                     t.ReferenceNo,
 
@@ -807,7 +809,9 @@ public class InventoryReportService : IInventoryReportService
 
                     t.StackNo,
 
-                    t.LotNo);
+                    t.LotNo,
+
+                    movementQty);
 
                 return new StockMovementLineDto(
 
@@ -998,6 +1002,24 @@ public class InventoryReportService : IInventoryReportService
                 .ThenBy(l => l.StackNo)
 
                 .ToList();
+
+        }
+
+
+
+        if (request.ItemId.HasValue)
+
+        {
+
+            lines = await ReconcileSoldOutItemCartonsAsync(
+
+                companyId,
+
+                request.ItemId.Value,
+
+                lines,
+
+                cancellationToken);
 
         }
 
@@ -1277,7 +1299,7 @@ public class InventoryReportService : IInventoryReportService
 
 
 
-    private async Task<Dictionary<string, decimal>> BuildMovementCartonLookupAsync(
+    private async Task<MovementCartonResolver> BuildMovementCartonResolverAsync(
 
         int companyId,
 
@@ -1287,11 +1309,13 @@ public class InventoryReportService : IInventoryReportService
 
     {
 
+        var resolver = new MovementCartonResolver();
+
         if (referenceNos.Count == 0)
 
         {
 
-            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            return resolver;
 
         }
 
@@ -1321,11 +1345,35 @@ public class InventoryReportService : IInventoryReportService
 
                 l.LotNo,
 
+                l.Quantity,
+
                 l.Cartons
 
             })
 
             .ToListAsync(cancellationToken);
+
+
+
+        foreach (var line in billLines)
+
+        {
+
+            resolver.Add(
+
+                line.BillNumber,
+
+                line.ItemId,
+
+                line.StackNo,
+
+                line.LotNo,
+
+                line.Cartons,
+
+                line.Quantity);
+
+        }
 
 
 
@@ -1351,6 +1399,8 @@ public class InventoryReportService : IInventoryReportService
 
                 l.LotNo,
 
+                l.Quantity,
+
                 l.Cartons
 
             })
@@ -1359,93 +1409,173 @@ public class InventoryReportService : IInventoryReportService
 
 
 
-        var lookup = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var line in billLines)
-
-        {
-
-            lookup[MovementCartonKey(line.BillNumber, line.ItemId, line.StackNo, line.LotNo)] =
-
-                Math.Round(line.Cartons, 2);
-
-        }
-
-
-
         foreach (var line in invoiceLines)
 
         {
 
-            lookup[MovementCartonKey(line.InvoiceNumber, line.ItemId, line.StackNo, line.LotNo)] =
+            resolver.Add(
 
-                Math.Round(line.Cartons, 2);
+                line.InvoiceNumber,
+
+                line.ItemId,
+
+                line.StackNo,
+
+                line.LotNo,
+
+                line.Cartons,
+
+                line.Quantity);
 
         }
 
 
 
-        return lookup;
+        return resolver;
 
     }
 
 
 
-    private static decimal ResolveMovementCartons(
+    private async Task<List<StockMovementLineDto>> ReconcileSoldOutItemCartonsAsync(
 
-        IReadOnlyDictionary<string, decimal> lookup,
-
-        string? referenceNo,
+        int companyId,
 
         int itemId,
 
-        string? stackNo,
+        IReadOnlyList<StockMovementLineDto> lines,
 
-        string? lotNo)
+        CancellationToken cancellationToken)
 
     {
 
-        if (string.IsNullOrWhiteSpace(referenceNo))
+        var item = await _unitOfWork.Repository<Item>()
+
+            .Query()
+
+            .Where(i => i.Id == itemId && i.CompanyId == companyId)
+
+            .Select(i => new { i.CurrentStock, i.Cartons })
+
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (item is null)
 
         {
 
-            return 0m;
+            return lines.ToList();
 
         }
 
 
 
-        return lookup.TryGetValue(
+        var cartonsOnHand = (await _itemCartonSyncService.GetCartonsOnHandByItemAsync(
 
-            MovementCartonKey(referenceNo, itemId, stackNo, lotNo),
+            companyId,
 
-            out var cartons)
+            [itemId],
 
-            ? cartons
+            cancellationToken)).GetValueOrDefault(itemId, item.Cartons);
 
-            : 0m;
+        if (Math.Abs(item.CurrentStock) > 0.01m || Math.Abs(cartonsOnHand) > 0.01m)
+
+        {
+
+            return lines.ToList();
+
+        }
+
+
+
+        var totalQtyIn = lines.Sum(l => l.QtyIn);
+
+        var totalQtyOut = lines.Sum(l => l.QtyOut);
+
+        if (Math.Abs(totalQtyIn - totalQtyOut) > 0.01m)
+
+        {
+
+            return lines.ToList();
+
+        }
+
+
+
+        var totalCtnIn = lines.Sum(l => l.CartonsIn);
+
+        var totalCtnOut = lines.Sum(l => l.CartonsOut);
+
+        var gap = Math.Round(totalCtnIn - totalCtnOut, 2);
+
+        if (Math.Abs(gap) < 0.01m)
+
+        {
+
+            return lines.ToList();
+
+        }
+
+
+
+        var outLines = lines
+
+            .Select((line, index) => (line, index))
+
+            .Where(x => x.line.QtyOut > 0m)
+
+            .ToList();
+
+        if (outLines.Count == 0)
+
+        {
+
+            return lines.ToList();
+
+        }
+
+
+
+        var updated = lines.ToList();
+
+        var totalQtyOutForAllocation = outLines.Sum(x => x.line.QtyOut);
+
+        var remaining = gap;
+
+        for (var i = 0; i < outLines.Count; i++)
+
+        {
+
+            var (line, index) = outLines[i];
+
+            var add = i == outLines.Count - 1
+
+                ? remaining
+
+                : Math.Round(gap * line.QtyOut / totalQtyOutForAllocation, 2);
+
+            remaining = Math.Round(remaining - add, 2);
+
+            updated[index] = line with
+
+            {
+
+                CartonsOut = Math.Round(line.CartonsOut + add, 2)
+
+            };
+
+        }
+
+
+
+        return updated;
 
     }
-
-
-
-    private static string MovementCartonKey(
-
-        string referenceNo,
-
-        int itemId,
-
-        string? stackNo,
-
-        string? lotNo) =>
-
-        $"{referenceNo.Trim().ToUpperInvariant()}|{itemId}|{NormalizeMovementKeyPart(stackNo)}|{NormalizeMovementKeyPart(lotNo)}";
 
 
 
     private static string NormalizeMovementKeyPart(string? value) =>
 
-        string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
+        MovementCartonResolver.NormalizeKeyPart(value);
 
 
 
@@ -1837,7 +1967,7 @@ public class InventoryReportService : IInventoryReportService
 
 
 
-        var cartonLookup = await BuildMovementCartonLookupAsync(
+        var cartonResolver = await BuildMovementCartonResolverAsync(
 
             companyId,
 
@@ -1853,9 +1983,7 @@ public class InventoryReportService : IInventoryReportService
 
             {
 
-                var cartons = ResolveMovementCartons(
-
-                    cartonLookup,
+                var cartons = cartonResolver.Resolve(
 
                     t.ReferenceNo,
 
@@ -1863,7 +1991,9 @@ public class InventoryReportService : IInventoryReportService
 
                     t.StackNo,
 
-                    t.LotNo);
+                    t.LotNo,
+
+                    t.Quantity);
 
                 return new StockMovementLineDto(
 

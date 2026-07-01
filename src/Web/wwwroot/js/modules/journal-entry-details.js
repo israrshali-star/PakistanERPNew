@@ -77,6 +77,23 @@
                 });
             });
         }
+
+        if (isDataTrue($detail, 'can-repost')) {
+            $('#btn-repost-entry').on('click', function () {
+                if (!confirm('Rebuild this journal entry from its source document? Current GL lines will be replaced.')) {
+                    return;
+                }
+                runAction('POST', '/repost-from-source', null, function (result) {
+                    var entry = result && (result.entry || result.Entry);
+                    var entryId = entry && (entry.id || entry.Id);
+                    if (entryId) {
+                        window.location.href = '/JournalEntries/Details/' + entryId;
+                        return;
+                    }
+                    window.location.reload();
+                });
+            });
+        }
     });
 })();
 

@@ -1153,9 +1153,12 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                     item.PurchaseRate = Math.Round(row.UnitPrice.Value, 2);
                 }
 
-                item.UpdatedAt = now;
-                item.UpdatedBy = ImportUser;
-                _unitOfWork.Repository<Item>().Update(item);
+                if (item.Id > 0)
+                {
+                    item.UpdatedAt = now;
+                    item.UpdatedBy = ImportUser;
+                    _unitOfWork.Repository<Item>().Update(item);
+                }
             }
 
             var quantity = Math.Round(row.Weight, 2);

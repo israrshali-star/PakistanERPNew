@@ -237,5 +237,21 @@ public class JournalEntriesApiController : ControllerBase
             return BadRequest(new JournalEntryActionResult(false, ex.Message, null));
         }
     }
+
+    [HttpPost("{id:int}/repost-from-source")]
+    [RequirePermission("JournalEntries.Edit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> RepostFromSource(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _journalEntryService.RepostFromSourceAsync(id, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new JournalEntryActionResult(false, ex.Message, null));
+        }
+    }
 }
 

@@ -63,7 +63,8 @@ public class FinancialReportService : IFinancialReportService
             var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
                 closingNet,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
 
             if (displayOpening == 0m && periodDebit == 0m && periodCredit == 0m && displayClosing == 0m)
             {

@@ -1492,6 +1492,18 @@
 
         });
 
+        $('#btn-ledger-print').on('click', function () {
+            if (!ledgerAccountId) {
+                return;
+            }
+            document.body.classList.add('modal-print-account-ledger');
+            window.print();
+        });
+
+        window.addEventListener('afterprint', function () {
+            document.body.classList.remove('modal-print-account-ledger');
+        });
+
 
 
         $('#btn-ledger-export-excel').on('click', function () {

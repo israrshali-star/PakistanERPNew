@@ -28,4 +28,6 @@ public interface IJournalEntryService
     Task<JournalEntryActionResult> PostAsync(int id, CancellationToken cancellationToken = default);
 
     Task<JournalEntryActionResult> DeleteAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<JournalEntryActionResult> RepostFromSourceAsync(int id, CancellationToken cancellationToken = default);
 }

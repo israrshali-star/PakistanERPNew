@@ -76,11 +76,9 @@ public class InvoiceShareService : IInvoiceShareService
 
         var canShare = CanShareInvoice(companyId.Value, invoice.Status, invoice.FbrSubmittedAt);
         var canEmailChallan = CanEmailDeliveryChallan(invoice.Status, invoice.LineCount);
-        var displayNumber = invoice.FbrInvoiceNumber ?? invoice.InvoiceNumber;
         var message = BuildWhatsAppMessage(
             invoice.BuyerName,
             invoice.InvoiceNumber,
-            displayNumber,
             invoice.InvoiceDate,
             invoice.NetTotal,
             invoice.SellerCompanyName);
@@ -284,7 +282,6 @@ public class InvoiceShareService : IInvoiceShareService
     private static string BuildWhatsAppMessage(
         string customerName,
         string invoiceNumber,
-        string displayNumber,
         DateTime invoiceDate,
         decimal netTotal,
         string? sellerName)
@@ -293,7 +290,6 @@ public class InvoiceShareService : IInvoiceShareService
         return
             $"Dear {customerName},\n\n" +
             $"Invoice: {invoiceNumber}\n" +
-            $"FBR / Ref #: {displayNumber}\n" +
             $"Date: {invoiceDate:dd/MM/yyyy}\n" +
             $"Amount: PKR {amount}\n\n" +
             $"Please find the invoice PDF attached or request it from us.\n\n" +

@@ -46,6 +46,13 @@ public static class GlOpeningBalanceNormalizer
             return Math.Round(-openingBalance, 2);
         }
 
+        const int EquityTypeId = 3;
+        if (typeId.Value == EquityTypeId && openingBalance < 0m)
+        {
+            // QuickBooks credit equity (credit column) imports as negative net.
+            return Math.Round(-openingBalance, 2);
+        }
+
         return Math.Round(openingBalance, 2);
     }
 

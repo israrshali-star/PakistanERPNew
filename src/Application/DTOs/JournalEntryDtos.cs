@@ -12,7 +12,8 @@ public record JournalEntryListItemDto(
     string Status,
     bool CanPost,
     bool CanDelete,
-    bool CanEdit);
+    bool CanEdit,
+    bool CanRepostFromSource);
 
 public record JournalEntryLineDto(
     int Id,
@@ -38,6 +39,8 @@ public record JournalEntryDetailDto(
     bool CanPost,
     bool CanDelete,
     bool CanEdit,
+    bool CanRepostFromSource,
+    bool IsManualEntry,
     IReadOnlyList<JournalEntryLineDto> Lines);
 
 public class JournalEntryLineSaveRequest

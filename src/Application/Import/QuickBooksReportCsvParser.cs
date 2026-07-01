@@ -61,18 +61,6 @@ public sealed class OpeningStockStackLotRow
 
 public static class QuickBooksReportCsvParser
 {
-    private static readonly Dictionary<string, string> QbAccountNumberToErp = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["10020"] = "10013",
-        ["10800"] = "10015",
-        ["10900"] = "10016",
-        ["11000"] = "11110",
-        ["12000"] = "10017",
-        ["15200"] = "15100",
-        ["30800"] = "30020",
-        ["32000"] = "30000",
-    };
-
     private static readonly HashSet<string> SkipErpAccountNumbers = new(StringComparer.OrdinalIgnoreCase)
     {
         "10000",
@@ -80,7 +68,9 @@ public static class QuickBooksReportCsvParser
         "47900",
     };
 
-    public static IReadOnlyList<QuickBooksTrialBalanceCoaRow> ParseTrialBalanceCoaOpenings(string filePath)
+    public static IReadOnlyList<QuickBooksTrialBalanceCoaRow> ParseTrialBalanceCoaOpenings(
+        string filePath,
+        int companyId)
     {
         var rows = ReadReportRows(filePath);
         var openings = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
@@ -110,10 +100,7 @@ public static class QuickBooksReportCsvParser
                 continue;
             }
 
-            if (QbAccountNumberToErp.TryGetValue(accountNumber, out var mapped))
-            {
-                accountNumber = mapped;
-            }
+            accountNumber = TrialBalanceAccountResolver.ResolveQbAccountNumber(companyId, accountNumber);
 
             if (SkipErpAccountNumbers.Contains(accountNumber))
             {

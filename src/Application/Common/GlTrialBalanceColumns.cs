@@ -14,7 +14,8 @@ public static class GlTrialBalanceColumns
     public static (decimal Debit, decimal Credit) SplitClosingBalance(
         decimal storedNet,
         int? typeId,
-        string? accountNumber)
+        string? accountNumber,
+        int? companyId = null)
     {
         var amount = Math.Abs(storedNet);
         if (amount == 0m)
@@ -22,13 +23,30 @@ public static class GlTrialBalanceColumns
             return (0m, 0m);
         }
 
-        return UsesDebitColumn(storedNet, typeId, accountNumber)
+        return UsesDebitColumn(storedNet, typeId, accountNumber, companyId)
             ? (amount, 0m)
             : (0m, amount);
     }
 
-    public static bool UsesDebitColumn(decimal storedNet, int? typeId, string? accountNumber)
+    public static bool UsesDebitColumn(
+        decimal storedNet,
+        int? typeId,
+        string? accountNumber,
+        int? companyId = null)
     {
+        if (companyId == 6)
+        {
+            if (string.Equals(accountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase))
+            {
+                return storedNet > 0m;
+            }
+
+            if (GlOpeningBalanceNormalizer.IsSalesTaxLiabilityAccount(accountNumber))
+            {
+                return storedNet < 0m;
+            }
+        }
+
         if (string.Equals(accountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase))
         {
             return storedNet < 0m;
@@ -36,7 +54,6 @@ public static class GlTrialBalanceColumns
 
         if (string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase))
         {
-            // AP is stored positive when owed; credit column is the normal payable side.
             return storedNet < 0m;
         }
 
