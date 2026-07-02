@@ -576,6 +576,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 a.OpeningBalance,
                 a.TypeId,
                 a.SubTypeId,
+                a.AccountNumber,
+                ParentAccountNumber = a.ParentAccount != null ? a.ParentAccount.AccountNumber : null,
                 ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
                 ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
                 IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
@@ -592,7 +594,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
             ledgerContext.SubTypeId,
             ledgerContext.IsLinkedToBank,
             ledgerContext.ParentTypeId,
-            ledgerContext.ParentSubTypeId);
+            ledgerContext.ParentSubTypeId,
+            ledgerContext.AccountNumber,
+            ledgerContext.ParentAccountNumber);
 
         var rawOpening = ledgerContext.OpeningBalance;
 
@@ -941,6 +945,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 a.TypeId,
                 a.SubTypeId,
                 a.OpeningBalance,
+                ParentAccountNumber = a.ParentAccount != null ? a.ParentAccount.AccountNumber : null,
                 ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
                 ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
                 IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
@@ -974,7 +979,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
                         x.SubTypeId,
                         x.IsLinkedToBank,
                         x.ParentTypeId,
-                        x.ParentSubTypeId))
+                        x.ParentSubTypeId,
+                        x.AccountNumber,
+                        x.ParentAccountNumber))
                 {
                     return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
                 }

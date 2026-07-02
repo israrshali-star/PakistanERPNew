@@ -129,7 +129,7 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
             {
                 right.Item().Row(r =>
                 {
-                    r.RelativeItem().Text($"Sales Tax ({TradeInvoiceLayout.FormatTaxRate(model.TaxRateDisplay)}%)");
+                    r.RelativeItem().Text($"Sales Tax ({TradeInvoiceLayout.FormatTaxRatePrecise(model.TaxRateDisplay)}%)");
                     r.ConstantItem(70).AlignRight().Text($"PKR {TradeInvoiceLayout.FormatAmount(model.TaxAmount)}");
                 });
                 right.Item().PaddingTop(8).Row(r =>

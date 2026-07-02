@@ -3,9 +3,11 @@
 @model SalesInvoiceDetailDto
 @{
     var taxableTotal = Model.SubTotal - Model.DiscountAmount;
-    var taxRateDisplay = TradeInvoiceLayout.ResolveTaxRateDisplay(
+    var combinedTaxAmount = Model.TaxAmount + Model.FurtherTax;
+    var taxRateDisplay = TradeInvoiceLayout.ResolveCombinedTaxRateDisplay(
         taxableTotal,
         Model.TaxAmount,
+        Model.FurtherTax,
         Model.Lines.Select(l => l.TaxRate).ToList());
     var totalCartons = Model.Lines
         .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
@@ -84,8 +86,8 @@
         </div>
         <div class="trade-summary-box">
             <div class="trade-summary-row">
-                <span>Sales Tax (@TradeInvoiceLayout.FormatTaxRate(taxRateDisplay)%)</span>
-                <span>PKR @TradeInvoiceLayout.FormatAmount(Model.TaxAmount)</span>
+                <span>Sales Tax (@TradeInvoiceLayout.FormatTaxRatePrecise(taxRateDisplay)%)</span>
+                <span>PKR @TradeInvoiceLayout.FormatAmount(combinedTaxAmount)</span>
             </div>
             <div class="trade-summary-row trade-summary-total">
                 <span class="fw-bold">Total</span>

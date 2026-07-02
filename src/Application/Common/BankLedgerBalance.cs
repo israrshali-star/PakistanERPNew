@@ -1,3 +1,5 @@
+using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
+
 namespace PakistanAccountingERP.Application.Common;
 
 /// <summary>
@@ -14,11 +16,23 @@ public static class BankLedgerBalance
         int? subTypeId,
         bool isLinkedToBank,
         int? parentTypeId = null,
-        int? parentSubTypeId = null)
+        int? parentSubTypeId = null,
+        string? accountNumber = null,
+        string? parentAccountNumber = null)
     {
         if (typeId != AssetTypeId)
         {
             return false;
+        }
+
+        if (IsCashOrBankAccountNumber(accountNumber))
+        {
+            return true;
+        }
+
+        if (string.Equals(parentAccountNumber, BankAccountsParent, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
         }
 
         if (isLinkedToBank || subTypeId == CashAndBankSubTypeId)
@@ -28,6 +42,11 @@ public static class BankLedgerBalance
 
         return parentTypeId == AssetTypeId && parentSubTypeId == CashAndBankSubTypeId;
     }
+
+    private static bool IsCashOrBankAccountNumber(string? accountNumber) =>
+        string.Equals(accountNumber, CashInHand, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(accountNumber, KeptAside, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(accountNumber, UndepositedFunds, StringComparison.OrdinalIgnoreCase);
 
     public static decimal Accumulate(decimal balance, decimal debit, decimal credit) =>
         Math.Round(balance + debit - credit, 2);

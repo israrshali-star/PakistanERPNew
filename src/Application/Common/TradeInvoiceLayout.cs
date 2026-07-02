@@ -35,6 +35,10 @@ public static class TradeInvoiceLayout
     public static string FormatTaxRate(decimal taxRate) =>
         taxRate.ToString("0.0", NumberCulture);
 
+    /// <summary>Tax rate with up to 2 decimals, trailing zeros trimmed (e.g. 20.85, 19, 18).</summary>
+    public static string FormatTaxRatePrecise(decimal taxRate) =>
+        taxRate.ToString("0.##", NumberCulture);
+
     public static string BuildDescription(
         string? productDescription,
         string? itemDescription,
@@ -69,6 +73,27 @@ public static class TradeInvoiceLayout
         }
 
         return lineTaxRates.Count > 0 ? lineTaxRates[0] : 0m;
+    }
+
+    /// <summary>
+    /// Combined sales-tax + further-tax rate for display/printing, e.g. 18% sales tax + 1% further tax = 19%.
+    /// Rates are derived from the actual posted amounts (header is authoritative) so a stale line
+    /// tax rate cannot distort the printed figure.
+    /// </summary>
+    public static decimal ResolveCombinedTaxRateDisplay(
+        decimal taxableTotal,
+        decimal salesTaxAmount,
+        decimal furtherTaxAmount,
+        IReadOnlyList<decimal> lineTaxRates)
+    {
+        if (taxableTotal > 0m)
+        {
+            var salesRate = salesTaxAmount / taxableTotal * 100m;
+            var furtherRate = furtherTaxAmount / taxableTotal * 100m;
+            return Math.Round(salesRate + furtherRate, 2);
+        }
+
+        return ResolveTaxRateDisplay(taxableTotal, salesTaxAmount + furtherTaxAmount, lineTaxRates);
     }
 
     /// <summary>

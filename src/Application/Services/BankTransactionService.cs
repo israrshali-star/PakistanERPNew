@@ -341,8 +341,19 @@ public class BankTransactionService : IBankTransactionService
             .Select(r => r.ChartOfAccountId)
             .ToHashSet();
 
+        var splitTaxAccountNumbers = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                SalesTaxPayable,
+                FurtherTaxPayable,
+                SalesTaxPayable18
+            }
+            : null;
+
         var otherLeafAccounts = accounts
             .Where(a => !payFromIds.Contains(a.Id) && !standaloneCoaIds.Contains(a.Id))
+            .Where(a => splitTaxAccountNumbers is null
+                        || !splitTaxAccountNumbers.Contains(a.AccountNumber))
             .OrderBy(a => a.AccountNumber)
             .ToList();
 
@@ -355,6 +366,26 @@ public class BankTransactionService : IBankTransactionService
             }
 
             AddParty(account.Id, "COA", null, null, account.AccountName, account.AccountNumber);
+        }
+
+        if (TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId))
+        {
+            foreach (var (accountNumber, displayName) in new[]
+                     {
+                         (FurtherTaxPayable, "Sales Tax @4%"),
+                         (SalesTaxPayable18, "Sales Tax @18%"),
+                         (SalesTaxPayable, "Sales Tax Payable"),
+                     })
+            {
+                var taxAccount = accounts.FirstOrDefault(a =>
+                    string.Equals(a.AccountNumber, accountNumber, StringComparison.OrdinalIgnoreCase));
+                if (taxAccount is null)
+                {
+                    continue;
+                }
+
+                AddParty(taxAccount.Id, "COA", null, null, displayName, taxAccount.AccountNumber);
+            }
         }
 
         var cashInHandAccount = accounts.FirstOrDefault(a => a.AccountNumber == CashInHand);

@@ -534,6 +534,7 @@ public class DashboardService : IDashboardService
                 a.TypeId,
                 a.SubTypeId,
                 a.OpeningBalance,
+                ParentAccountNumber = a.ParentAccount != null ? a.ParentAccount.AccountNumber : null,
                 ParentTypeId = a.ParentAccount != null ? a.ParentAccount.TypeId : (int?)null,
                 ParentSubTypeId = a.ParentAccount != null ? a.ParentAccount.SubTypeId : (int?)null,
                 IsLinkedToBank = a.Banks.Any(b => !b.IsDeleted)
@@ -567,7 +568,9 @@ public class DashboardService : IDashboardService
                         x.SubTypeId,
                         x.IsLinkedToBank,
                         x.ParentTypeId,
-                        x.ParentSubTypeId))
+                        x.ParentSubTypeId,
+                        x.AccountNumber,
+                        x.ParentAccountNumber))
                 {
                     return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
                 }

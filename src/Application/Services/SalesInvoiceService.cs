@@ -1813,6 +1813,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.SubTotal,
                 i.DiscountAmount,
                 i.TaxAmount,
+                i.FurtherTax,
                 i.NetTotal,
                 Lines = i.Lines.Select(l => new
                 {
@@ -1856,9 +1857,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         }).ToList();
 
         var taxableTotal = Math.Round(invoice.SubTotal - invoice.DiscountAmount, 2);
-        var taxRateDisplay = TradeInvoiceLayout.ResolveTaxRateDisplay(
+        var combinedTaxAmount = Math.Round(invoice.TaxAmount + invoice.FurtherTax, 2);
+        var taxRateDisplay = TradeInvoiceLayout.ResolveCombinedTaxRateDisplay(
             taxableTotal,
             invoice.TaxAmount,
+            invoice.FurtherTax,
             invoice.Lines.Select(l => l.TaxRate).ToList());
         var customerBalance = await GetCustomerBalanceAsOfAsync(
             invoice.CustomerId,
@@ -1872,7 +1875,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.CustomerName,
             Math.Round(customerBalance, 2),
             taxableTotal,
-            Math.Round(invoice.TaxAmount, 2),
+            combinedTaxAmount,
             taxRateDisplay,
             Math.Round(invoice.NetTotal, 2),
             DateTime.Now,
