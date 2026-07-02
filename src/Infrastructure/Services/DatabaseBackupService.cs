@@ -84,26 +84,38 @@ public class DatabaseBackupService : IDatabaseBackupService
     {
         var userName = _currentUser.UserName ?? "system";
         var startedAt = DateTime.UtcNow;
-        var dbName = GetDatabaseName();
-        var fileName = $"{dbName}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
-        var appStorageDirectory = GetAppStorageDirectory();
-        Directory.CreateDirectory(appStorageDirectory);
-        var filePath = Path.Combine(appStorageDirectory, fileName);
 
-        var history = new DatabaseBackupHistory
+        DatabaseBackupHistory history;
+        string filePath;
+        string dbName;
+        try
         {
-            FileName = fileName,
-            FilePath = filePath,
-            FileSizeBytes = 0,
-            RunType = runType,
-            Status = JobRunStatus.Running,
-            StartedAt = startedAt,
-            CreatedAt = startedAt,
-            CreatedBy = userName
-        };
+            dbName = GetDatabaseName();
+            var fileName = $"{dbName}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
+            var appStorageDirectory = GetAppStorageDirectory();
+            Directory.CreateDirectory(appStorageDirectory);
+            filePath = Path.Combine(appStorageDirectory, fileName);
 
-        await _unitOfWork.Repository<DatabaseBackupHistory>().AddAsync(history, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+            history = new DatabaseBackupHistory
+            {
+                FileName = fileName,
+                FilePath = filePath,
+                FileSizeBytes = 0,
+                RunType = runType,
+                Status = JobRunStatus.Running,
+                StartedAt = startedAt,
+                CreatedAt = startedAt,
+                CreatedBy = userName
+            };
+
+            await _unitOfWork.Repository<DatabaseBackupHistory>().AddAsync(history, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database backup could not be initialized.");
+            return new JobActionResult(false, "Backup failed: " + ex.Message, null);
+        }
 
         try
         {

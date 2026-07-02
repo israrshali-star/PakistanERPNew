@@ -339,7 +339,7 @@
     }
 
     function loadDashboard() {
-        $.getJSON('/api/dashboard')
+        $.ajax({ url: '/api/dashboard', dataType: 'json', cache: false })
             .done(function (data) {
                 setKpis(data.summary);
                 renderDailySalesChart(data.dailySales);

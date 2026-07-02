@@ -7,6 +7,7 @@ namespace PakistanAccountingERP.Web.Controllers;
 
 [Authorize]
 [Route("api/[controller]")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class DashboardController : Controller
 {
     private readonly IDashboardService _dashboardService;

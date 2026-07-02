@@ -64,10 +64,18 @@ public class SystemJobsApiController : ControllerBase
         CancellationToken cancellationToken)
     {
         var destination = request?.Destination ?? BackupDestination.Online;
-        var result = await _databaseBackupService.RunBackupAsync(
-            JobRunType.Manual,
-            destination,
-            cancellationToken);
+        JobActionResult result;
+        try
+        {
+            result = await _databaseBackupService.RunBackupAsync(
+                JobRunType.Manual,
+                destination,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new JobActionResult(false, "Backup failed: " + ex.Message, null));
+        }
 
         if (!result.Success)
         {

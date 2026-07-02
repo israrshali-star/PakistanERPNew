@@ -452,11 +452,20 @@ public partial class JournalEntryService : IJournalEntryService
                 null);
         }
 
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName;
+
         entry.IsDeleted = true;
-        entry.DeletedAt = DateTime.UtcNow;
-        entry.DeletedBy = _currentUser.UserName;
+        entry.DeletedAt = now;
+        entry.DeletedBy = userName;
 
         _unitOfWork.Repository<JournalEntry>().Update(entry);
+
+        if (!IsManualEntry(entry.ReferenceType))
+        {
+            await CleanupSourceDocumentsAsync(companyId, entry, now, userName, cancellationToken);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         try
@@ -783,6 +792,54 @@ public partial class JournalEntryService : IJournalEntryService
     private static bool IsManualEntry(string? referenceType) =>
         string.IsNullOrWhiteSpace(referenceType) || referenceType == ReferenceTypes.Manual;
 
+    /// <summary>
+    /// When a SuperAdmin deletes a system-generated journal entry directly, keep source documents
+    /// consistent: soft-delete the originating bank transaction(s), and unlink invoices/bills that
+    /// pointed at this journal so they no longer reference a deleted entry.
+    /// </summary>
+    private async Task CleanupSourceDocumentsAsync(
+        int companyId,
+        JournalEntry entry,
+        DateTime now,
+        string? userName,
+        CancellationToken cancellationToken)
+    {
+        var bankTransactions = await _unitOfWork.Repository<BankTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == companyId && !t.IsDeleted && t.JournalEntryId == entry.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var transaction in bankTransactions)
+        {
+            transaction.IsDeleted = true;
+            transaction.DeletedAt = now;
+            transaction.DeletedBy = userName;
+            _unitOfWork.Repository<BankTransaction>().Update(transaction);
+        }
+
+        var salesInvoices = await _unitOfWork.Repository<SalesInvoice>()
+            .Query(asNoTracking: false)
+            .Where(i => i.CompanyId == companyId && !i.IsDeleted && i.JournalEntryId == entry.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var invoice in salesInvoices)
+        {
+            invoice.JournalEntryId = null;
+            _unitOfWork.Repository<SalesInvoice>().Update(invoice);
+        }
+
+        var vendorBills = await _unitOfWork.Repository<VendorBill>()
+            .Query(asNoTracking: false)
+            .Where(b => b.CompanyId == companyId && !b.IsDeleted && b.JournalEntryId == entry.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var bill in vendorBills)
+        {
+            bill.JournalEntryId = null;
+            _unitOfWork.Repository<VendorBill>().Update(bill);
+        }
+    }
+
     private bool IsSuperAdmin() =>
         _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 
@@ -807,9 +864,9 @@ public partial class JournalEntryService : IJournalEntryService
             or ReferenceTypes.Customer
             or ReferenceTypes.Vendor;
 
-    private static bool CanDeleteEntry(JournalStatus status, bool isManual) =>
-        isManual
-        && status is JournalStatus.Draft or JournalStatus.Posted;
+    private bool CanDeleteEntry(JournalStatus status, bool isManual) =>
+        status is JournalStatus.Draft or JournalStatus.Posted
+        && (isManual || IsSuperAdmin());
 
     private static string GetEditDeniedMessage(JournalStatus status, bool isManual)
     {
@@ -826,16 +883,16 @@ public partial class JournalEntryService : IJournalEntryService
         return "This journal entry cannot be edited.";
     }
 
-    private static string GetDeleteDeniedMessage(JournalStatus status, bool isManual)
+    private string GetDeleteDeniedMessage(JournalStatus status, bool isManual)
     {
-        if (!isManual)
-        {
-            return "System-generated journal entries cannot be deleted. Delete or reverse the source document instead.";
-        }
-
         if (status == JournalStatus.Reversed)
         {
             return "Reversed journal entries cannot be deleted.";
+        }
+
+        if (!isManual && !IsSuperAdmin())
+        {
+            return "System-generated journal entries cannot be deleted. Delete or reverse the source document instead. Only a SuperAdmin can delete them directly.";
         }
 
         return "This journal entry cannot be deleted.";
