@@ -7,7 +7,22 @@
 
     function getError(xhr, fallback) {
         var body = xhr && xhr.responseJSON;
-        return (body && (body.message || body.Message)) || fallback;
+        if (body) {
+            if (body.message) return body.message;
+            if (body.Message) return body.Message;
+            if (body.title) return body.title;
+        }
+        if (xhr && xhr.status === 403) {
+            return 'You do not have permission to run backups (Settings.Edit required).';
+        }
+        if (xhr && xhr.responseText) {
+            try {
+                var parsed = JSON.parse(xhr.responseText);
+                if (parsed.message) return parsed.message;
+                if (parsed.Message) return parsed.Message;
+            } catch (e) { /* ignore */ }
+        }
+        return fallback;
     }
 
     function formatDate(value) {
@@ -219,7 +234,7 @@
     }
 
     $(function () {
-        canEdit = $('#system-jobs-permissions').data('can-edit') === true;
+        canEdit = $('#system-jobs-permissions').attr('data-can-edit') === 'true';
 
         if (!canEdit) {
             $('#btn-run-backup').remove();

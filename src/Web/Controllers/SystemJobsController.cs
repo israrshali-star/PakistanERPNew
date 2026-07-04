@@ -74,12 +74,12 @@ public class SystemJobsApiController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new JobActionResult(false, "Backup failed: " + ex.Message, null));
+            return BadRequest(new { message = "Backup failed: " + ex.Message, success = false });
         }
 
         if (!result.Success)
         {
-            return BadRequest(result);
+            return BadRequest(new { message = result.Message, success = false, id = result.Id });
         }
 
         return Ok(new

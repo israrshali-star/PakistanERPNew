@@ -241,18 +241,33 @@ public class DatabaseBackupService : IDatabaseBackupService
 
     private string GetAppStorageDirectory()
     {
+        string path;
         if (!string.IsNullOrWhiteSpace(_options.StoragePath))
         {
             var raw = _options.StoragePath.Trim();
-            return Path.IsPathRooted(raw)
+            path = Path.IsPathRooted(raw)
                 ? raw
                 : Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), raw));
         }
+        else
+        {
+            path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "PakistanAccountingERP",
+                "Backups");
+        }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "PakistanAccountingERP",
-            "Backups");
+        // SQL Server cannot write under bin/App_Data; use a shared folder both SQL and the app can access.
+        if (path.Contains("App_Data", StringComparison.OrdinalIgnoreCase)
+            || path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        {
+            path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "PakistanAccountingERP",
+                "Backups");
+        }
+
+        return path;
     }
 
     private async Task BackupDatabaseToDiskAsync(
@@ -260,50 +275,16 @@ public class DatabaseBackupService : IDatabaseBackupService
         string filePath,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await ExecuteBackupAsync(dbName, filePath, cancellationToken);
-            if (!File.Exists(filePath))
-            {
-                throw new InvalidOperationException($"Backup file was not created at {filePath}.");
-            }
+        var targetDirectory = Path.GetDirectoryName(filePath)
+            ?? throw new InvalidOperationException("Backup file path is invalid.");
+        Directory.CreateDirectory(targetDirectory);
 
-            return;
-        }
-        catch (SqlException ex) when (IsAccessDenied(ex))
+        await ExecuteBackupAsync(dbName, filePath, cancellationToken);
+        if (!File.Exists(filePath))
         {
-            _logger.LogWarning(
-                ex,
-                "SQL Server could not write to {Path}; retrying in the SQL Server default backup folder.",
-                filePath);
-        }
-
-        var sqlBackupDirectory = await GetSqlServerBackupDirectoryAsync(cancellationToken);
-        Directory.CreateDirectory(sqlBackupDirectory);
-        var fallbackPath = Path.Combine(sqlBackupDirectory, Path.GetFileName(filePath));
-        await ExecuteBackupAsync(dbName, fallbackPath, cancellationToken);
-        if (!File.Exists(fallbackPath))
-        {
-            throw new InvalidOperationException($"Backup file was not created at {fallbackPath}.");
-        }
-
-        if (!string.Equals(fallbackPath, filePath, StringComparison.OrdinalIgnoreCase))
-        {
-            File.Copy(fallbackPath, filePath, overwrite: true);
-            try
-            {
-                File.Delete(fallbackPath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not remove staging backup file {Path}.", fallbackPath);
-            }
+            throw new InvalidOperationException($"Backup file was not created at {filePath}.");
         }
     }
-
-    private static bool IsAccessDenied(SqlException ex) =>
-        ex.Message.Contains("Operating system error 5", StringComparison.OrdinalIgnoreCase)
-        || ex.Message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase);
 
     private async Task ExecuteBackupAsync(string dbName, string filePath, CancellationToken cancellationToken)
     {
@@ -314,49 +295,6 @@ public class DatabaseBackupService : IDatabaseBackupService
         command.Parameters.AddWithValue("@backupPath", filePath);
         command.CommandTimeout = 0;
         await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private async Task<string> GetSqlServerBackupDirectoryAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        await using var propertyCommand = new SqlCommand(
-            "SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS NVARCHAR(4000));",
-            connection);
-        var propertyPath = await propertyCommand.ExecuteScalarAsync(cancellationToken) as string;
-        if (!string.IsNullOrWhiteSpace(propertyPath))
-        {
-            return propertyPath;
-        }
-
-        await using var regCommand = new SqlCommand(
-            """
-            DECLARE @BackupDirectory NVARCHAR(4000);
-            EXEC master.dbo.xp_instance_regread
-                @rootkey = N'HKEY_LOCAL_MACHINE',
-                @key = N'Software\Microsoft\MSSQLServer\MSSQLServer',
-                @value_name = N'BackupDirectory',
-                @value = @BackupDirectory OUTPUT;
-            SELECT @BackupDirectory;
-            """,
-            connection);
-        await using var reader = await regCommand.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            if (!reader.IsDBNull(0))
-            {
-                var regPath = reader.GetString(0);
-                if (!string.IsNullOrWhiteSpace(regPath))
-                {
-                    return regPath;
-                }
-            }
-        }
-
-        throw new InvalidOperationException(
-            "Could not determine SQL Server backup directory. Grant the SQL Server service write access to the configured backup path, " +
-            "or set Backup:StoragePath to a folder writable by both SQL Server and this application.");
     }
 
     private static IQueryable<DatabaseBackupHistory> ApplyOrdering(
