@@ -393,8 +393,8 @@ public partial class BankGlPostingService : IBankGlPostingService
         {
             lines.Add(CreateLine(
                 furtherTaxAccountId.Value,
-                0m,
                 furtherPay,
+                0m,
                 $"{party} — Further Tax (4%)"));
         }
 
@@ -402,14 +402,14 @@ public partial class BankGlPostingService : IBankGlPostingService
         {
             lines.Add(CreateLine(
                 salesTax18AccountId.Value,
-                0m,
                 salesTax18Pay,
+                0m,
                 $"{party} — Sales Tax (18%)"));
         }
 
         if (lines.Count == 0)
         {
-            lines.Add(CreateLine(salesTax18AccountId.Value, 0m, amount, $"{party} — Sales Tax (18%)"));
+            lines.Add(CreateLine(salesTax18AccountId.Value, amount, 0m, $"{party} — Sales Tax (18%)"));
         }
 
         lines.Add(CreateLine(transaction.ChartOfAccountId, 0m, amount, payFromMemo));

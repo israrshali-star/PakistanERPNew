@@ -740,7 +740,8 @@ public class GlRepairService : IGlRepairService
             return true;
         }
 
-        return taxLines.Any(l => l.Debit > 0m);
+        // Sales tax payments must debit the tax liability; older split-tax postings credited it by mistake.
+        return taxLines.Any(l => l.Credit > 0m && l.Debit == 0m);
     }
 
     private async Task<int> ConsolidateFullyPaidSalesTaxOpeningsAsync(
