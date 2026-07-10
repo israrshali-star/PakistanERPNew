@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerExcelImportService, CustomerExcelImportService>();
         services.AddScoped<ICustomReportService, CustomReportService>();
         services.AddScoped<IGlRepairService, GlRepairService>();
+        services.AddScoped<IOpeningBalanceEquityService, OpeningBalanceEquityService>();
 
         return services;
     }

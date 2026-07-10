@@ -20,6 +20,7 @@ public partial class VendorService : IVendorService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly IVendorGlPostingService _vendorGlPosting;
+    private readonly IOpeningBalanceEquityService _openingBalanceEquity;
     private readonly ILogger<VendorService> _logger;
 
     public VendorService(
@@ -28,6 +29,7 @@ public partial class VendorService : IVendorService
         ICurrentUserService currentUser,
         IAuditService auditService,
         IVendorGlPostingService vendorGlPosting,
+        IOpeningBalanceEquityService openingBalanceEquity,
         ILogger<VendorService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -35,6 +37,7 @@ public partial class VendorService : IVendorService
         _currentUser = currentUser;
         _auditService = auditService;
         _vendorGlPosting = vendorGlPosting;
+        _openingBalanceEquity = openingBalanceEquity;
         _logger = logger;
     }
 
@@ -163,6 +166,12 @@ public partial class VendorService : IVendorService
                 return new VendorSaveResult(false, glResult.Message, null);
             }
 
+            if (entity.OpeningBalance != 0m)
+            {
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
@@ -254,6 +263,9 @@ public partial class VendorService : IVendorService
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return new VendorSaveResult(false, glResult.Message, null);
                 }
+
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -320,6 +332,7 @@ public partial class VendorService : IVendorService
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             await _vendorGlPosting.RemoveVendorOpeningBalanceAsync(entity.Id, cancellationToken);
             _unitOfWork.Repository<Vendor>().Remove(entity);
+            await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }

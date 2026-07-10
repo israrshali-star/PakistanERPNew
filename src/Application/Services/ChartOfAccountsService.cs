@@ -31,6 +31,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly ILedgerPdfService _ledgerPdfService;
+    private readonly IOpeningBalanceEquityService _openingBalanceEquity;
     private readonly ILogger<ChartOfAccountsService> _logger;
 
     public ChartOfAccountsService(
@@ -39,6 +40,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         ICurrentUserService currentUser,
         IAuditService auditService,
         ILedgerPdfService ledgerPdfService,
+        IOpeningBalanceEquityService openingBalanceEquity,
         ILogger<ChartOfAccountsService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -46,6 +48,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         _currentUser = currentUser;
         _auditService = auditService;
         _ledgerPdfService = ledgerPdfService;
+        _openingBalanceEquity = openingBalanceEquity;
         _logger = logger;
     }
 
@@ -398,6 +401,13 @@ public class ChartOfAccountsService : IChartOfAccountsService
             {
                 await ZeroParentOpeningBalanceAsync(request.ParentAccountId.Value, companyId, cancellationToken);
             }
+
+            if (entity.OpeningBalance != 0m
+                && !OpeningBalanceEquityBalancer.IsOpeningBalanceEquity(entity.AccountNumber))
+            {
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
@@ -451,6 +461,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
             entity.IsActive
         });
 
+        var previousOpeningBalance = entity.OpeningBalance;
         var hasChildren = await HasChildrenAsync(entity.Id, cancellationToken);
 
         if (!IsSuperAdmin()
@@ -486,6 +497,13 @@ public class ChartOfAccountsService : IChartOfAccountsService
             if (request.ParentAccountId.HasValue)
             {
                 await ZeroParentOpeningBalanceAsync(request.ParentAccountId.Value, companyId, cancellationToken);
+            }
+
+            if (previousOpeningBalance != entity.OpeningBalance
+                && !OpeningBalanceEquityBalancer.IsOpeningBalanceEquity(entity.AccountNumber))
+            {
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
         }
         catch (DbUpdateException ex)

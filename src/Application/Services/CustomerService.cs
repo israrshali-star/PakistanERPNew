@@ -19,6 +19,7 @@ public partial class CustomerService : ICustomerService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _auditService;
     private readonly ICustomerGlPostingService _customerGlPosting;
+    private readonly IOpeningBalanceEquityService _openingBalanceEquity;
     private readonly ILogger<CustomerService> _logger;
 
     public CustomerService(
@@ -27,6 +28,7 @@ public partial class CustomerService : ICustomerService
         ICurrentUserService currentUser,
         IAuditService auditService,
         ICustomerGlPostingService customerGlPosting,
+        IOpeningBalanceEquityService openingBalanceEquity,
         ILogger<CustomerService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -34,6 +36,7 @@ public partial class CustomerService : ICustomerService
         _currentUser = currentUser;
         _auditService = auditService;
         _customerGlPosting = customerGlPosting;
+        _openingBalanceEquity = openingBalanceEquity;
         _logger = logger;
     }
 
@@ -226,6 +229,12 @@ public partial class CustomerService : ICustomerService
                 return new CustomerSaveResult(false, glResult.Message, null);
             }
 
+            if (entity.OpeningBalance != 0m)
+            {
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
@@ -324,6 +333,9 @@ public partial class CustomerService : ICustomerService
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return new CustomerSaveResult(false, glResult.Message, null);
                 }
+
+                await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -375,6 +387,7 @@ public partial class CustomerService : ICustomerService
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             await _customerGlPosting.RemoveCustomerOpeningBalanceAsync(entity.Id, cancellationToken);
             _unitOfWork.Repository<Customer>().Remove(entity);
+            await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }

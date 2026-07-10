@@ -29,6 +29,7 @@ public class GlRepairService : IGlRepairService
     private readonly IVendorGlPostingService _vendorGlPosting;
     private readonly IBankGlPostingService _bankGlPosting;
     private readonly IItemCartonSyncService _itemCartonSyncService;
+    private readonly IOpeningBalanceEquityService _openingBalanceEquity;
     private readonly ILogger<GlRepairService> _logger;
 
     public GlRepairService(
@@ -39,6 +40,7 @@ public class GlRepairService : IGlRepairService
         IVendorGlPostingService vendorGlPosting,
         IBankGlPostingService bankGlPosting,
         IItemCartonSyncService itemCartonSyncService,
+        IOpeningBalanceEquityService openingBalanceEquity,
         ILogger<GlRepairService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -48,6 +50,7 @@ public class GlRepairService : IGlRepairService
         _vendorGlPosting = vendorGlPosting;
         _bankGlPosting = bankGlPosting;
         _itemCartonSyncService = itemCartonSyncService;
+        _openingBalanceEquity = openingBalanceEquity;
         _logger = logger;
     }
 
@@ -2331,19 +2334,16 @@ public class GlRepairService : IGlRepairService
         string userName,
         CancellationToken cancellationToken)
     {
-        var obeAccountId = await _unitOfWork.Repository<ChartOfAccount>()
-            .Query()
-            .Where(a => a.CompanyId == companyId && a.AccountNumber == OpeningBalanceEquity && !a.IsDeleted)
-            .Select(a => (int?)a.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (!obeAccountId.HasValue)
-        {
-            return;
-        }
-
-        await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId.Value, now, userName, cancellationToken);
+        await _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
     }
+
+    private Task ReplugOpeningBalanceEquityAsync(
+        int companyId,
+        int obeAccountId,
+        DateTime now,
+        string userName,
+        CancellationToken cancellationToken) =>
+        _openingBalanceEquity.EnsureBalancedAsync(companyId, cancellationToken);
 
     private async Task<int> ReclassifyMispostedSalesTaxPaymentsAsync(
         int companyId,
@@ -5147,68 +5147,6 @@ public class GlRepairService : IGlRepairService
         _unitOfWork.Repository<ChartOfAccount>().Update(inventoryAccount);
 
         await ReplugOpeningBalanceEquityAsync(companyId, obeAccountId, now, userName, cancellationToken);
-    }
-
-    private async Task ReplugOpeningBalanceEquityAsync(
-        int companyId,
-        int obeAccountId,
-        DateTime now,
-        string userName,
-        CancellationToken cancellationToken)
-    {
-        var otherAccounts = await _unitOfWork.Repository<ChartOfAccount>()
-            .Query()
-            .Where(a => a.CompanyId == companyId && a.Id != obeAccountId)
-            .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
-            .ToListAsync(cancellationToken);
-
-        var journalTotals = await _unitOfWork.Repository<JournalEntryLine>()
-            .Query()
-            .Where(l =>
-                l.JournalEntry.CompanyId == companyId
-                && l.JournalEntry.Status == JournalStatus.Posted
-                && !l.JournalEntry.IsDeleted)
-            .GroupBy(l => l.ChartOfAccountId)
-            .Select(g => new
-            {
-                AccountId = g.Key,
-                Debit = g.Sum(x => x.Debit),
-                Credit = g.Sum(x => x.Credit)
-            })
-            .ToListAsync(cancellationToken);
-
-        var journalByAccount = journalTotals.ToDictionary(x => x.AccountId);
-
-        decimal closingDebits = 0m;
-        decimal closingCredits = 0m;
-        foreach (var account in otherAccounts)
-        {
-            journalByAccount.TryGetValue(account.Id, out var journal);
-            var closingNet = GlAccountBalance.ComputeNet(
-                account.OpeningBalance,
-                journal?.Debit ?? 0m,
-                journal?.Credit ?? 0m,
-                account.TypeId,
-                account.AccountNumber);
-            var (debit, credit) = GlTrialBalanceColumns.SplitClosingBalance(
-                closingNet,
-                account.TypeId,
-                account.AccountNumber,
-                companyId);
-            closingDebits += debit;
-            closingCredits += credit;
-        }
-
-        var plug = Math.Round(closingCredits - closingDebits, 2);
-
-        var obeAccount = await _unitOfWork.Repository<ChartOfAccount>()
-            .Query(asNoTracking: false)
-            .FirstAsync(a => a.Id == obeAccountId, cancellationToken);
-
-        obeAccount.OpeningBalance = Math.Round(plug, 2);
-        obeAccount.UpdatedAt = now;
-        obeAccount.UpdatedBy = userName;
-        _unitOfWork.Repository<ChartOfAccount>().Update(obeAccount);
     }
 
     private async Task<bool> ApplyQuickBooksVendorBillInventoryAsync(
