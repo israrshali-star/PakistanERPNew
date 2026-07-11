@@ -380,6 +380,12 @@
             || $('#sales-invoice-form').data('copy-mode') === 'true';
     }
 
+    function getCopyFromInvoiceId() {
+        var raw = $('#sales-invoice-form').data('copy-from-id');
+        var id = parseInt(raw, 10);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    }
+
     function loadInvoiceData() {
         var $data = $('#invoice-edit-data');
         if (!$data.length) {
@@ -748,6 +754,11 @@
                 : null,
             lines: lines
         };
+
+        var copyFromId = getCopyFromInvoiceId();
+        if (copyFromId && !getEditId()) {
+            payload.copyFromInvoiceId = copyFromId;
+        }
 
         var editId = getEditId();
         var $btn = $('#btn-save-invoice');

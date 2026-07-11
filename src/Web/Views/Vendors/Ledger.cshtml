@@ -88,7 +88,18 @@
             </tbody>
             @if (Model.Entries.Count > 0)
             {
+                var movementEntries = Model.Entries
+                    .Where(e => e.Reference is not ("OPENING" or "B/F"))
+                    .ToList();
+                var totalDebit = movementEntries.Sum(e => e.Debit);
+                var totalCredit = movementEntries.Sum(e => e.Credit);
                 <tfoot>
+                    <tr class="table-light fw-semibold">
+                        <th colspan="3" class="text-end">Totals</th>
+                        <th class="text-end text-currency">@totalDebit.ToString("N2")</th>
+                        <th class="text-end text-currency">@totalCredit.ToString("N2")</th>
+                        <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                    </tr>
                     <tr class="table-light">
                         <th colspan="5" class="text-end">Closing Balance</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>

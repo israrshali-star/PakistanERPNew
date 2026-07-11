@@ -371,45 +371,39 @@
 
 
         var $body = $('#account-ledger-body');
-
+        var $footer = $('#account-ledger-footer');
         $body.empty();
 
-
-
         if (!ledger.entries || ledger.entries.length === 0) {
-
             $body.append('<tr><td colspan="6" class="text-muted text-center">No ledger entries yet.</td></tr>');
-
+            $footer.addClass('d-none');
             return;
-
         }
 
-
-
+        var totalDebit = 0;
+        var totalCredit = 0;
         ledger.entries.forEach(function (entry) {
-
+            var isOpening = entry.reference === 'OPENING' || entry.reference === 'B/F';
+            if (!isOpening) {
+                totalDebit += Number(entry.debit) || 0;
+                totalCredit += Number(entry.credit) || 0;
+            }
             $body.append(
-
                 '<tr>' +
-
                 '<td>' + formatLedgerDate(entry.date) + '</td>' +
-
                 '<td><code>' + escapeHtml(entry.reference) + '</code></td>' +
-
                 '<td>' + escapeHtml(entry.description) + '</td>' +
-
                 '<td class="text-end text-currency">' + (entry.debit > 0 ? formatCurrency(entry.debit) : '—') + '</td>' +
-
                 '<td class="text-end text-currency">' + (entry.credit > 0 ? formatCurrency(entry.credit) : '—') + '</td>' +
-
                 '<td class="text-end text-currency fw-semibold">' + formatCurrency(entry.balance) + '</td>' +
-
                 '</tr>'
-
             );
-
         });
 
+        $('#account-ledger-total-debit').text(formatCurrency(totalDebit));
+        $('#account-ledger-total-credit').text(formatCurrency(totalCredit));
+        $('#account-ledger-total-closing').text(formatCurrency(closingBalance));
+        $footer.removeClass('d-none');
     }
 
 

@@ -28,7 +28,7 @@
 {
     <div class="alert alert-info py-2 small mb-2">
         <i class="fa-solid fa-copy me-1"></i>
-        Recreating invoice from <strong>@copyFromNumber</strong>. A new invoice number will be assigned when you save.
+        Recreating invoice from <strong>@copyFromNumber</strong>. Saving will restore stock from that invoice, remove it, and create a new draft with a new invoice number.
     </div>
 }
 
@@ -40,6 +40,7 @@
 <form id="sales-invoice-form" class="invoice-create-compact"
       data-edit-id="@(isEdit ? Model!.Id : "")"
       data-copy-mode="@(isCopy ? "true" : "")"
+      data-copy-from-id="@(isCopy && Model != null ? Model.Id.ToString() : "")"
       data-company-id="@(Model?.CompanyId ?? 0)"
       data-trade-invoice-company-id="@TradeInvoiceLayout.TradeInvoiceCompanyId">
     <input type="hidden" id="province-id" />

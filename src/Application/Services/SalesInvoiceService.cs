@@ -249,6 +249,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "Shipping address is required.", null);
         }
 
+        if (request.CopyFromInvoiceId is > 0)
+        {
+            var replaceResult = await TryReplaceSourceInvoiceForRecreateAsync(
+                companyId,
+                request.CopyFromInvoiceId.Value,
+                cancellationToken);
+            if (!replaceResult.Success)
+            {
+                return new SalesInvoiceSaveResult(false, replaceResult.Message, null);
+            }
+        }
+
         var customer = await _unitOfWork.Repository<Customer>()
             .Query()
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId && c.CompanyId == companyId, cancellationToken);
@@ -1377,6 +1389,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            // Always recalculate goods items so CurrentStock is restored even if
+            // some inventory rows were already missing / unmatched.
             if (affectedItemIds.Count > 0)
             {
                 await RecalculateItemStockFromTransactionsAsync(
@@ -2599,59 +2613,63 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             .Where(i => lineItemIds.Contains(i.Id) && i.CompanyId == companyId)
             .ToDictionaryAsync(i => i.Id, cancellationToken);
 
-        var goodsLines = invoice.Lines
+        var goodsItemIds = invoice.Lines
             .Where(l => !cartageItemIdSet.Contains(l.ItemId)
                         && inventoryItems.TryGetValue(l.ItemId, out var item)
                         && item.ItemType != ItemType.Service)
+            .Select(l => l.ItemId)
+            .Distinct()
             .ToList();
 
-        if (goodsLines.Count == 0)
-        {
-            return [];
-        }
-
-        var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
-        var expectedType = isCreditNote
-            ? InventoryTransactionType.StockIn
-            : InventoryTransactionType.StockOut;
-
+        // Remove every stock movement tied to this invoice number.
+        // Do not require exact date/qty/stack matches — those caused stock not to
+        // return when recreating/deleting posted invoices.
+        var invoiceNumber = invoice.InvoiceNumber.Trim();
         var candidateTransactions = await _unitOfWork.Repository<InventoryTransaction>()
             .Query(asNoTracking: false)
-            .Where(t => t.CompanyId == companyId && t.ReferenceNo == invoice.InvoiceNumber)
+            .Where(t => t.CompanyId == companyId
+                        && t.ReferenceNo != null
+                        && t.ReferenceNo == invoiceNumber)
             .ToListAsync(cancellationToken);
 
-        var matchedItemIds = new HashSet<int>();
-
-        foreach (var line in goodsLines)
+        var affectedItemIds = new HashSet<int>(goodsItemIds);
+        foreach (var transaction in candidateTransactions)
         {
-            var quantity = Math.Round(line.Quantity, 2);
-            if (quantity <= 0m)
-            {
-                continue;
-            }
-
-            var stackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim();
-            var lotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim();
-
-            var transaction = candidateTransactions.FirstOrDefault(t =>
-                t.ItemId == line.ItemId
-                && t.TransactionType == expectedType
-                && Math.Round(t.Quantity, 2) == quantity
-                && string.Equals(t.StackNo ?? string.Empty, stackNo ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(t.LotNo ?? string.Empty, lotNo ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                && t.TransactionDate.Date == invoice.InvoiceDate.Date);
-
-            if (transaction is null)
-            {
-                continue;
-            }
-
+            affectedItemIds.Add(transaction.ItemId);
             _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
-            matchedItemIds.Add(line.ItemId);
-            candidateTransactions.Remove(transaction);
         }
 
-        return matchedItemIds.ToList();
+        return affectedItemIds.ToList();
+    }
+
+    private async Task<(bool Success, string? Message)> TryReplaceSourceInvoiceForRecreateAsync(
+        int companyId,
+        int sourceInvoiceId,
+        CancellationToken cancellationToken)
+    {
+        var source = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .FirstOrDefaultAsync(i => i.Id == sourceInvoiceId && i.CompanyId == companyId, cancellationToken);
+
+        if (source is null)
+        {
+            // Already removed — treat as success so recreate can continue.
+            return (true, null);
+        }
+
+        if (source.FbrSubmittedAt.HasValue)
+        {
+            return (false,
+                "The original invoice was submitted to FBR and cannot be replaced. Create a credit note or a new invoice instead.");
+        }
+
+        var deleteResult = await DeleteAsync(sourceInvoiceId, cancellationToken);
+        if (!deleteResult.Success)
+        {
+            return (false, deleteResult.Message ?? "Could not remove the original invoice to restore stock.");
+        }
+
+        return (true, null);
     }
 
     private async Task SoftDeleteSalesInvoiceJournalEntriesAsync(

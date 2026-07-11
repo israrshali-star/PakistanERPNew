@@ -533,6 +533,7 @@ public partial class CustomerService : ICustomerService
                 r.ClearedAt,
                 r.ReturnedAt,
                 r.ChequeNumber,
+                r.Notes,
                 r.Amount,
                 r.Id
             })
@@ -589,6 +590,10 @@ public partial class CustomerService : ICustomerService
             var description = isPendingCheque
                 ? $"Cheque in Clearing ({chequeRef})"
                 : $"Customer Receipt ({receipt.PaymentMethod})";
+            if (!string.IsNullOrWhiteSpace(receipt.Notes))
+            {
+                description = $"{description} — {receipt.Notes.Trim()}";
+            }
 
             movements.Add((
                 receipt.ReceiptDate,

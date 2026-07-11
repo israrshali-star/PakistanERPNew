@@ -147,18 +147,23 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         var cashAccountId = await GetAccountIdAsync(companyId, CashInHand, cancellationToken);
         var receiptRef = receipt.ReceiptNumber.Trim();
         var debitMemo = BuildReceiptDebitMemo(receipt, partyName, receiptRef, cashAccountId, accounts.DebitAccountId);
+        var creditMemo = BuildReceiptCreditMemo(receipt, partyName);
 
         var amount = Math.Round(receipt.Amount, 2);
         var lines = new List<JournalEntryLine>
         {
             CreateLine(accounts.DebitAccountId, amount, 0m, debitMemo),
-            CreateLine(accounts.ArAccountId, 0m, amount, partyName)
+            CreateLine(accounts.ArAccountId, 0m, amount, creditMemo)
         };
+
+        var journalDescription = string.IsNullOrWhiteSpace(receipt.Notes)
+            ? $"Customer receipt {receipt.ReceiptNumber}"
+            : $"Customer receipt {receipt.ReceiptNumber} — {receipt.Notes.Trim()}";
 
         var postResult = await CreatePostedJournalAsync(
             companyId,
             receipt.ReceiptDate,
-            $"Customer receipt {receipt.ReceiptNumber}",
+            journalDescription,
             ReferenceTypes.CustomerReceipt,
             receipt.Id,
             lines,
@@ -624,6 +629,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         int? cashAccountId,
         int debitAccountId)
     {
+        string memo;
         if (receipt.PaymentMethod == PaymentMethod.Cheque)
         {
             var chequePart = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
@@ -631,15 +637,33 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
                 : "Cheque";
             var postDated = receipt.ChequeDate.HasValue
                             && receipt.ChequeDate.Value.Date > receipt.ReceiptDate.Date;
-            var memo = postDated
+            memo = postDated
                 ? $"{partyName} — {chequePart} (post-dated)"
                 : $"{partyName} — {chequePart}";
-            return memo;
+        }
+        else
+        {
+            memo = cashAccountId.HasValue && debitAccountId == cashAccountId.Value
+                ? partyName
+                : $"{partyName} — {receiptRef}";
         }
 
-        return cashAccountId.HasValue && debitAccountId == cashAccountId.Value
-            ? partyName
-            : $"{partyName} — {receiptRef}";
+        if (!string.IsNullOrWhiteSpace(receipt.Notes))
+        {
+            memo = $"{memo} — {receipt.Notes.Trim()}";
+        }
+
+        return memo;
+    }
+
+    private static string BuildReceiptCreditMemo(CustomerReceipt receipt, string partyName)
+    {
+        if (!string.IsNullOrWhiteSpace(receipt.Notes))
+        {
+            return $"{partyName} — {receipt.Notes.Trim()}";
+        }
+
+        return partyName;
     }
 
     private static bool UsesBankLedger(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>

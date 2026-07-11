@@ -11,7 +11,8 @@
     var canCancel = canEdit && Model.Status == InvoiceStatus.Draft;
     var canSubmitFbr = canEdit && Model.Status == InvoiceStatus.Posted && Model.FbrSubmittedAt is null;
     var canRecreate = await PermissionService.HasPermissionAsync("Sales.Create")
-        && Model.Status != InvoiceStatus.Draft;
+        && Model.Status != InvoiceStatus.Draft
+        && Model.FbrSubmittedAt is null;
     var canDelete = await PermissionService.HasPermissionAsync("Sales.Delete")
         && Model.FbrSubmittedAt is null;
     var useTradeInvoice = Model.CompanyId == TradeInvoiceLayout.TradeInvoiceCompanyId;

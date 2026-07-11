@@ -143,6 +143,11 @@ public class SalesInvoiceSaveRequest
     public string? BuyerCNIC { get; set; }
     public decimal? FurtherTaxRate { get; set; }
     public decimal? FurtherTaxAmount { get; set; }
+    /// <summary>
+    /// When recreating, the posted invoice being replaced. Stock validation excludes it,
+    /// and if it is deletable it is removed (stock restored) before the new draft is saved.
+    /// </summary>
+    public int? CopyFromInvoiceId { get; set; }
     public List<SalesInvoiceLineSaveRequest> Lines { get; set; } = new();
 }
 
