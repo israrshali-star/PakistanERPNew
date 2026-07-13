@@ -72,8 +72,10 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         {
             row.RelativeItem().Border(1).BorderColor(TradeBorder).Padding(8).Column(left =>
             {
-                left.Item().Text("Shipping Address.").Bold();
-                left.Item().PaddingTop(4).Text(model.BuyerAddress ?? model.BuyerName);
+                left.Item().Text(model.BuyerName).Bold().FontSize(10);
+                left.Item().PaddingTop(6).Text("Shipping Address.").Bold();
+                left.Item().PaddingTop(4).Text(
+                    string.IsNullOrWhiteSpace(model.BuyerAddress) ? "—" : model.BuyerAddress);
             });
 
             row.ConstantItem(130).Border(1).BorderColor(TradeBorder).Padding(8).Column(right =>
