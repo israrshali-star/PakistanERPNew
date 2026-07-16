@@ -162,7 +162,6 @@
 
     function recalcTotals() {
         var subtotal = 0;
-        var discount = 0;
         var tax = 0;
         var taxableGoods = 0;
         var split = usesBillLevelTaxSplit();
@@ -175,10 +174,9 @@
             var price = parseFloat($row.find('.line-price').val()) || 0;
             var isTaxable = $row.data('is-taxable') !== false;
             var taxRate = parseFloat($row.find('.line-tax').val());
-            var disc = parseFloat($row.find('.line-discount').val()) || 0;
 
             var lineSub = Math.round(qty * price * 100) / 100;
-            var taxable = Math.max(0, Math.round((lineSub - disc) * 100) / 100);
+            var taxable = Math.max(0, lineSub);
             var lineTax = 0;
 
             if (!isTaxable) {
@@ -204,7 +202,6 @@
             $row.find('.line-total').text(formatCurrency(lineTotal));
 
             subtotal += lineSub;
-            discount += disc;
         });
 
         var salesTax = 0;
@@ -219,8 +216,7 @@
         }
 
         $('#total-subtotal').text(formatCurrency(subtotal));
-        $('#total-discount').text(formatCurrency(discount));
-        $('#total-net').text(formatCurrency(subtotal - discount + tax));
+        $('#total-net').text(formatCurrency(subtotal + tax));
     }
 
     function addLine(prefill) {
@@ -241,7 +237,6 @@
             '<td class="text-muted line-unit">—</td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="0" required /></td>' +
             '<td class="tax-line-col"><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-discount" min="0" step="0.01" value="0" /></td>' +
             '<td class="text-end text-currency line-total">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
             '</tr>'
@@ -461,9 +456,6 @@
             }
             if (line.cartons != null || line.Cartons != null) {
                 $row.find('.line-cartons').val(line.cartons != null ? line.cartons : line.Cartons);
-            }
-            if (line.discount != null || line.Discount != null) {
-                $row.find('.line-discount').val(line.discount != null ? line.discount : line.Discount);
             }
             if (!lotNo && itemCode) {
                 $row.data('requires-stock', false);
@@ -723,7 +715,7 @@
                 taxRate: usesBillLevelTaxSplit()
                     ? getScenarioTaxRate()
                     : (parseFloat($row.find('.line-tax').val()) || 0),
-                discount: parseFloat($row.find('.line-discount').val()) || 0
+                discount: 0
             });
         });
 
@@ -843,9 +835,8 @@
                 }
                 var qty = parseFloat($row.find('.line-qty').val()) || 0;
                 var price = parseFloat($row.find('.line-price').val()) || 0;
-                var disc = parseFloat($row.find('.line-discount').val()) || 0;
                 var lineSub = Math.round(qty * price * 100) / 100;
-                taxableGoods += Math.max(0, Math.round((lineSub - disc) * 100) / 100);
+                taxableGoods += Math.max(0, lineSub);
             });
             var rate = getFurtherTaxRateInput();
             var amount = Math.round(taxableGoods * rate / 100 * 100) / 100;
@@ -860,7 +851,7 @@
         $('#invoice-lines-body').on('change', '.line-lot', function () {
             window.LotStackLine.onLotChange($(this).closest('tr'), lineOptions());
         });
-        $('#invoice-lines-body').on('input', '.line-qty, .line-price, .line-tax, .line-discount', recalcTotals);
+        $('#invoice-lines-body').on('input', '.line-qty, .line-price, .line-tax', recalcTotals);
         $('#invoice-lines-body').on('input', '.line-stack, .line-qty, .line-cartons', function () {
             window.LotStackLine.updateStackHint($(this).closest('tr'), lineOptions());
         });
