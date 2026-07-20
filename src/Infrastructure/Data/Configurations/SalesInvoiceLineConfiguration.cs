@@ -9,6 +9,10 @@ public class SalesInvoiceLineConfiguration : IEntityTypeConfiguration<SalesInvoi
     public void Configure(EntityTypeBuilder<SalesInvoiceLine> builder)
     {
         builder.ToTable("SalesInvoiceLines");
+        // A line must not remain visible when either required principal is soft-deleted.
+        builder.HasQueryFilter(x =>
+            !x.SalesInvoice.IsDeleted
+            && !x.Item.IsDeleted);
         builder.Property(x => x.CartonDescription).HasMaxLength(50);
         builder.Property(x => x.Quantity).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
         builder.Property(x => x.Cartons).HasColumnType("decimal(18,2)").HasDefaultValue(0m);

@@ -241,7 +241,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             PaymentMethod = request.PaymentMethod,
             ChequeBankType = request.PaymentMethod == PaymentMethod.Cheque ? request.ChequeBankType : null,
             BankId = NormalizeBankId(request),
-            ChequeNumber = request.ChequeNumber?.Trim(),
+            ChequeNumber = NormalizeChequeOrRefNumber(request),
             ChequeDate = request.ChequeDate?.Date,
             Notes = request.Notes?.Trim(),
             CreatedAt = now,
@@ -352,7 +352,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         entity.PaymentMethod = request.PaymentMethod;
         entity.ChequeBankType = request.PaymentMethod == PaymentMethod.Cheque ? request.ChequeBankType : null;
         entity.BankId = NormalizeBankId(request);
-        entity.ChequeNumber = request.ChequeNumber?.Trim();
+        entity.ChequeNumber = NormalizeChequeOrRefNumber(request);
         entity.ChequeDate = request.ChequeDate?.Date;
         entity.Notes = request.Notes?.Trim();
         ApplyClearingState(entity, request, DateTime.UtcNow, _currentUser.UserName);
@@ -783,6 +783,32 @@ public partial class CustomerReceiptService : ICustomerReceiptService
         || (request.PaymentMethod == PaymentMethod.Cheque && request.ChequeBankType == ChequeBankType.SameBank)
             ? request.BankId
             : null;
+
+    /// <summary>
+    /// For bank transfers, Notes (e.g. transfer ref.no) is also stored in ChequeNumber
+    /// so it appears in the Check/Ref No field on the receipt list and PDF.
+    /// </summary>
+    private static string? NormalizeChequeOrRefNumber(CustomerReceiptSaveRequest request)
+    {
+        var chequeNumber = request.ChequeNumber?.Trim();
+        if (!string.IsNullOrWhiteSpace(chequeNumber))
+        {
+            return chequeNumber.Length > 50 ? chequeNumber[..50] : chequeNumber;
+        }
+
+        if (request.PaymentMethod != PaymentMethod.BankTransfer)
+        {
+            return null;
+        }
+
+        var notes = request.Notes?.Trim();
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return null;
+        }
+
+        return notes.Length > 50 ? notes[..50] : notes;
+    }
 
     private static void ApplyClearingState(
         CustomerReceipt entity,

@@ -1040,7 +1040,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                         && l.JournalEntry.EntryDate < fromDate)
             .GroupBy(_ => 1)
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         var debit = journalTotals?.Debit ?? 0m;
         var credit = journalTotals?.Credit ?? 0m;

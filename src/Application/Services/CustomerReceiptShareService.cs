@@ -158,13 +158,18 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
 
         if (!string.IsNullOrWhiteSpace(model.ChequeNumber))
         {
-            message += $"Cheque #: {model.ChequeNumber}";
+            message += $"Cheque/Ref #: {model.ChequeNumber}";
             if (model.ChequeDate.HasValue)
             {
                 message += $" · Date: {model.ChequeDate.Value:dd/MM/yyyy}";
             }
 
             message += '\n';
+        }
+        else if (!string.IsNullOrWhiteSpace(model.Notes)
+                 && model.PaymentMethodLabel.Contains("Bank Transfer", StringComparison.OrdinalIgnoreCase))
+        {
+            message += $"Ref #: {model.Notes.Trim()}\n";
         }
 
         return message +

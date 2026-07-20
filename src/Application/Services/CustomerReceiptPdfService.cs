@@ -74,7 +74,7 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
 
             AddDetailRow(table, "Date", model.ReceiptDate.ToString("dd/MM/yyyy"));
             AddDetailRow(table, "Payment Method", model.PaymentMethodLabel);
-            AddDetailRow(table, "Check/Ref No", string.IsNullOrWhiteSpace(model.ChequeNumber) ? "—" : model.ChequeNumber);
+            AddDetailRow(table, "Check/Ref No", ResolveCheckRefNo(model));
             AddDetailRow(
                 table,
                 "Amount in words",
@@ -147,6 +147,23 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
 
     private static IContainer HeaderCell(IContainer container) =>
         container.Border(1).BorderColor(BorderColor).Padding(6).DefaultTextStyle(x => x.SemiBold().FontSize(9));
+
+    private static string ResolveCheckRefNo(CustomerReceiptPdfDto model)
+    {
+        if (!string.IsNullOrWhiteSpace(model.ChequeNumber))
+        {
+            return model.ChequeNumber.Trim();
+        }
+
+        // Bank transfer receipts often store the transfer reference in Notes.
+        if (!string.IsNullOrWhiteSpace(model.Notes)
+            && model.PaymentMethodLabel.Contains("Bank Transfer", StringComparison.OrdinalIgnoreCase))
+        {
+            return model.Notes.Trim();
+        }
+
+        return "—";
+    }
 
     private static string FormatAmount(decimal value) =>
         value.ToString("N2", NumberCulture);

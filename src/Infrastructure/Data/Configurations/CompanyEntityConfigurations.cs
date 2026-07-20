@@ -104,6 +104,8 @@ public class UserCompanyConfiguration : IEntityTypeConfiguration<UserCompany>
     {
         builder.ToTable("UserCompanies");
         builder.HasKey(x => new { x.UserId, x.CompanyId });
+        // Do not expose user-company links whose required company is soft-deleted.
+        builder.HasQueryFilter(x => !x.Company.IsDeleted);
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.UserCompanies)
             .HasForeignKey(x => x.UserId)

@@ -9,6 +9,8 @@ public class VendorBillLineConfiguration : IEntityTypeConfiguration<VendorBillLi
     public void Configure(EntityTypeBuilder<VendorBillLine> builder)
     {
         builder.ToTable("VendorBillLines");
+        // Match the required bill's soft-delete filter. Item is optional.
+        builder.HasQueryFilter(x => !x.VendorBill.IsDeleted);
         builder.Property(x => x.StackNo).HasMaxLength(50);
         builder.Property(x => x.LotNo).HasMaxLength(50);
         builder.Property(x => x.Quantity).HasColumnType("decimal(18,2)").HasDefaultValue(0m);

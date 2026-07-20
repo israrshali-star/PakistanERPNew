@@ -119,19 +119,28 @@
                     </select>
                     <div class="form-text" id="op-bank-balance"></div>
                 </div>
-                <div class="col-md-6" id="op-pay-to-wrap">
+                <div class="col-md-8" id="op-pay-to-wrap">
                     <label class="form-label" for="op-counter-account-id">Pay To</label>
                     <select class="form-select select2" id="op-counter-account-id" required>
                         <option value="">— Select account —</option>
                     </select>
                     <div class="form-text" id="op-party-balance"></div>
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="op-amount">Amount (PKR)</label>
+                    <input type="number" class="form-control" id="op-amount" step="0.01" min="0.01" required />
+                    <div class="form-text text-success" id="op-amount-words"></div>
+                </div>
                 <div class="col-md-6 d-none" id="op-cash-withdrawal-wrap">
                     <label class="form-label">Pay To — Cash in Hand</label>
                     <div class="form-control bg-light" id="op-cash-withdrawal-label">Cash in Hand (10015)</div>
                     <div class="form-text" id="op-cash-withdrawal-balance"></div>
                 </div>
-                <div class="col-md-6" id="op-cheque-fields">
+                <div class="col-md-4">
+                    <label class="form-label" for="op-date">Date</label>
+                    <input type="date" class="form-control" id="op-date" required />
+                </div>
+                <div class="col-md-8" id="op-cheque-fields">
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label" for="op-cheque-number">Cheque #</label>
@@ -146,12 +155,19 @@
                 </div>
             }
 
-            <div class="col-md-4">
-                <label class="form-label" for="op-date">@(transactionType == BankTransactionType.Deposit ? "Deposit Date" : "Date")</label>
-                <input type="date" class="form-control" id="op-date" required />
-            </div>
-            @if (transactionType != BankTransactionType.Deposit)
+            @if (transactionType == BankTransactionType.Deposit)
             {
+                <div class="col-md-4">
+                    <label class="form-label" for="op-date">Deposit Date</label>
+                    <input type="date" class="form-control" id="op-date" required />
+                </div>
+            }
+            else if (transactionType != BankTransactionType.Withdrawal)
+            {
+                <div class="col-md-4">
+                    <label class="form-label" for="op-date">Date</label>
+                    <input type="date" class="form-control" id="op-date" required />
+                </div>
                 <div class="col-md-4">
                     <label class="form-label" for="op-amount">Amount (PKR)</label>
                     <input type="number" class="form-control" id="op-amount" step="0.01" min="0.01" required />

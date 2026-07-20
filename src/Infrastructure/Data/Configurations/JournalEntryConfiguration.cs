@@ -10,8 +10,18 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
     {
         builder.ToTable("JournalEntries");
         builder.Property(x => x.ReferenceType).HasMaxLength(100);
-        builder.Property(x => x.Status).HasDefaultValue(Domain.Enums.JournalStatus.Draft);
         builder.HasIndex(x => new { x.CompanyId, x.ReferenceType, x.ReferenceId })
             .HasDatabaseName("IX_JournalEntries_CompanyId_Ref");
+    }
+}
+
+public class JournalEntryLineConfiguration : IEntityTypeConfiguration<JournalEntryLine>
+{
+    public void Configure(EntityTypeBuilder<JournalEntryLine> builder)
+    {
+        // Keep line visibility aligned with both required, soft-deletable principals.
+        builder.HasQueryFilter(x =>
+            !x.JournalEntry.IsDeleted
+            && !x.ChartOfAccount.IsDeleted);
     }
 }

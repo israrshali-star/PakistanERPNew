@@ -57,7 +57,7 @@ public class UnitOfWork : IUnitOfWork
     {
         if (_transaction is null)
         {
-            throw new InvalidOperationException("No active transaction to roll back.");
+            return;
         }
 
         await _transaction.RollbackAsync(cancellationToken);

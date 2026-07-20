@@ -461,7 +461,7 @@ public class DashboardService : IDashboardService
                         && !l.JournalEntry.IsDeleted)
             .GroupBy(_ => 1)
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         var debits = journalTotals?.Debit ?? 0m;
         var credits = journalTotals?.Credit ?? 0m;
@@ -508,7 +508,7 @@ public class DashboardService : IDashboardService
                         && !l.JournalEntry.IsDeleted)
             .GroupBy(_ => 1)
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         return Math.Round(
             GlAccountBalance.ComputeNet(

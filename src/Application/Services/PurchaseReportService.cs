@@ -146,7 +146,7 @@ public class PurchaseReportService : IPurchaseReportService
                 Tax = g.Sum(b => b.TaxAmount),
                 Net = g.Sum(b => b.NetAmount)
             })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         return new InputTaxSummaryReportDto(
             request.FromDate.Date,

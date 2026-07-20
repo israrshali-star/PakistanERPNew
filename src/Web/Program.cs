@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using PakistanAccountingERP.Application;
 using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
+using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Enums;
 using PakistanAccountingERP.Infrastructure;
@@ -235,6 +237,7 @@ try
 
     await DbInitializer.InitializeAsync(app.Services);
     await EnsureSalesTaxPaymentGlConventionsAsync(app.Services);
+    await EnsureOpeningBalanceEquityBalancedAsync(app.Services);
 
     Log.Information("Pakistan Accounting ERP ready ({Environment})", app.Environment.EnvironmentName);
     app.Run();
@@ -1372,6 +1375,55 @@ static async Task EnsureSalesTaxPaymentGlConventionsAsync(IServiceProvider servi
                 companyId,
                 result.OpeningsFlipped,
                 result.PaymentsReposted);
+        }
+    }
+}
+
+static async Task EnsureOpeningBalanceEquityBalancedAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var repair = scope.ServiceProvider.GetRequiredService<IGlRepairService>();
+    var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    var companyIds = await unitOfWork.Repository<PakistanAccountingERP.Domain.Entities.Company>()
+        .Query()
+        .Where(c => !c.IsDeleted)
+        .Select(c => c.Id)
+        .ToListAsync();
+
+    foreach (var companyId in companyIds)
+    {
+        var result = await repair.ReplugOpeningBalanceEquityAsync(companyId);
+        if (!result.Success)
+        {
+            logger.LogWarning(
+                "Opening Balance Equity auto-balance failed for company {CompanyId}: {Message}",
+                companyId,
+                result.Message);
+            continue;
+        }
+
+        var tbGap = result.TrialBalanceDebits - result.TrialBalanceCredits;
+        if (Math.Abs(tbGap) >= 0.01m)
+        {
+            logger.LogWarning(
+                "Trial balance still out for company {CompanyId} after OBE replug: debits {Debits:N2}, credits {Credits:N2}, gap {Gap:N2}",
+                companyId,
+                result.TrialBalanceDebits,
+                result.TrialBalanceCredits,
+                tbGap);
+        }
+
+        if (Math.Abs(result.PreviousOpeningBalanceEquity - result.NewOpeningBalanceEquity) >= 0.01m)
+        {
+            logger.LogInformation(
+                "Opening Balance Equity auto-balanced for company {CompanyId}: {Previous:N2} -> {New:N2} (TB debits {Debits:N2}, credits {Credits:N2})",
+                companyId,
+                result.PreviousOpeningBalanceEquity,
+                result.NewOpeningBalanceEquity,
+                result.TrialBalanceDebits,
+                result.TrialBalanceCredits);
         }
     }
 }

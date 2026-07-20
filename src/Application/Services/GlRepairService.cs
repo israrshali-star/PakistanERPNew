@@ -4515,7 +4515,7 @@ public class GlRepairService : IGlRepairService
                 && !l.JournalEntry.IsDeleted)
             .GroupBy(_ => 1)
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         return Math.Round(
             GlAccountBalance.ComputeNet(
@@ -4939,7 +4939,7 @@ public class GlRepairService : IGlRepairService
                 && !l.JournalEntry.IsDeleted)
             .GroupBy(_ => 1)
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         var journalDelta = GlAccountBalance.GetJournalDelta(
             journalTotals?.Debit ?? 0m,

@@ -193,6 +193,20 @@
         if (!isBankTransfer) {
             $('#receipt-bank-id').val('').trigger('change');
         }
+
+        var $notesLabel = $('label[for="receipt-notes"]');
+        var $notesHint = $('#receipt-notes-hint');
+        if (isBankTransfer) {
+            $notesLabel.text('Ref No / Notes');
+            if ($notesHint.length) {
+                $notesHint.removeClass('d-none').text('Shown as Check/Ref No on the payment receipt.');
+            }
+        } else {
+            $notesLabel.text('Notes');
+            if ($notesHint.length) {
+                $notesHint.addClass('d-none').text('');
+            }
+        }
     }
 
     function setFormReadOnly(isReadOnly) {
@@ -580,6 +594,9 @@
             chequeNumber = $('#cheque-number').val().trim();
             chequeDate = $('#cheque-date').val() || null;
             notes = buildNotesPayload($('#cheque-drawn-bank').val(), $('#receipt-notes').val());
+        } else if (method === 3 && notes) {
+            // Bank transfer: notes (ref.no) also go into Check/Ref No.
+            chequeNumber = notes.length > 50 ? notes.substring(0, 50) : notes;
         }
 
         return {
@@ -593,7 +610,7 @@
             bankId: method === 3 && bankId > 0
                 ? bankId
                 : (method === 2 && chequeType === 1 && sameBankId > 0 ? sameBankId : null),
-            chequeNumber: method === 2 ? chequeNumber : null,
+            chequeNumber: (method === 2 || method === 3) ? chequeNumber : null,
             chequeDate: method === 2 && chequeDate ? chequeDate : null,
             notes: notes
         };

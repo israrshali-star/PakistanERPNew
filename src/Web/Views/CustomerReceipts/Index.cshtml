@@ -60,7 +60,7 @@
                     <th>Date</th>
                     <th class="text-end">Amount</th>
                     <th>Payment Mode</th>
-                    <th>Cheque #</th>
+                    <th>Cheque / Ref No</th>
                     <th>Cheque Date</th>
                     <th>Deposit Status</th>
                     <th class="text-end">Actions</th>
@@ -96,17 +96,17 @@
                             <label class="form-label" for="receipt-date">Receipt Date</label>
                             <input type="date" class="form-control" id="receipt-date" required />
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="receipt-amount">Amount (PKR)</label>
-                            <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
-                            <div class="form-text text-success" id="receipt-amount-words"></div>
-                        </div>
                         <div class="col-md-8">
                             <label class="form-label" for="receipt-customer-id">Customer</label>
                             <select class="form-select select2" id="receipt-customer-id" required>
                                 <option value="">— Select customer —</option>
                             </select>
                             <div class="form-text" id="receipt-customer-balance"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="receipt-amount">Amount (PKR)</label>
+                            <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
+                            <div class="form-text text-success" id="receipt-amount-words"></div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label" for="payment-method">Payment Mode</label>
@@ -187,6 +187,7 @@
                         <div class="col-12">
                             <label class="form-label" for="receipt-notes">Notes</label>
                             <textarea class="form-control" id="receipt-notes" rows="2" maxlength="500"></textarea>
+                            <div class="form-text d-none" id="receipt-notes-hint"></div>
                         </div>
                     </div>
                     <div class="alert alert-warning d-none mt-3" id="receipt-deposited-warning">

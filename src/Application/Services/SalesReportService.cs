@@ -182,7 +182,7 @@ public class SalesReportService : ISalesReportService
                 WithholdingTax = g.Sum(i => i.WithholdingTax),
                 Net = g.Sum(i => i.NetTotal)
             })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
 
         return new SalesTaxSummaryReportDto(
             request.FromDate.Date,
