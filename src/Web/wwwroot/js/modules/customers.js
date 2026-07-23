@@ -28,6 +28,49 @@
         return body.message || body.Message || body.title || body.detail || fallback;
     }
 
+    // API returns enums as strings (JsonStringEnumConverter); selects use numeric values.
+    function normalizeInvoiceTypeValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return 1;
+        }
+
+        var asNumber = parseInt(value, 10);
+        if (!isNaN(asNumber) && asNumber > 0) {
+            return asNumber;
+        }
+
+        var name = String(value).replace(/\s+/g, '').toLowerCase();
+        if (name === 'salesinvoice' || name === 'saleinvoice') {
+            return 1;
+        }
+        if (name === 'debitnote') {
+            return 2;
+        }
+        if (name === 'creditnote') {
+            return 3;
+        }
+
+        return 1;
+    }
+
+    function normalizeCustomerTypeValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return 1;
+        }
+
+        var asNumber = parseInt(value, 10);
+        if (!isNaN(asNumber) && asNumber > 0) {
+            return asNumber;
+        }
+
+        var name = String(value).replace(/\s+/g, '').toLowerCase();
+        if (name === 'unregistered') {
+            return 2;
+        }
+
+        return 1;
+    }
+
     function getSelectIntValue(selector) {
         var raw = $(selector).val();
         if (Array.isArray(raw)) {
@@ -192,8 +235,8 @@
                 $('#customer-id').val(c.id);
                 $('#buyer-id').val(c.buyerId);
                 $('#buyer-name').val(c.buyerName);
-                $('#customer-type').val(String(c.customerType));
-                $('#invoice-type').val(String(c.invoiceType));
+                $('#customer-type').val(String(normalizeCustomerTypeValue(c.customerType)));
+                $('#invoice-type').val(String(normalizeInvoiceTypeValue(c.invoiceType)));
                 $('#scenario-id').val(c.scenarioId).trigger('change');
                 $('#province-id').val(c.provinceId || '').trigger('change');
                 $('#opening-balance').val(c.openingBalance);
@@ -255,8 +298,8 @@
             ntn: $('#ntn').val().trim() || null,
             cnic: $('#cnic').val().trim() || null,
             strn: $('#strn').val().trim() || null,
-            customerType: parseInt($('#customer-type').val(), 10),
-            invoiceType: parseInt($('#invoice-type').val(), 10),
+            customerType: normalizeCustomerTypeValue($('#customer-type').val()),
+            invoiceType: normalizeInvoiceTypeValue($('#invoice-type').val()),
             furtherTaxRate: $('#further-tax-rate').val() === '' ? null : parseFloat($('#further-tax-rate').val()),
             isActive: $('#customer-active').is(':checked')
         };

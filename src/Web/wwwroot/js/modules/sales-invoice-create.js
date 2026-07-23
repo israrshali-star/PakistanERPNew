@@ -305,6 +305,31 @@
         return '';
     }
 
+    // API returns enums as strings (JsonStringEnumConverter); selects use numeric values.
+    function normalizeInvoiceTypeValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return 1;
+        }
+
+        var asNumber = parseInt(value, 10);
+        if (!isNaN(asNumber) && asNumber > 0) {
+            return asNumber;
+        }
+
+        var name = String(value).replace(/\s+/g, '').toLowerCase();
+        if (name === 'salesinvoice' || name === 'saleinvoice') {
+            return 1;
+        }
+        if (name === 'debitnote') {
+            return 2;
+        }
+        if (name === 'creditnote') {
+            return 3;
+        }
+
+        return 1;
+    }
+
     function updateBuyerDetails(customer) {
         if (!customer) {
             $('#buyer-address').val('');
@@ -335,9 +360,10 @@
             return;
         }
 
-        $('#scenario-id').val(String(
-            pickCustomerField(customer, 'scenarioId', 'ScenarioId')
-        )).trigger('change');
+        var scenarioId = pickCustomerField(customer, 'scenarioId', 'ScenarioId');
+        if (scenarioId !== '' && scenarioId != null) {
+            $('#scenario-id').val(String(scenarioId)).trigger('change');
+        }
         updateBuyerDetails(customer);
         if (usesBillLevelTaxSplit()) {
             var customerFurther = pickCustomerField(customer, 'furtherTaxRate', 'FurtherTaxRate');
@@ -349,9 +375,9 @@
             }
             recalcTotals();
         }
-        $('#invoice-type').val(String(
-            pickCustomerField(customer, 'invoiceType', 'InvoiceType') || 1
-        ));
+        $('#invoice-type').val(String(normalizeInvoiceTypeValue(
+            pickCustomerField(customer, 'invoiceType', 'InvoiceType')
+        )));
     }
 
     function getEditId() {
@@ -393,8 +419,11 @@
             $('#invoice-number').val(invoice.invoiceNumber || invoice.InvoiceNumber);
         }
         $('#invoice-date').val(formatIsoDateForPicker(invoice.invoiceDate || invoice.InvoiceDate));
-        $('#invoice-type').val(String(invoice.invoiceType != null ? invoice.invoiceType : invoice.InvoiceType || 1));
         $('#customer-id').val(String(invoice.customerId || invoice.CustomerId)).trigger('change');
+        // Customer change applies customer defaults; restore this invoice's type/scenario.
+        $('#invoice-type').val(String(normalizeInvoiceTypeValue(
+            invoice.invoiceType != null ? invoice.invoiceType : invoice.InvoiceType
+        )));
         if (invoice.scenarioId || invoice.ScenarioId) {
             $('#scenario-id').val(String(invoice.scenarioId || invoice.ScenarioId)).trigger('change');
         }
@@ -733,7 +762,7 @@
             invoiceNumber: $('#invoice-number').val().trim(),
             customerId: customerId,
             invoiceDate: dateParts[2] + '-' + dateParts[1] + '-' + dateParts[0],
-            invoiceType: parseInt($('#invoice-type').val(), 10),
+            invoiceType: normalizeInvoiceTypeValue($('#invoice-type').val()),
             scenarioId: scenarioId,
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,
             buyerAddress: $('#buyer-address').val().trim() || null,
