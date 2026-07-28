@@ -21,6 +21,14 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Data\Sql\FinancialReports.sql" LogicalName="PakistanAccountingERP.Infrastructure.Data.Sql.FinancialReports.sql" />
+    <Content Include="Data\Sql\FinancialReports.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

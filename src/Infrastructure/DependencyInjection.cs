@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
         services.AddScoped<ICompanyDataPurgeService, CompanyDataPurgeService>();
+        services.AddScoped<ISqlFinancialReportDataSource, SqlFinancialReportDataSource>();
         services.AddHttpClient("FbrApi");
 
         return services;

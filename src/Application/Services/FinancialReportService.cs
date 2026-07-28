@@ -22,18 +22,32 @@ public class FinancialReportService : IFinancialReportService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
+    private readonly ISqlFinancialReportDataSource _sqlReports;
 
-    public FinancialReportService(IUnitOfWork unitOfWork, ICurrentCompanyService currentCompany)
+    public FinancialReportService(
+        IUnitOfWork unitOfWork,
+        ICurrentCompanyService currentCompany,
+        ISqlFinancialReportDataSource sqlReports)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
+        _sqlReports = sqlReports;
     }
+
+    private static bool UsesSqlReporting(int companyId) =>
+        companyId == TradeInvoiceLayout.TradeInvoiceCompanyId;
 
     public async Task<TrialBalanceReportDto> GetTrialBalanceAsync(
         FinancialReportDateRangeRequest request,
         CancellationToken cancellationToken = default)
     {
         var (companyId, from, to) = ValidateDateRange(request);
+
+        if (UsesSqlReporting(companyId))
+        {
+            return await GetTrialBalanceFromSqlAsync(companyId, from, to, cancellationToken);
+        }
+
         var accounts = await GetAccountsAsync(companyId, cancellationToken);
         var journalByAccount = await GetJournalTotalsByAccountAsync(companyId, cancellationToken);
 
@@ -104,11 +118,44 @@ public class FinancialReportService : IFinancialReportService
             rows);
     }
 
+    private async Task<TrialBalanceReportDto> GetTrialBalanceFromSqlAsync(
+        int companyId,
+        DateTime from,
+        DateTime to,
+        CancellationToken cancellationToken)
+    {
+        var orderedLines = (await _sqlReports.GetTrialBalanceLinesAsync(companyId, from, to, cancellationToken))
+            .OrderBy(l => l.AccountNumber)
+            .ToList();
+
+        var rows = BuildTrialBalanceRowsFromLines(orderedLines);
+        var totalClosingDebit = orderedLines.Sum(l => l.ClosingDebit);
+        var totalClosingCredit = orderedLines.Sum(l => l.ClosingCredit);
+        var difference = Math.Round(totalClosingDebit - totalClosingCredit, 2);
+
+        return new TrialBalanceReportDto(
+            from,
+            to,
+            orderedLines.Count,
+            totalClosingDebit,
+            totalClosingCredit,
+            Math.Abs(difference) < 0.01m,
+            difference,
+            orderedLines,
+            rows);
+    }
+
     public async Task<ProfitAndLossReportDto> GetProfitAndLossAsync(
         FinancialReportDateRangeRequest request,
         CancellationToken cancellationToken = default)
     {
         var (companyId, from, to) = ValidateDateRange(request);
+
+        if (UsesSqlReporting(companyId))
+        {
+            return await GetProfitAndLossFromSqlAsync(from, to, companyId, cancellationToken);
+        }
+
         var accounts = await GetAccountsAsync(companyId, cancellationToken);
         var journalByAccount = await GetJournalTotalsByAccountAsync(companyId, cancellationToken);
 
@@ -193,6 +240,32 @@ public class FinancialReportService : IFinancialReportService
             rows);
     }
 
+    private async Task<ProfitAndLossReportDto> GetProfitAndLossFromSqlAsync(
+        DateTime from,
+        DateTime to,
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var lines = (await _sqlReports.GetProfitAndLossLinesAsync(companyId, from, to, cancellationToken)).ToList();
+        var totalRevenue = lines.Where(l => l.Section == "Revenue").Sum(l => l.Amount);
+        var totalCogs = lines.Where(l => l.Section == "Cost of Goods Sold").Sum(l => l.Amount);
+        var totalExpenses = lines.Where(l => l.Section == "Expenses").Sum(l => l.Amount);
+        var grossProfit = totalRevenue - totalCogs;
+        var netProfit = grossProfit - totalExpenses;
+        var rows = BuildSectionAmountRowsFromPlLines(lines, totalRevenue, totalCogs, totalExpenses, grossProfit, netProfit);
+
+        return new ProfitAndLossReportDto(
+            from,
+            to,
+            totalRevenue,
+            totalCogs,
+            totalExpenses,
+            grossProfit,
+            netProfit,
+            lines,
+            rows);
+    }
+
     public async Task<BalanceSheetReportDto> GetBalanceSheetAsync(
         BalanceSheetReportRequest request,
         CancellationToken cancellationToken = default)
@@ -204,6 +277,12 @@ public class FinancialReportService : IFinancialReportService
 
         var companyId = _currentCompany.GetRequiredCompanyId();
         var asOf = request.AsOfDate.Date;
+
+        if (UsesSqlReporting(companyId))
+        {
+            return await GetBalanceSheetFromSqlAsync(companyId, asOf, cancellationToken);
+        }
+
         var accounts = await GetAccountsAsync(companyId, cancellationToken);
         var journalByAccount = await GetJournalTotalsByAccountAsync(companyId, cancellationToken);
 
@@ -308,6 +387,50 @@ public class FinancialReportService : IFinancialReportService
             rows);
     }
 
+    private async Task<BalanceSheetReportDto> GetBalanceSheetFromSqlAsync(
+        int companyId,
+        DateTime asOf,
+        CancellationToken cancellationToken)
+    {
+        var lines = (await _sqlReports.GetBalanceSheetLinesAsync(companyId, asOf, cancellationToken)).ToList();
+        var totalAssets = lines.Where(l => l.Section == "Assets").Sum(l => l.Amount);
+        var totalLiabilities = lines.Where(l => l.Section == "Liabilities").Sum(l => l.Amount);
+        var totalEquity = lines.Where(l => l.Section == "Equity").Sum(l => l.Amount);
+        var netIncome = lines.FirstOrDefault(l => l.AccountName == "Net Income" && l.Section == "Equity")?.Amount ?? 0m;
+
+        var balanceGap = Math.Round(totalAssets - totalLiabilities - totalEquity, 2);
+        if (Math.Abs(balanceGap) >= 0.01m)
+        {
+            lines.Add(new BalanceSheetLineDto(
+                0,
+                RetainedEarnings,
+                "Retained Earnings",
+                "Equity",
+                balanceGap));
+            totalEquity += balanceGap;
+        }
+
+        var orderedLines = lines.OrderBy(l => l.Section).ThenBy(l => l.AccountNumber).ToList();
+        var rows = BuildSectionAmountRowsFromBsLines(
+            orderedLines,
+            totalAssets,
+            totalLiabilities,
+            totalEquity,
+            totalLiabilities + totalEquity);
+
+        return new BalanceSheetReportDto(
+            asOf,
+            totalAssets,
+            totalLiabilities,
+            totalEquity,
+            netIncome,
+            totalLiabilities + totalEquity,
+            Math.Abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01m,
+            Math.Round(totalAssets - (totalLiabilities + totalEquity), 2),
+            orderedLines,
+            rows);
+    }
+
     public async Task<ArAgingSummaryReportDto> GetArAgingSummaryAsync(
         ArAgingReportRequest request,
         CancellationToken cancellationToken = default)
@@ -319,6 +442,21 @@ public class FinancialReportService : IFinancialReportService
 
         var companyId = _currentCompany.GetRequiredCompanyId();
         var asOf = request.AsOfDate.Date;
+
+        if (UsesSqlReporting(companyId))
+        {
+            var sqlLines = await _sqlReports.GetArAgingLinesAsync(companyId, asOf, cancellationToken);
+            return new ArAgingSummaryReportDto(
+                asOf,
+                sqlLines.Count,
+                sqlLines.Sum(l => l.OpeningBalance),
+                sqlLines.Sum(l => l.Current),
+                sqlLines.Sum(l => l.Days31To60),
+                sqlLines.Sum(l => l.Days61To90),
+                sqlLines.Sum(l => l.Over90),
+                sqlLines.Sum(l => l.Total),
+                sqlLines);
+        }
 
         var customers = await _unitOfWork.Repository<Customer>()
             .Query()
@@ -556,6 +694,110 @@ public class FinancialReportService : IFinancialReportService
             lines.Sum(l => l.ClosingCredit),
             null));
 
+        return rows;
+    }
+
+    private static List<FinancialReportRowDto> BuildTrialBalanceRowsFromLines(
+        IReadOnlyList<TrialBalanceLineDto> lines)
+    {
+        var rows = new List<FinancialReportRowDto>();
+        foreach (var line in lines)
+        {
+            rows.Add(new FinancialReportRowDto(
+                $"{line.AccountNumber} – {line.AccountName}",
+                0,
+                FinancialReportRowKind.Account,
+                line.ClosingDebit > 0m ? line.ClosingDebit : null,
+                line.ClosingCredit > 0m ? line.ClosingCredit : null,
+                null));
+        }
+
+        rows.Add(new FinancialReportRowDto(
+            "TOTAL",
+            0,
+            FinancialReportRowKind.Total,
+            lines.Sum(l => l.ClosingDebit),
+            lines.Sum(l => l.ClosingCredit),
+            null));
+
+        return rows;
+    }
+
+    private static List<FinancialReportRowDto> BuildSectionAmountRowsFromPlLines(
+        IReadOnlyList<ProfitAndLossLineDto> lines,
+        decimal totalRevenue,
+        decimal totalCogs,
+        decimal totalExpenses,
+        decimal grossProfit,
+        decimal netProfit)
+    {
+        var rows = new List<FinancialReportRowDto>
+        {
+            SectionRow("Ordinary Income/Expense", 0)
+        };
+
+        void AppendSection(string title, string sectionKey, string totalLabel, decimal total)
+        {
+            var sectionLines = lines.Where(l => l.Section == sectionKey).OrderBy(l => l.AccountNumber).ToList();
+            if (sectionLines.Count == 0 && total == 0m)
+            {
+                return;
+            }
+
+            rows.Add(SectionRow(title, 0));
+            foreach (var line in sectionLines)
+            {
+                rows.Add(AmountRow($"{line.AccountNumber} – {line.AccountName}", 1, FinancialReportRowKind.Account, line.Amount));
+            }
+
+            rows.Add(AmountRow(totalLabel, 0, FinancialReportRowKind.Subtotal, total));
+        }
+
+        AppendSection("Income", "Revenue", "Total Income", totalRevenue);
+        AppendSection("Cost of Goods Sold", "Cost of Goods Sold", "Total COGS", totalCogs);
+        rows.Add(AmountRow("Gross Profit", 0, FinancialReportRowKind.Subtotal, grossProfit));
+        AppendSection("Expense", "Expenses", "Total Expense", totalExpenses);
+        rows.Add(AmountRow("Net Ordinary Income", 0, FinancialReportRowKind.Subtotal, netProfit));
+        rows.Add(AmountRow("Net Income", 0, FinancialReportRowKind.Total, netProfit));
+        return rows;
+    }
+
+    private static List<FinancialReportRowDto> BuildSectionAmountRowsFromBsLines(
+        IReadOnlyList<BalanceSheetLineDto> lines,
+        decimal totalAssets,
+        decimal totalLiabilities,
+        decimal totalEquity,
+        decimal totalLiabilitiesAndEquity)
+    {
+        var rows = new List<FinancialReportRowDto>
+        {
+            SectionRow("ASSETS", 0)
+        };
+
+        foreach (var line in lines.Where(l => l.Section == "Assets").OrderBy(l => l.AccountNumber))
+        {
+            rows.Add(AmountRow($"{line.AccountNumber} – {line.AccountName}", 1, FinancialReportRowKind.Account, line.Amount));
+        }
+
+        rows.Add(AmountRow("TOTAL ASSETS", 0, FinancialReportRowKind.Total, totalAssets));
+        rows.Add(SectionRow("LIABILITIES & EQUITY", 0));
+        rows.Add(SectionRow("Liabilities", 1));
+
+        foreach (var line in lines.Where(l => l.Section == "Liabilities").OrderBy(l => l.AccountNumber))
+        {
+            rows.Add(AmountRow($"{line.AccountNumber} – {line.AccountName}", 2, FinancialReportRowKind.Account, line.Amount));
+        }
+
+        rows.Add(AmountRow("Total Liabilities", 1, FinancialReportRowKind.Subtotal, totalLiabilities));
+        rows.Add(SectionRow("Equity", 1));
+
+        foreach (var line in lines.Where(l => l.Section == "Equity").OrderBy(l => l.AccountNumber))
+        {
+            rows.Add(AmountRow($"{line.AccountNumber} – {line.AccountName}", 2, FinancialReportRowKind.Account, line.Amount));
+        }
+
+        rows.Add(AmountRow("Total Equity", 1, FinancialReportRowKind.Subtotal, totalEquity));
+        rows.Add(AmountRow("TOTAL LIABILITIES & EQUITY", 0, FinancialReportRowKind.Total, totalLiabilitiesAndEquity));
         return rows;
     }
 

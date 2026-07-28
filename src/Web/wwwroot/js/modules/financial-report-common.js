@@ -126,7 +126,13 @@
             return;
         }
 
-        $('#report-company-name').text(company.companyName || company.CompanyName || '');
+        var name = company.companyName || company.CompanyName || '';
+        var companyId = parseInt(company.id || company.Id, 10) || 0;
+        if (companyId === 3) {
+            name += ' (SQL reports)';
+        }
+
+        $('#report-company-name').text(name);
     }
 
     function resetPrintFit() {

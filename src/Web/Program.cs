@@ -236,6 +236,7 @@ try
         pattern: "{controller=Home}/{action=Index}/{id?}");
 
     await DbInitializer.InitializeAsync(app.Services);
+    await EnsureSqlFinancialReportsAsync(app.Services);
     await EnsureSalesTaxPaymentGlConventionsAsync(app.Services);
     await EnsureOpeningBalanceEquityBalancedAsync(app.Services);
 
@@ -1348,6 +1349,21 @@ static bool TryRunRepairSalesTaxPaymentGl(string[] args, out int exitCode)
     }
 
     return true;
+}
+
+static async Task EnsureSqlFinancialReportsAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var sqlReports = scope.ServiceProvider.GetRequiredService<ISqlFinancialReportDataSource>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        await sqlReports.EnsureProceduresDeployedAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to deploy SQL financial report procedures.");
+    }
 }
 
 static async Task EnsureSalesTaxPaymentGlConventionsAsync(IServiceProvider services)
