@@ -62,12 +62,19 @@ public static class GlTrialBalanceColumns
             return storedNet > 0m;
         }
 
+        // Inverted liabilities (negative stored = payable): credit balance → credit column.
         if (typeId == LiabilityTypeId)
         {
             return storedNet > 0m;
         }
 
-        if (typeId is EquityTypeId or RevenueTypeId)
+        // Revenue credit balances (stored net negative from credits) → credit column.
+        if (typeId == RevenueTypeId)
+        {
+            return storedNet > 0m;
+        }
+
+        if (typeId == EquityTypeId)
         {
             return storedNet < 0m;
         }

@@ -66,12 +66,12 @@ BEGIN
             ISNULL(j.CreditPeriod, 0) AS PeriodCredit,
             ISNULL(j.DebitUpTo, 0) AS DebitUpTo,
             ISNULL(j.CreditUpTo, 0) AS CreditUpTo,
-            /* Journal delta: liability/equity/AR credit-normal (QB inverted AR storage) */
-            CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
+            /* Journal delta: equity/AR/AP credit-minus-debit; inverted liabilities use debit-minus-credit */
+            CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
                 THEN ISNULL(j.CreditBefore, 0) - ISNULL(j.DebitBefore, 0)
                 ELSE ISNULL(j.DebitBefore, 0) - ISNULL(j.CreditBefore, 0)
             END AS OpeningJournalDelta,
-            CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
+            CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS ClosingJournalDelta
@@ -120,7 +120,8 @@ BEGIN
                 WHEN AccountNumber = N'20000' THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'30000' THEN CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN TypeId = 2 THEN CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
-                WHEN TypeId IN (3, 4) THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN TypeId = 4 THEN CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN TypeId = 3 THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
                 ELSE CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
             END, 2) AS DECIMAL(18, 2)) AS ClosingDebit,
         CAST(ROUND(
@@ -129,7 +130,8 @@ BEGIN
                 WHEN AccountNumber = N'20000' THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'30000' THEN CASE WHEN ClosingNet <= 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN TypeId = 2 THEN CASE WHEN ClosingNet <= 0 THEN ABS(ClosingNet) ELSE 0 END
-                WHEN TypeId IN (3, 4) THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN TypeId = 4 THEN CASE WHEN ClosingNet <= 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN TypeId = 3 THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
                 ELSE CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
             END, 2) AS DECIMAL(18, 2)) AS ClosingCredit
     FROM Display
@@ -236,7 +238,7 @@ BEGIN
                 WHEN 2 THEN N'Liabilities'
                 ELSE N'Equity'
             END AS Section,
-            a.OpeningBalance + CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
+            a.OpeningBalance + CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS StoredNet
