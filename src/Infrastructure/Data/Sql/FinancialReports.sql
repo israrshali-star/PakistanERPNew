@@ -66,12 +66,12 @@ BEGIN
             ISNULL(j.CreditPeriod, 0) AS PeriodCredit,
             ISNULL(j.DebitUpTo, 0) AS DebitUpTo,
             ISNULL(j.CreditUpTo, 0) AS CreditUpTo,
-            /* Journal delta: liability/equity credit-normal */
-            CASE WHEN a.TypeId IN (2, 3)
+            /* Journal delta: liability/equity/AR credit-normal (QB inverted AR storage) */
+            CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
                 THEN ISNULL(j.CreditBefore, 0) - ISNULL(j.DebitBefore, 0)
                 ELSE ISNULL(j.DebitBefore, 0) - ISNULL(j.CreditBefore, 0)
             END AS OpeningJournalDelta,
-            CASE WHEN a.TypeId IN (2, 3)
+            CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS ClosingJournalDelta
@@ -236,7 +236,7 @@ BEGIN
                 WHEN 2 THEN N'Liabilities'
                 ELSE N'Equity'
             END AS Section,
-            a.OpeningBalance + CASE WHEN a.TypeId IN (2, 3)
+            a.OpeningBalance + CASE WHEN a.TypeId IN (2, 3) OR a.AccountNumber = N'11110'
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS StoredNet

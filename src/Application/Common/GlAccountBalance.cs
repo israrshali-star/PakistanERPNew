@@ -38,8 +38,13 @@ public static class GlAccountBalance
             ? journalCredits - journalDebits
             : journalDebits - journalCredits;
 
+    /// <summary>
+    /// Credit-normal stored balances: liabilities, equity, and AR (QuickBooks inverted AR).
+    /// For these accounts a credit increases the stored net (and a debit decreases it).
+    /// </summary>
     public static bool UsesCreditMinusDebitJournalDelta(int? typeId, string? accountNumber) =>
-        typeId is LiabilityTypeId or EquityTypeId;
+        typeId is LiabilityTypeId or EquityTypeId
+        || string.Equals(accountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// AP dashboard closing for purchase-tax companies: opening + debits − credits.
