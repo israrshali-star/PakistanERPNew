@@ -419,7 +419,10 @@ public class StackLotInventoryService : IStackLotInventoryService
             .Where(t => t.CompanyId == companyId
                         && t.ReferenceNo != null
                         && !t.ReferenceNo.StartsWith("BILL-")
-                        && !t.ReferenceNo.StartsWith("INV-"));
+                        && !t.ReferenceNo.StartsWith("INV-")
+                        // Opening stock is already counted from the approved OPEN-STOCK vendor bill lines.
+                        && !t.ReferenceNo.StartsWith("OPEN-STOCK")
+                        && !t.ReferenceNo.StartsWith("OPENING-"));
 
         if (itemIds.Count > 0)
         {

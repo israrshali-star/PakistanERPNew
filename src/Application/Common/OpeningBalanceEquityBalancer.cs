@@ -36,7 +36,8 @@ public static class OpeningBalanceEquityBalancer
                 account.JournalDebit,
                 account.JournalCredit,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var (debit, credit) = GlTrialBalanceColumns.SplitClosingBalance(
                 closingNet,
                 account.TypeId,

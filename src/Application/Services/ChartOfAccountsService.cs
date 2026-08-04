@@ -625,7 +625,14 @@ public class ChartOfAccountsService : IChartOfAccountsService
             && (PurchaseApBalance.UsesInvertedLineAccumulation(
                     companyId,
                     account.AccountNumber)
-                || GlBalanceDisplay.UsesInvertedLineAccumulation(account.TypeId, account.AccountNumber));
+                || GlBalanceDisplay.UsesInvertedLineAccumulation(
+                    account.TypeId,
+                    account.AccountNumber,
+                    companyId));
+        if (GlBalanceDisplay.UsesSalesTaxInvoiceCreditReduction(companyId, account.AccountNumber))
+        {
+            invertedLineAccumulation = false;
+        }
 
         decimal rawPeriodOpening;
         if (from.HasValue)
@@ -653,12 +660,15 @@ public class ChartOfAccountsService : IChartOfAccountsService
             var openingDate = from.HasValue ? from.Value.AddDays(-1) : DateTime.MinValue;
             var openingRef = from.HasValue ? "B/F" : "OPENING";
             var openingDesc = from.HasValue ? "Balance Brought Forward" : "Opening Balance";
+            // Sales tax credit openings belong in the Credit column (payable style).
+            var salesTaxCreditOpening = periodOpening > 0m
+                && GlOpeningBalanceNormalizer.IsSalesTaxLiabilityAccount(account.AccountNumber);
             entries.Add(new ChartOfAccountLedgerEntryDto(
                 openingDate,
                 openingRef,
                 openingDesc,
-                periodOpening > 0m ? periodOpening : 0m,
-                periodOpening < 0m ? Math.Abs(periodOpening) : 0m,
+                salesTaxCreditOpening ? 0m : (periodOpening > 0m ? periodOpening : 0m),
+                salesTaxCreditOpening ? periodOpening : (periodOpening < 0m ? Math.Abs(periodOpening) : 0m),
                 periodOpening));
         }
 
@@ -1009,7 +1019,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
                     debit,
                     credit,
                     x.TypeId,
-                    x.AccountNumber);
+                    x.AccountNumber,
+                    companyId);
             });
     }
 
@@ -1056,7 +1067,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 debit,
                 credit,
                 account.TypeId,
-                account.AccountNumber),
+                account.AccountNumber,
+                companyId),
             2);
     }
 

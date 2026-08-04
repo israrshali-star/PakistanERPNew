@@ -658,7 +658,8 @@ public class BankService : IBankService
                     debit,
                     credit,
                     x.TypeId,
-                    x.AccountNumber);
+                    x.AccountNumber,
+                    companyId);
             });
     }
 

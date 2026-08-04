@@ -25,7 +25,20 @@ public static class GlBalanceDisplay
         || (typeId == LiabilityTypeId
             && !string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase));
 
-    public static bool UsesInvertedLineAccumulation(int? typeId, string? accountNumber) =>
-        UsesInvertedStorageDisplay(typeId, accountNumber)
-        || string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// For companies 2/4/5/6/7, sales tax uses normal debit−credit accumulation on the flipped
+    /// opening so invoice credits reduce the remaining credit balance.
+    /// </summary>
+    public static bool UsesInvertedLineAccumulation(
+        int? typeId,
+        string? accountNumber,
+        int? companyId = null) =>
+        string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase)
+        || (UsesInvertedStorageDisplay(typeId, accountNumber)
+            && !UsesSalesTaxInvoiceCreditReduction(companyId, accountNumber));
+
+    public static bool UsesSalesTaxInvoiceCreditReduction(int? companyId, string? accountNumber) =>
+        companyId.HasValue
+        && TradeInvoiceLayout.InvoiceCreditsReduceSalesTaxBalance(companyId.Value)
+        && GlOpeningBalanceNormalizer.IsSalesTaxLiabilityAccount(accountNumber);
 }

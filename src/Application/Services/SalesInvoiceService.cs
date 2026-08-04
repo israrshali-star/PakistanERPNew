@@ -144,7 +144,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             }
         }
 
-        return new NextInvoiceNumberDto($"{prefix}{(max + 1):D4}");
+        return new NextInvoiceNumberDto(TradeInvoiceLayout.FormatInvoiceNumber(max + 1, companyId));
     }
 
     public async Task<IReadOnlyList<SalesInvoiceCustomerLookupDto>> GetCustomerLookupsAsync(
@@ -998,16 +998,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         goodsSalesAmount = Math.Round(goodsSalesAmount, 2);
         lineTaxTotal = Math.Round(lineTaxTotal, 2);
-        var taxRates = await GetCompanyTaxRatesAsync(companyId, cancellationToken);
-        var scenarioCode = invoice.ScenarioId.HasValue
-            ? await _unitOfWork.Repository<ScenarioType>()
-                .Query()
-                .Where(s => s.ScenarioId == invoice.ScenarioId.Value)
-                .Select(s => s.Code)
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
-        var isUnregisteredScenario = SalesTaxSplit.IsUnregisteredScenario(scenarioCode);
-        var useSplitTaxGl = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId) && isUnregisteredScenario;
+        // Companies 2–7: post 18% to 25520 (and 4% to 25510 when present), not parent 25500.
+        var useSplitTaxGl = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId);
 
         decimal salesTaxAmount;
         decimal furtherTaxAmount;
@@ -2143,7 +2135,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var seller = new FbrPartyDto(
             company.CompanyName,
-            company.NTN,
+            TradeInvoiceLayout.NormalizeNtnForFbr(company.NTN, companyId),
             null,
             company.Address,
             company.ProvinceName,
@@ -2152,7 +2144,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var buyer = new FbrPartyDto(
             invoice.Customer.BuyerName,
-            invoice.BuyerNTN ?? invoice.Customer.NTN,
+            TradeInvoiceLayout.NormalizeNtnForFbr(invoice.BuyerNTN ?? invoice.Customer.NTN, companyId),
             invoice.BuyerCNIC ?? invoice.Customer.CNIC,
             invoice.BuyerAddress ?? invoice.Customer.Address,
             buyerProvince,

@@ -100,7 +100,8 @@ public partial class BankGlPostingService : IBankGlPostingService
             debits,
             credits,
             account.TypeId,
-            account.AccountNumber);
+            account.AccountNumber,
+            companyId);
     }
 
     public async Task<GlPostingResult> PostBankTransactionAsync(

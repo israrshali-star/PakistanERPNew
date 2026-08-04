@@ -4,12 +4,11 @@ public record StockSummaryLineDto(
     int ItemId,
     string ItemCode,
     string ItemName,
+    string? StackNo,
     string? CategoryName,
     string UnitSymbol,
     decimal CurrentStock,
     decimal CurrentCartons,
-    decimal MinimumStock,
-    decimal ReorderLevel,
     decimal PurchaseRate,
     decimal StockValue);
 

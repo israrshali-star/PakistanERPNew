@@ -17,15 +17,17 @@ public static class GlAccountBalance
         decimal journalDebits,
         decimal journalCredits,
         int? typeId,
-        string? accountNumber) =>
-        openingBalance + GetJournalDelta(journalDebits, journalCredits, typeId, accountNumber);
+        string? accountNumber,
+        int? companyId = null) =>
+        openingBalance + GetJournalDelta(journalDebits, journalCredits, typeId, accountNumber, companyId);
 
     public static decimal ComputeNet(
         decimal openingBalance,
         decimal journalNetDebitMinusCredit,
         int? typeId,
-        string? accountNumber) =>
-        UsesCreditMinusDebitJournalDelta(typeId, accountNumber)
+        string? accountNumber,
+        int? companyId = null) =>
+        UsesCreditMinusDebitJournalDelta(typeId, accountNumber, companyId)
             ? openingBalance - journalNetDebitMinusCredit
             : openingBalance + journalNetDebitMinusCredit;
 
@@ -33,21 +35,28 @@ public static class GlAccountBalance
         decimal journalDebits,
         decimal journalCredits,
         int? typeId,
-        string? accountNumber) =>
-        UsesCreditMinusDebitJournalDelta(typeId, accountNumber)
+        string? accountNumber,
+        int? companyId = null) =>
+        UsesCreditMinusDebitJournalDelta(typeId, accountNumber, companyId)
             ? journalCredits - journalDebits
             : journalDebits - journalCredits;
 
     /// <summary>
     /// Credit-minus-debit journal delta for credit-normal stored accounts:
-    /// equity, AR (inverted asset), and AP (ERP positive-payable storage).
-    /// Other liabilities use inverted negative storage, so they keep debit-minus-credit
-    /// (a credit makes the stored net more negative = larger payable).
+    /// equity, AR (inverted asset), AP (ERP positive-payable storage), and — for companies
+    /// 2/4/5/6/7 — sales tax liabilities so invoice tax credits reduce the payable balance.
+    /// Other liabilities keep debit-minus-credit.
     /// </summary>
-    public static bool UsesCreditMinusDebitJournalDelta(int? typeId, string? accountNumber) =>
+    public static bool UsesCreditMinusDebitJournalDelta(
+        int? typeId,
+        string? accountNumber,
+        int? companyId = null) =>
         typeId == EquityTypeId
         || string.Equals(accountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase);
+        || string.Equals(accountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase)
+        || (companyId.HasValue
+            && TradeInvoiceLayout.InvoiceCreditsReduceSalesTaxBalance(companyId.Value)
+            && GlOpeningBalanceNormalizer.IsSalesTaxLiabilityAccount(accountNumber));
 
     /// <summary>
     /// AP dashboard closing for purchase-tax companies: opening + debits − credits.

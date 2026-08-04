@@ -102,7 +102,7 @@ public class GlRepairService : IGlRepairService
 
             if (salesTaxSplit > 0)
             {
-                messageParts.Add($"Split sales tax on {salesTaxSplit} posted SN002 invoice(s) to {SalesTaxPayable18} (18%) and {FurtherTaxPayable} (4%); {SalesTaxPayable} shows the rolled-up total.");
+                messageParts.Add($"Split sales tax on {salesTaxSplit} posted invoice(s) to {SalesTaxPayable18} (18%) and {FurtherTaxPayable} (4%); {SalesTaxPayable} shows the rolled-up total.");
             }
 
             if (invertedArFixed > 0)
@@ -3535,9 +3535,97 @@ public class GlRepairService : IGlRepairService
         foreach (var invoice in invoices)
         {
             if (!invoice.ScenarioId.HasValue
-                || !scenarioCodes.TryGetValue(invoice.ScenarioId.Value, out var scenarioCode)
-                || !SalesTaxSplit.IsUnregisteredScenario(scenarioCode))
+                || !scenarioCodes.TryGetValue(invoice.ScenarioId.Value, out var scenarioCode))
             {
+                continue;
+            }
+
+            var journalId = invoice.JournalEntryId!.Value;
+            var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+            var isUnregistered = SalesTaxSplit.IsUnregisteredScenario(scenarioCode);
+
+            // Registered (SN001): 18% only — move any parent 25500 posting to 25520.
+            if (!isUnregistered)
+            {
+                var salesTaxAmount = Math.Round(invoice.TaxAmount, 2);
+                var furtherTaxAmount = Math.Round(invoice.FurtherTax, 2);
+                if (salesTaxAmount <= 0m && furtherTaxAmount <= 0m)
+                {
+                    continue;
+                }
+
+                var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+                    .Query(asNoTracking: false)
+                    .Where(l => l.JournalEntryId == journalId)
+                    .ToListAsync(cancellationToken);
+
+                decimal LineAmount(JournalEntryLine line) => isCreditNote ? line.Debit : line.Credit;
+
+                var existingSalesTax = journalLines
+                    .Where(l => l.ChartOfAccountId == salesTax18AccountId.Value)
+                    .Sum(LineAmount);
+                var existingFurtherTax = journalLines
+                    .Where(l => l.ChartOfAccountId == furtherTaxAccountId.Value)
+                    .Sum(LineAmount);
+                var existingTotalTaxAccount = journalLines
+                    .Where(l => l.ChartOfAccountId == totalTaxAccountId.Value)
+                    .Sum(LineAmount);
+
+                if (Math.Abs(existingSalesTax - salesTaxAmount) < 0.01m
+                    && Math.Abs(existingFurtherTax - furtherTaxAmount) < 0.01m
+                    && existingTotalTaxAccount <= 0.01m)
+                {
+                    continue;
+                }
+
+                var taxAccountIds = new HashSet<int>
+                {
+                    totalTaxAccountId.Value,
+                    salesTax18AccountId.Value,
+                    furtherTaxAccountId.Value
+                };
+
+                foreach (var line in journalLines.Where(l => taxAccountIds.Contains(l.ChartOfAccountId)))
+                {
+                    _unitOfWork.Repository<JournalEntryLine>().Remove(line);
+                }
+
+                if (salesTaxAmount > 0m)
+                {
+                    await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                    {
+                        JournalEntryId = journalId,
+                        ChartOfAccountId = salesTax18AccountId.Value,
+                        Debit = isCreditNote ? salesTaxAmount : 0m,
+                        Credit = isCreditNote ? 0m : salesTaxAmount,
+                        Memo = "Sales Tax Payable (18%)"
+                    }, cancellationToken);
+                }
+
+                if (furtherTaxAmount > 0m)
+                {
+                    await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
+                    {
+                        JournalEntryId = journalId,
+                        ChartOfAccountId = furtherTaxAccountId.Value,
+                        Debit = isCreditNote ? furtherTaxAmount : 0m,
+                        Credit = isCreditNote ? 0m : furtherTaxAmount,
+                        Memo = "Further Tax Payable"
+                    }, cancellationToken);
+                }
+
+                var journal = await _unitOfWork.Repository<JournalEntry>()
+                    .Query(asNoTracking: false)
+                    .FirstOrDefaultAsync(j => j.Id == journalId && j.CompanyId == companyId, cancellationToken);
+
+                if (journal is not null)
+                {
+                    journal.UpdatedAt = now;
+                    journal.UpdatedBy = userName;
+                    _unitOfWork.Repository<JournalEntry>().Update(journal);
+                }
+
+                adjusted++;
                 continue;
             }
 
@@ -3546,10 +3634,9 @@ public class GlRepairService : IGlRepairService
                 continue;
             }
 
-            var journalId = invoice.JournalEntryId!.Value;
             customerFurtherRates.TryGetValue(invoice.CustomerId, out var customerFurtherTaxRate);
             goodsLinesByInvoice.TryGetValue(invoice.Id, out var goodsLines);
-            var (salesTaxAmount, furtherTaxAmount) = ComputeSplitTaxFromLines(
+            var (splitSalesTaxAmount, splitFurtherTaxAmount) = ComputeSplitTaxFromLines(
                 companyId,
                 goodsTaxable,
                 goodsLines ?? [],
@@ -3558,78 +3645,77 @@ public class GlRepairService : IGlRepairService
                 customerFurtherTaxRate);
 
             var newNetTotal = Math.Round(
-                invoice.SubTotal - invoice.DiscountAmount + salesTaxAmount + furtherTaxAmount,
+                invoice.SubTotal - invoice.DiscountAmount + splitSalesTaxAmount + splitFurtherTaxAmount,
                 2);
 
-            var journalLines = await _unitOfWork.Repository<JournalEntryLine>()
+            var unregJournalLines = await _unitOfWork.Repository<JournalEntryLine>()
                 .Query(asNoTracking: false)
                 .Where(l => l.JournalEntryId == journalId)
                 .ToListAsync(cancellationToken);
 
-            var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
-            decimal LineAmount(JournalEntryLine line) => isCreditNote ? line.Debit : line.Credit;
+            decimal UnregLineAmount(JournalEntryLine line) => isCreditNote ? line.Debit : line.Credit;
 
-            var existingSalesTax = journalLines
+            var existingUnregSalesTax = unregJournalLines
                 .Where(l => l.ChartOfAccountId == salesTax18AccountId.Value)
-                .Sum(LineAmount);
-            var existingFurtherTax = journalLines
+                .Sum(UnregLineAmount);
+            var existingUnregFurtherTax = unregJournalLines
                 .Where(l => l.ChartOfAccountId == furtherTaxAccountId.Value)
-                .Sum(LineAmount);
-            var existingTotalTaxAccount = journalLines
+                .Sum(UnregLineAmount);
+            var existingUnregTotalTaxAccount = unregJournalLines
                 .Where(l => l.ChartOfAccountId == totalTaxAccountId.Value)
-                .Sum(LineAmount);
+                .Sum(UnregLineAmount);
 
-            var headerMatches = Math.Abs(invoice.TaxAmount - salesTaxAmount) < 0.01m
-                && Math.Abs(invoice.FurtherTax - furtherTaxAmount) < 0.01m
+            var headerMatches = Math.Abs(invoice.TaxAmount - splitSalesTaxAmount) < 0.01m
+                && Math.Abs(invoice.FurtherTax - splitFurtherTaxAmount) < 0.01m
                 && Math.Abs(invoice.NetTotal - newNetTotal) < 0.01m;
 
             if (headerMatches
-                && Math.Abs(existingSalesTax - salesTaxAmount) < 0.01m
-                && Math.Abs(existingFurtherTax - furtherTaxAmount) < 0.01m
-                && existingTotalTaxAccount <= 0.01m)
+                && Math.Abs(existingUnregSalesTax - splitSalesTaxAmount) < 0.01m
+                && Math.Abs(existingUnregFurtherTax - splitFurtherTaxAmount) < 0.01m
+                && existingUnregTotalTaxAccount <= 0.01m)
             {
                 continue;
             }
 
-            var taxAccountIds = new HashSet<int>
+            var unregTaxAccountIds = new HashSet<int>
             {
                 totalTaxAccountId.Value,
                 salesTax18AccountId.Value,
                 furtherTaxAccountId.Value
             };
 
-            foreach (var line in journalLines.Where(l => taxAccountIds.Contains(l.ChartOfAccountId)))
+            foreach (var line in unregJournalLines.Where(l => unregTaxAccountIds.Contains(l.ChartOfAccountId)))
             {
                 _unitOfWork.Repository<JournalEntryLine>().Remove(line);
             }
 
-            if (salesTaxAmount > 0m)
+            if (splitSalesTaxAmount > 0m)
             {
                 await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
                 {
                     JournalEntryId = journalId,
                     ChartOfAccountId = salesTax18AccountId.Value,
-                    Debit = isCreditNote ? salesTaxAmount : 0m,
-                    Credit = isCreditNote ? 0m : salesTaxAmount,
+                    Debit = isCreditNote ? splitSalesTaxAmount : 0m,
+                    Credit = isCreditNote ? 0m : splitSalesTaxAmount,
                     Memo = "Sales Tax Payable (18%)"
                 }, cancellationToken);
             }
 
-            if (furtherTaxAmount > 0m)
+            if (splitFurtherTaxAmount > 0m)
             {
                 await _unitOfWork.Repository<JournalEntryLine>().AddAsync(new JournalEntryLine
                 {
                     JournalEntryId = journalId,
                     ChartOfAccountId = furtherTaxAccountId.Value,
-                    Debit = isCreditNote ? furtherTaxAmount : 0m,
-                    Credit = isCreditNote ? 0m : furtherTaxAmount,
+                    Debit = isCreditNote ? splitFurtherTaxAmount : 0m,
+                    Credit = isCreditNote ? 0m : splitFurtherTaxAmount,
                     Memo = "Further Tax Payable"
                 }, cancellationToken);
             }
 
             if (arAccountId.HasValue)
             {
-                foreach (var arLine in journalLines.Where(l => l.ChartOfAccountId == arAccountId.Value))
+                foreach (var arLine in unregJournalLines.Where(l => l.ChartOfAccountId == arAccountId.Value))
                 {
                     arLine.Debit = isCreditNote ? 0m : newNetTotal;
                     arLine.Credit = isCreditNote ? newNetTotal : 0m;
@@ -3637,22 +3723,22 @@ public class GlRepairService : IGlRepairService
                 }
             }
 
-            invoice.TaxAmount = salesTaxAmount;
-            invoice.FurtherTax = furtherTaxAmount;
+            invoice.TaxAmount = splitSalesTaxAmount;
+            invoice.FurtherTax = splitFurtherTaxAmount;
             invoice.NetTotal = newNetTotal;
             invoice.UpdatedAt = now;
             invoice.UpdatedBy = userName;
             _unitOfWork.Repository<SalesInvoice>().Update(invoice);
 
-            var journal = await _unitOfWork.Repository<JournalEntry>()
+            var unregJournal = await _unitOfWork.Repository<JournalEntry>()
                 .Query(asNoTracking: false)
                 .FirstOrDefaultAsync(j => j.Id == journalId && j.CompanyId == companyId, cancellationToken);
 
-            if (journal is not null)
+            if (unregJournal is not null)
             {
-                journal.UpdatedAt = now;
-                journal.UpdatedBy = userName;
-                _unitOfWork.Repository<JournalEntry>().Update(journal);
+                unregJournal.UpdatedAt = now;
+                unregJournal.UpdatedBy = userName;
+                _unitOfWork.Repository<JournalEntry>().Update(unregJournal);
             }
 
             adjusted++;
@@ -4413,7 +4499,8 @@ public class GlRepairService : IGlRepairService
                 journal?.Debit ?? 0m,
                 journal?.Credit ?? 0m,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
                 closingNet,
                 account.TypeId,
@@ -4523,7 +4610,8 @@ public class GlRepairService : IGlRepairService
                 totals?.Debit ?? 0m,
                 totals?.Credit ?? 0m,
                 account.TypeId,
-                account.AccountNumber),
+                account.AccountNumber,
+                companyId),
             2);
     }
 

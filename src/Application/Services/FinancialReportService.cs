@@ -63,7 +63,8 @@ public class FinancialReportService : IFinancialReportService
                 beforeFromDebit,
                 beforeFromCredit,
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var periodDebit = journal.PeriodDebit(from, to);
             var periodCredit = journal.PeriodCredit(from, to);
             var closingNet = GlAccountBalance.ComputeNet(
@@ -71,7 +72,8 @@ public class FinancialReportService : IFinancialReportService
                 journal.UpToToDebit(to),
                 journal.UpToToCredit(to),
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var displayClosing = GlBalanceDisplay.NormalizeNetForDisplay(closingNet, account.TypeId, account.AccountNumber);
             var displayOpening = GlBalanceDisplay.NormalizeNetForDisplay(openingNet, account.TypeId, account.AccountNumber);
             var (closingDebit, closingCredit) = GlTrialBalanceColumns.SplitClosingBalance(
@@ -303,7 +305,8 @@ public class FinancialReportService : IFinancialReportService
                 journal.UpToToDebit(asOf),
                 journal.UpToToCredit(asOf),
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var amount = GlBalanceDisplay.NormalizeNetForDisplay(net, account.TypeId, account.AccountNumber);
 
             if (amount == 0m)
@@ -372,7 +375,8 @@ public class FinancialReportService : IFinancialReportService
             totalAssets,
             totalLiabilities,
             totalEquity,
-            totalLiabilities + totalEquity);
+            totalLiabilities + totalEquity,
+            companyId);
 
         return new BalanceSheetReportDto(
             asOf,
@@ -901,12 +905,13 @@ public class FinancialReportService : IFinancialReportService
         decimal totalAssets,
         decimal totalLiabilities,
         decimal totalEquity,
-        decimal totalLiabilitiesAndEquity)
+        decimal totalLiabilitiesAndEquity,
+        int companyId)
     {
         var rows = new List<FinancialReportRowDto>();
         var accountById = accounts.ToDictionary(a => a.Id);
         var childrenLookup = accounts.ToLookup(a => a.ParentAccountId);
-        var amountsByAccountId = BuildBalanceSheetAmountsByAccount(accounts, journalByAccount, asOf);
+        var amountsByAccountId = BuildBalanceSheetAmountsByAccount(accounts, journalByAccount, asOf, companyId);
 
         rows.Add(SectionRow("ASSETS", 0));
 
@@ -1145,7 +1150,8 @@ public class FinancialReportService : IFinancialReportService
     private static Dictionary<int, decimal> BuildBalanceSheetAmountsByAccount(
         IReadOnlyList<AccountRow> accounts,
         Dictionary<int, JournalAggregate> journalByAccount,
-        DateTime asOf)
+        DateTime asOf,
+        int companyId)
     {
         var amounts = new Dictionary<int, decimal>();
 
@@ -1159,7 +1165,8 @@ public class FinancialReportService : IFinancialReportService
                 journal.UpToToDebit(asOf),
                 journal.UpToToCredit(asOf),
                 account.TypeId,
-                account.AccountNumber);
+                account.AccountNumber,
+                companyId);
             var amount = GlBalanceDisplay.NormalizeNetForDisplay(net, account.TypeId, account.AccountNumber);
 
             if (amount != 0m)

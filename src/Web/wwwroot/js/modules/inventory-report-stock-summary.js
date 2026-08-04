@@ -183,49 +183,26 @@
 
 
         if (!data.lines || data.lines.length === 0) {
-
-            $tbody.append('<tr><td colspan="10" class="text-muted text-center">No items found.</td></tr>');
-
+            $tbody.append('<tr><td colspan="9" class="text-muted text-center">No items found.</td></tr>');
             $('#report-footer').addClass('d-none');
-
             return;
-
         }
 
-
-
         data.lines.forEach(function (line) {
-
             $tbody.append(
-
                 '<tr>' +
-
                 '<td><code>' + escapeHtml(line.itemCode) + '</code></td>' +
-
                 '<td>' + escapeHtml(line.itemName) + '</td>' +
-
+                '<td>' + (line.stackNo ? escapeHtml(line.stackNo) : '—') + '</td>' +
                 '<td>' + (line.categoryName ? escapeHtml(line.categoryName) : '—') + '</td>' +
-
                 '<td>' + escapeHtml(line.unitSymbol) + '</td>' +
-
                 '<td class="text-end">' + formatQty(line.currentStock, line.unitSymbol) + '</td>' +
-
                 '<td class="text-end">' + formatQty(line.currentCartons, 'Ctn') + '</td>' +
-
-                '<td class="text-end">' + formatQty(line.minimumStock, line.unitSymbol) + '</td>' +
-
-                '<td class="text-end">' + formatQty(line.reorderLevel, line.unitSymbol) + '</td>' +
-
                 '<td class="text-end">' + formatAmount(line.purchaseRate) + '</td>' +
-
                 '<td class="text-end fw-semibold">' + formatAmount(line.stockValue) + '</td>' +
-
                 '</tr>'
-
             );
-
         });
-
 
 
         $('#report-total-stock').text(formatQty(data.totalStock, 'Kg'));

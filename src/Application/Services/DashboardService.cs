@@ -480,7 +480,8 @@ public class DashboardService : IDashboardService
                 debits,
                 credits,
                 account.TypeId,
-                account.AccountNumber),
+                account.AccountNumber,
+                companyId),
             2);
     }
 
@@ -516,7 +517,8 @@ public class DashboardService : IDashboardService
                 journalTotals?.Debit ?? 0m,
                 journalTotals?.Credit ?? 0m,
                 account.TypeId,
-                account.AccountNumber),
+                account.AccountNumber,
+                companyId),
             2);
     }
 
@@ -580,7 +582,8 @@ public class DashboardService : IDashboardService
                     debit,
                     credit,
                     x.TypeId,
-                    x.AccountNumber);
+                    x.AccountNumber,
+                    companyId);
             });
     }
 

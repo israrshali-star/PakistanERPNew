@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Domain.Enums;
 
 namespace PakistanAccountingERP.Application.Common;
@@ -8,14 +9,87 @@ public static class TradeInvoiceLayout
 {
     public const int TradeInvoiceCompanyId = 3;
 
-    /// <summary>Companies that post SN002 sales tax to 25520 (18%) and 25510 (4%) with 25500 as parent total.</summary>
+    /// <summary>
+    /// Companies that post sales tax to 25520 (18%) and 25510 (4% further tax) with 25500 as parent rollup.
+    /// Applies to registered (SN001 / 18% only) and unregistered (SN002 / 18%+4%) invoices.
+    /// </summary>
     public static readonly int[] SplitTaxGlCompanyIds = [2, 3, 4, 5, 6, 7];
 
     /// <summary>Companies that support bulk PDF print of FBR-submitted invoices from the list page.</summary>
     public static readonly int[] BulkInvoicePrintCompanyIds = [2, 4, 5, 6, 7];
 
+    /// <summary>
+    /// Companies where sales tax payable (25500/25510/25520) display balance is reduced
+    /// when a sales invoice posts tax credits (opening credit − invoice tax).
+    /// </summary>
+    public static readonly int[] InvoiceCreditsReduceSalesTaxCompanyIds = BulkInvoicePrintCompanyIds;
+
+    /// <summary>Kashaf Polyester — invoice numbers use INV-001 (3 digits), not INV-0001.</summary>
+    public const int KashafPolyesterCompanyId = 5;
+
+    /// <summary>
+    /// Companies that must submit FBR seller/buyer NTN without the check digit after '-'.
+    /// Example: 1234567-8 → 1234567.
+    /// </summary>
+    public static readonly int[] FbrNtnWithoutCheckDigitCompanyIds = BulkInvoicePrintCompanyIds;
+
     public static bool SupportsBulkInvoicePrint(int companyId) =>
         BulkInvoicePrintCompanyIds.Contains(companyId);
+
+    public static bool InvoiceCreditsReduceSalesTaxBalance(int companyId) =>
+        InvoiceCreditsReduceSalesTaxCompanyIds.Contains(companyId);
+
+    public static bool UsesFbrNtnWithoutCheckDigit(int companyId) =>
+        FbrNtnWithoutCheckDigitCompanyIds.Contains(companyId);
+
+    /// <summary>Digit pad width for auto invoice numbers (INV-001 vs INV-0001).</summary>
+    public static int InvoiceNumberPadWidth(int companyId) =>
+        companyId == KashafPolyesterCompanyId ? 3 : 4;
+
+    public static string FormatInvoiceNumber(int sequence, int companyId) =>
+        $"{AppConstants.InvoiceNumberPrefix}{sequence.ToString($"D{InvoiceNumberPadWidth(companyId)}")}";
+
+    /// <summary>
+    /// For selected companies, FBR expects NTN without check digit (3816161-3 → 3816161).
+    /// Only NTN patterns are changed; CNIC values (34101-8988500-5) are left intact.
+    /// </summary>
+    public static string? NormalizeNtnForFbr(string? ntn, int companyId)
+    {
+        if (string.IsNullOrWhiteSpace(ntn))
+        {
+            return ntn;
+        }
+
+        var trimmed = ntn.Trim();
+        if (!UsesFbrNtnWithoutCheckDigit(companyId))
+        {
+            return trimmed;
+        }
+
+        // NTN: 7 digits + check digit separated by '-' or '.' (e.g. 3816161-3 / 2733531.3)
+        if (trimmed.Length == 9
+            && (trimmed[7] == '-' || trimmed[7] == '.')
+            && char.IsDigit(trimmed[8])
+            && IsSevenDigits(trimmed.AsSpan(0, 7)))
+        {
+            return trimmed[..7];
+        }
+
+        return trimmed;
+    }
+
+    private static bool IsSevenDigits(ReadOnlySpan<char> value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (!char.IsDigit(value[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public static bool SupportsGodownChallanEmail(int companyId) =>
         companyId == TradeInvoiceCompanyId;
