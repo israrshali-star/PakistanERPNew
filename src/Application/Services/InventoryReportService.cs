@@ -89,6 +89,7 @@ public class InventoryReportService : IInventoryReportService
             .Where(t =>
                 t.CompanyId == companyId
                 && itemIds.Contains(t.ItemId)
+                && !t.IsDeleted
                 && t.TransactionDate <= asOfEnd)
             .GroupBy(t => new
             {
@@ -272,6 +273,7 @@ public class InventoryReportService : IInventoryReportService
             .Where(t =>
                 t.CompanyId == companyId
                 && itemIds.Contains(t.ItemId)
+                && !t.IsDeleted
                 && t.TransactionDate <= asOfEnd)
             .GroupBy(t => new
             {

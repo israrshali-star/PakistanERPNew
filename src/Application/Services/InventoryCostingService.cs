@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Entities;
@@ -195,6 +196,17 @@ public class InventoryCostingService : IInventoryCostingService
             return Math.Round(stackLotRate, 2);
         }
 
+        // Any positive stack/lot rate for this item (opening stock / purchases).
+        var itemRate = stackLotRates
+            .Where(kv => kv.Key.ItemId == request.ItemId && kv.Value > 0m)
+            .Select(kv => kv.Value)
+            .DefaultIfEmpty(0m)
+            .Average();
+        if (itemRate > 0m)
+        {
+            return Math.Round(itemRate, 2);
+        }
+
         return Math.Round(fallbackRate, 2);
     }
 
@@ -211,7 +223,7 @@ public class InventoryCostingService : IInventoryCostingService
 
         var transactions = await _unitOfWork.Repository<InventoryTransaction>()
             .Query()
-            .Where(t => t.CompanyId == companyId && itemIds.Contains(t.ItemId))
+            .Where(t => t.CompanyId == companyId && itemIds.Contains(t.ItemId) && !t.IsDeleted)
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.Id)
             .Select(t => new TransactionRow(
@@ -378,9 +390,10 @@ public class InventoryCostingService : IInventoryCostingService
         var purchaseLines = await _unitOfWork.Repository<VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
-                        && l.VendorBill.Status == BillStatus.Approved
                         && l.ItemId != null
-                        && itemIds.Contains(l.ItemId.Value))
+                        && itemIds.Contains(l.ItemId.Value)
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber))
             .Select(l => new PurchaseRateRow(
                 l.ItemId!.Value,
                 l.StackNo,

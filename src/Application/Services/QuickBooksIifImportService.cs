@@ -1162,13 +1162,13 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             }
 
             var quantity = Math.Round(row.Weight, 2);
-            var rate = quantityOnly
-                ? 0m
-                : item.PurchaseRate > 0m
-                    ? Math.Round(item.PurchaseRate, 2)
-                    : row.UnitPrice is > 0m
-                        ? Math.Round(row.UnitPrice.Value, 2)
-                        : 1m;
+            // Keep unit rate even for quantity-only imports so Stock Summary can value QOH.
+            // Amount / TotalCost stay zero so no inventory/AP GL is posted.
+            var rate = item.PurchaseRate > 0m
+                ? Math.Round(item.PurchaseRate, 2)
+                : row.UnitPrice is > 0m
+                    ? Math.Round(row.UnitPrice.Value, 2)
+                    : 0m;
             var amount = quantityOnly ? 0m : Math.Round(quantity * rate, 2);
             pendingLines.Add((row, item, rate, amount));
             stockByItemCode[itemCode] = stockByItemCode.GetValueOrDefault(itemCode) + quantity;
@@ -1236,7 +1236,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                     LotNo = string.IsNullOrWhiteSpace(x.Row.LotNo) ? null : x.Row.LotNo.Trim(),
                     Quantity = Math.Round(x.Row.Weight, 2),
                     UnitCost = x.Rate,
-                    TotalCost = x.Amount,
+                    TotalCost = quantityOnly ? 0m : x.Amount,
                     TransactionDate = OpeningStockDate,
                     ReferenceNo = OpeningStockBillNumber,
                     Notes = $"Opening stock {OpeningStockBillNumber}",
@@ -1519,9 +1519,9 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
             foreach (var line in bill.Lines)
             {
-                if (line.Rate != 0m || line.Amount != 0m)
+                // Keep Rate for stock-report valuation; only clear Amount so no inventory/AP GL is implied.
+                if (line.Amount != 0m)
                 {
-                    line.Rate = 0m;
                     line.Amount = 0m;
                     _unitOfWork.Repository<VendorBillLine>().Update(line);
                     billLinesUpdated++;
@@ -1534,11 +1534,31 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             }
 
             bill.NetAmount = 0m;
+            bill.TaxAmount = 0m;
             bill.Status = BillStatus.Draft;
+            var openingJournalId = bill.JournalEntryId;
             bill.JournalEntryId = null;
             bill.UpdatedAt = now;
             bill.UpdatedBy = ImportUser;
             _unitOfWork.Repository<VendorBill>().Update(bill);
+
+            if (openingJournalId.HasValue)
+            {
+                var openingJournal = await _unitOfWork.Repository<JournalEntry>()
+                    .Query(asNoTracking: false)
+                    .FirstOrDefaultAsync(
+                        j => j.Id == openingJournalId.Value && j.CompanyId == companyId,
+                        cancellationToken);
+                if (openingJournal is not null && !openingJournal.IsDeleted)
+                {
+                    openingJournal.IsDeleted = true;
+                    openingJournal.DeletedAt = now;
+                    openingJournal.DeletedBy = ImportUser;
+                    openingJournal.UpdatedAt = now;
+                    openingJournal.UpdatedBy = ImportUser;
+                    _unitOfWork.Repository<JournalEntry>().Update(openingJournal);
+                }
+            }
 
             var openingTransactions = await _unitOfWork.Repository<InventoryTransaction>()
                 .Query(asNoTracking: false)
@@ -1580,10 +1600,9 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                     continue;
                 }
 
-                var itemLot = item.LotNo?.Trim() ?? string.Empty;
+                // Sum cartons across all opening stacks for the item (do not filter by item master LotNo).
                 var cartons = bill.Lines
-                    .Where(l => l.ItemId == itemId
-                                && string.Equals(l.LotNo?.Trim() ?? string.Empty, itemLot, StringComparison.OrdinalIgnoreCase))
+                    .Where(l => l.ItemId == itemId)
                     .Sum(l => Math.Round(l.Cartons, 2));
 
                 if (item.Cartons != cartons)
