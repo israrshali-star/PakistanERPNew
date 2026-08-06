@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PakistanAccountingERP.Application.Common;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -83,7 +84,8 @@ public class StackLotInventoryService : IStackLotInventoryService
         var fromPurchases = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
-                        && l.VendorBill.Status == BillStatus.Approved
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
                         && l.ItemId != null
                         && l.LotNo != null
                         && l.LotNo != "")
@@ -160,7 +162,8 @@ public class StackLotInventoryService : IStackLotInventoryService
         var purchaseLine = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
-                        && l.VendorBill.Status == BillStatus.Approved
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
                         && l.ItemId != null
                         && (itemCodeUpper == null || l.Item!.ItemCode.ToUpper() == itemCodeUpper)
                         && ((l.LotNo != null && l.LotNo.ToUpper() == lotUpper)
@@ -264,7 +267,8 @@ public class StackLotInventoryService : IStackLotInventoryService
         var stacks = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
-                        && l.VendorBill.Status == BillStatus.Approved
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
                         && l.ItemId == itemId
                         && ((l.LotNo != null && l.LotNo.ToUpper() == lotUpper)
                             || (l.LotNo == null && l.Item!.LotNo.ToUpper() == lotUpper)
@@ -332,7 +336,7 @@ public class StackLotInventoryService : IStackLotInventoryService
             {
                 var lotPart = string.IsNullOrWhiteSpace(key.LotNo) ? string.Empty : $" / lot {key.LotNo}";
                 return (false,
-                    $"Stack {key.StackNo}{lotPart} does not exist for item {itemCode}. No approved purchase was found for this stack.");
+                    $"Stack {key.StackNo}{lotPart} does not exist for item {itemCode}. No purchase/opening stock was found for this stack.");
             }
 
             if (requestedWeight > balance.RemainingWeight)
@@ -363,10 +367,12 @@ public class StackLotInventoryService : IStackLotInventoryService
         int? excludeInvoiceId,
         CancellationToken cancellationToken)
     {
+        // Include draft OPEN-STOCK (qty-only: value already in COA opening, bill stays Draft).
         var purchaseQuery = _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
             .Query()
             .Where(l => l.VendorBill.CompanyId == companyId
-                        && l.VendorBill.Status == BillStatus.Approved
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
                         && l.ItemId != null);
 
         var salesQuery = _unitOfWork.Repository<Domain.Entities.SalesInvoiceLine>()
@@ -420,7 +426,7 @@ public class StackLotInventoryService : IStackLotInventoryService
                         && t.ReferenceNo != null
                         && !t.ReferenceNo.StartsWith("BILL-")
                         && !t.ReferenceNo.StartsWith("INV-")
-                        // Opening stock is already counted from the approved OPEN-STOCK vendor bill lines.
+                        // Opening stock is counted from OPEN-STOCK vendor bill lines (incl. Draft qty-only).
                         && !t.ReferenceNo.StartsWith("OPEN-STOCK")
                         && !t.ReferenceNo.StartsWith("OPENING-"));
 

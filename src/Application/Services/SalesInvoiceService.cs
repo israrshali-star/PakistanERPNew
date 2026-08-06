@@ -1677,12 +1677,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
     public async Task<DeliveryChallanPrintDto?> GetDeliveryChallanDataAsync(
         int id,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool useUrdu = false)
     {
         if (!TryGetCompanyId(out var companyId, out _))
         {
             return null;
         }
+
+        useUrdu = useUrdu && TradeInvoiceLayout.SupportsUrduLedger(companyId);
 
         var invoice = await _unitOfWork.Repository<SalesInvoice>()
             .Query()
@@ -1695,6 +1698,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 SellerAddress = i.Company.Address,
                 SellerPhone = i.Company.Phone,
                 BuyerName = i.Customer.BuyerName,
+                BuyerNameUrdu = i.Customer.BuyerNameUrdu,
                 BuyerNtn = i.BuyerNTN ?? i.Customer.NTN,
                 BuyerCnic = i.BuyerCNIC ?? i.Customer.CNIC,
                 BuyerAddress = i.ShippingAddress,
@@ -1741,13 +1745,13 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             return new DeliveryChallanPrintLineDto(
                 index + 1,
-                itemDescription,
+                MaybeUrduText(itemDescription, useUrdu),
                 l.LotNo,
                 l.StackNo,
                 Math.Round(l.Cartons, 2),
                 Math.Round(l.Quantity, 2),
                 l.Unit,
-                l.CartonDescription);
+                MaybeUrduOptional(l.CartonDescription, useUrdu));
         }).ToList();
 
         if (transportationChargesReceive > 0m)
@@ -1762,7 +1766,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             lines.Add(new DeliveryChallanPrintLineDto(
                 lines.Count + 1,
-                transportDescription,
+                MaybeUrduText(transportDescription, useUrdu),
                 null,
                 null,
                 0m,
@@ -1773,13 +1777,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 true));
         }
 
+        var buyerName = RomanUrduTransliterator.ResolveDisplayName(
+            invoice.BuyerName,
+            invoice.BuyerNameUrdu,
+            useUrdu);
+
         return new DeliveryChallanPrintDto(
             invoice.InvoiceNumber,
             invoice.InvoiceDate,
             invoice.SellerName,
             invoice.SellerAddress,
             invoice.SellerPhone,
-            invoice.BuyerName,
+            buyerName,
             invoice.BuyerAddress,
             invoice.BuyerProvince,
             invoice.BuyerNtn,
@@ -1787,12 +1796,14 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             DateTime.Now,
             lines,
             transportationChargesReceive,
-            companyId);
+            companyId,
+            useUrdu);
     }
 
     public async Task<TradeInvoicePrintDto?> GetTradeInvoicePrintDataAsync(
         int id,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool useUrdu = false)
     {
         if (!TryGetCompanyId(out var companyId, out _))
         {
@@ -1803,6 +1814,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         {
             return null;
         }
+
+        useUrdu = useUrdu && TradeInvoiceLayout.SupportsUrduLedger(companyId);
 
         var invoice = await _unitOfWork.Repository<SalesInvoice>()
             .Query()
@@ -1816,6 +1829,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.CustomerId,
                 SellerName = i.Company.CompanyName,
                 CustomerName = i.Customer.BuyerName,
+                CustomerNameUrdu = i.Customer.BuyerNameUrdu,
                 i.SubTotal,
                 i.DiscountAmount,
                 i.TaxAmount,
@@ -1847,13 +1861,14 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         var lines = invoice.Lines.Select(l =>
         {
             var amount = TradeInvoiceLayout.LineAmountExTax(l.Quantity, l.Price, l.Discount);
+            var description = TradeInvoiceLayout.BuildDescription(
+                l.ProductDescription,
+                l.ItemDescription,
+                l.LotNo,
+                l.StackNo);
             return new TradeInvoicePrintLineDto(
-                TradeInvoiceLayout.BuildDescription(
-                    l.ProductDescription,
-                    l.ItemDescription,
-                    l.LotNo,
-                    l.StackNo),
-                l.CartonDescription,
+                MaybeUrduText(description, useUrdu),
+                MaybeUrduOptional(l.CartonDescription, useUrdu),
                 Math.Round(l.Cartons, 2),
                 Math.Round(l.Quantity, 2),
                 Math.Round(l.Price, 2),
@@ -1874,19 +1889,33 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.InvoiceDate,
             cancellationToken);
 
+        var customerName = RomanUrduTransliterator.ResolveDisplayName(
+            invoice.CustomerName,
+            invoice.CustomerNameUrdu,
+            useUrdu);
+
         return new TradeInvoicePrintDto(
             invoice.InvoiceNumber,
             invoice.InvoiceDate,
             invoice.SellerName,
-            invoice.CustomerName,
+            customerName,
             Math.Round(customerBalance, 2),
             taxableTotal,
             combinedTaxAmount,
             taxRateDisplay,
             Math.Round(invoice.NetTotal, 2),
             DateTime.Now,
-            lines);
+            lines,
+            useUrdu);
     }
+
+    private static string MaybeUrduText(string text, bool useUrdu) =>
+        useUrdu ? RomanUrduTransliterator.ToUrduScript(text) : text;
+
+    private static string? MaybeUrduOptional(string? text, bool useUrdu) =>
+        string.IsNullOrWhiteSpace(text)
+            ? text
+            : MaybeUrduText(text, useUrdu);
 
     public async Task<IReadOnlyList<SubmittedInvoicePrintListItemDto>> GetSubmittedInvoicesForPrintAsync(
         string? buyerName,

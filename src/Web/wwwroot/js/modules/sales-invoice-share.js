@@ -54,6 +54,26 @@
         return digits;
     }
 
+    function isUrduSelected() {
+        return !!(currentShareInfo
+            && currentShareInfo.supportsUrduInvoice
+            && $('#share-urdu').is(':checked'));
+    }
+
+    function urduQuery() {
+        return isUrduSelected() ? '?urdu=true' : '';
+    }
+
+    function resolveWhatsAppMessage() {
+        if (!currentShareInfo) {
+            return '';
+        }
+        if (isUrduSelected() && currentShareInfo.whatsAppMessageUrdu) {
+            return currentShareInfo.whatsAppMessageUrdu;
+        }
+        return currentShareInfo.whatsAppMessage || '';
+    }
+
     function showShareAlert(type, message) {
         $('#share-error, #share-success').addClass('d-none');
         if (type === 'success') {
@@ -69,10 +89,17 @@
         $('#share-customer-email').val(info.customerEmail || '');
         $('#share-customer-whatsapp').val(info.customerMobile || info.customerPhone || '');
         $('#share-customer-message').val('');
+        $('#share-urdu').prop('checked', false);
         $('#share-invoice-summary').text(
             info.customerName + ' · ' + info.invoiceNumber +
             ' · ' + formatDate(info.invoiceDate) + ' · ' + formatCurrency(info.netTotal)
         );
+
+        if (info.supportsUrduInvoice) {
+            $('#share-urdu-wrap').removeClass('d-none');
+        } else {
+            $('#share-urdu-wrap').addClass('d-none');
+        }
 
         if (!info.emailConfigured) {
             $('#share-email-hint').text('SMTP is not configured in appsettings.json. Email sending is disabled until SMTP is set up.');
@@ -104,15 +131,11 @@
     }
 
     function downloadInvoicePdf(invoiceId) {
-        if (window.SalesInvoiceFbr && window.SalesInvoiceFbr.downloadInvoicePdf) {
-            window.SalesInvoiceFbr.downloadInvoicePdf(invoiceId);
-            return;
-        }
-        window.open('/api/sales-invoices/' + invoiceId + '/pdf', '_blank');
+        window.open('/api/sales-invoices/' + invoiceId + '/pdf' + urduQuery(), '_blank');
     }
 
     function fetchInvoicePdfBlob(invoiceId) {
-        return fetch('/api/sales-invoices/' + invoiceId + '/pdf')
+        return fetch('/api/sales-invoices/' + invoiceId + '/pdf' + urduQuery())
             .then(function (response) {
                 if (!response.ok) {
                     return response.json().then(function (body) {
@@ -135,7 +158,7 @@
         }
 
         var phone = normalizeWhatsAppPhone($('#share-customer-whatsapp').val());
-        var message = currentShareInfo.whatsAppMessage || '';
+        var message = resolveWhatsAppMessage();
         var custom = $('#share-customer-message').val();
         if (custom && custom.trim()) {
             message = custom.trim();
@@ -195,7 +218,8 @@
             contentType: 'application/json',
             data: JSON.stringify({
                 toEmail: email.trim(),
-                message: $('#share-customer-message').val() || null
+                message: $('#share-customer-message').val() || null,
+                useUrdu: isUrduSelected()
             })
         })
             .done(function (result) {
@@ -212,7 +236,7 @@
     }
 
     function downloadDeliveryChallan(invoiceId) {
-        window.open('/api/sales-invoices/' + invoiceId + '/delivery-challan-pdf', '_blank');
+        window.open('/api/sales-invoices/' + invoiceId + '/delivery-challan-pdf' + urduQuery(), '_blank');
     }
 
     function sendChallanEmail() {
@@ -236,7 +260,8 @@
             contentType: 'application/json',
             data: JSON.stringify({
                 toEmail: email.trim(),
-                message: $('#share-customer-message').val() || null
+                message: $('#share-customer-message').val() || null,
+                useUrdu: isUrduSelected()
             })
         })
             .done(function (result) {
@@ -331,7 +356,7 @@
                         url: '/api/sales-invoices/' + invoiceId + '/email-challan',
                         method: 'POST',
                         contentType: 'application/json',
-                        data: JSON.stringify({ toEmail: email, message: null })
+                        data: JSON.stringify({ toEmail: email, message: null, useUrdu: false })
                     })
                         .done(function (result) {
                             alert(result.message || 'Delivery challan emailed to godown.');

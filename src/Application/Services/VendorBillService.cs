@@ -199,9 +199,7 @@ public partial class VendorBillService : IVendorBillService
             .Select(l =>
             {
                 var lineEntity = lineEntities.First(x => x.Id == l.Id);
-                var soldQuantity = lineEntity.ItemId is > 0
-                    ? inventoryContext?.SoldQuantityByItemId.GetValueOrDefault(lineEntity.ItemId.Value) ?? 0m
-                    : 0m;
+                var soldQuantity = inventoryContext?.GetSoldQuantity(lineEntity) ?? 0m;
                 var isLocked = bill.Status == BillStatus.Draft && IsLineSold(lineEntity, inventoryContext);
 
                 return new VendorBillLineDto(
@@ -681,6 +679,26 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillActionResult(false, "Bill has no line items.", null);
         }
 
+        // Qty-only opening stock: inventory value already sits in COA opening — approve without GL.
+        if (string.Equals(bill.BillNumber, AppConstants.OpeningStockBillNumber, StringComparison.OrdinalIgnoreCase)
+            && Math.Round(bill.NetAmount, 2) == 0m)
+        {
+            var nowQtyOnly = DateTime.UtcNow;
+            var userQtyOnly = _currentUser.UserName ?? "system";
+            bill.Status = BillStatus.Approved;
+            bill.JournalEntryId = null;
+            bill.UpdatedAt = nowQtyOnly;
+            bill.UpdatedBy = userQtyOnly;
+            _unitOfWork.Repository<VendorBill>().Update(bill);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var qtyOnlyDetail = await GetDetailAsync(id, cancellationToken);
+            return new VendorBillActionResult(
+                true,
+                "Opening stock approved (quantity only; inventory value remains in chart opening balance).",
+                qtyOnlyDetail);
+        }
+
         if (string.IsNullOrWhiteSpace(bill.RefNo))
         {
             return new VendorBillActionResult(
@@ -1019,7 +1037,7 @@ public partial class VendorBillService : IVendorBillService
         foreach (var transaction in inventoryTransactions)
         {
             if (inventoryContext is not null
-                && inventoryContext.SoldQuantityByItemId.GetValueOrDefault(transaction.ItemId) > 0.01m)
+                && inventoryContext.GetSoldQuantity(transaction.ItemId, transaction.StackNo, transaction.LotNo) > 0.01m)
             {
                 continue;
             }
@@ -1581,7 +1599,23 @@ public partial class VendorBillService : IVendorBillService
         }
     }
 
-    private sealed record BillInventoryContext(Dictionary<int, decimal> SoldQuantityByItemId);
+    private sealed class BillInventoryContext
+    {
+        private readonly Dictionary<string, decimal> _soldByStackLot;
+
+        public BillInventoryContext(Dictionary<string, decimal> soldByStackLot)
+        {
+            _soldByStackLot = soldByStackLot;
+        }
+
+        public decimal GetSoldQuantity(VendorBillLine line) =>
+            line.ItemId is > 0
+                ? GetSoldQuantity(line.ItemId.Value, line.StackNo, line.LotNo)
+                : 0m;
+
+        public decimal GetSoldQuantity(int itemId, string? stackNo, string? lotNo) =>
+            _soldByStackLot.GetValueOrDefault(BillLineStockKey(itemId, stackNo, lotNo));
+    }
 
     private async Task<BillInventoryContext?> GetBillInventoryContextAsync(
         int companyId,
@@ -1600,40 +1634,52 @@ public partial class VendorBillService : IVendorBillService
             return null;
         }
 
-        var billQtyByItemId = lines
-            .Where(l => l.ItemId is > 0)
-            .GroupBy(l => l.ItemId!.Value)
-            .ToDictionary(g => g.Key, g => Math.Round(g.Sum(l => l.Quantity), 2));
-
-        var stockByItemId = await BuildStockByItemIdAsync(companyId, itemIds, cancellationToken);
-        var soldQuantityByItemId = new Dictionary<int, decimal>();
-
-        foreach (var itemId in itemIds)
-        {
-            var billQty = billQtyByItemId.GetValueOrDefault(itemId);
-            if (billQty <= 0m)
+        // Sold qty is stack/lot specific so unsold opening stacks are not marked locked.
+        var sales = await _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query()
+            .Where(l => itemIds.Contains(l.ItemId)
+                        && l.SalesInvoice.CompanyId == companyId
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted)
+            .Select(l => new
             {
-                continue;
-            }
+                l.ItemId,
+                l.StackNo,
+                l.LotNo,
+                l.Quantity,
+                l.SalesInvoice.InvoiceType
+            })
+            .ToListAsync(cancellationToken);
 
-            var totalStock = stockByItemId.GetValueOrDefault(itemId);
-            var stockWithoutBill = totalStock - billQty;
-            var sold = stockWithoutBill < -0.01m
-                ? Math.Min(billQty, Math.Round(-stockWithoutBill, 2))
-                : 0m;
-            soldQuantityByItemId[itemId] = sold;
+        var soldByStackLot = sales
+            .GroupBy(l => BillLineStockKey(l.ItemId, l.StackNo, l.LotNo))
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(
+                    g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.Quantity : x.Quantity),
+                    2));
+
+        // Cap sold at each bill line qty (same stack may also appear on later purchases).
+        var perLine = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in lines.Where(l => l.ItemId is > 0))
+        {
+            var key = BillLineStockKey(line.ItemId!.Value, line.StackNo, line.LotNo);
+            var soldAgainstStack = Math.Max(0m, soldByStackLot.GetValueOrDefault(key));
+            perLine[key] = Math.Min(Math.Round(line.Quantity, 2), soldAgainstStack);
         }
 
-        return new BillInventoryContext(soldQuantityByItemId);
+        return new BillInventoryContext(perLine);
     }
 
     private static bool IsLineSold(VendorBillLine line, BillInventoryContext? context) =>
         context is not null
         && line.ItemId is > 0
-        && context.SoldQuantityByItemId.GetValueOrDefault(line.ItemId.Value) > 0.01m;
+        && context.GetSoldQuantity(line) > 0.01m;
 
     private static bool IsLineEditable(VendorBillLine line, BillInventoryContext? context) =>
         !IsLineSold(line, context);
+
+    private static string BillLineStockKey(int itemId, string? stackNo, string? lotNo) =>
+        $"{itemId}|{NormalizeOptional(stackNo).ToUpperInvariant()}|{NormalizeOptional(lotNo).ToUpperInvariant()}";
 
     private static bool LinesEqual(VendorBillLineSaveRequest request, VendorBillLine existing) =>
         request.ItemId == existing.ItemId

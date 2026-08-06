@@ -18,6 +18,7 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
     static DeliveryChallanPdfService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        _ = UrduPdfFont.Family;
     }
 
     public byte[] GeneratePdf(DeliveryChallanPrintDto model) =>
@@ -25,24 +26,29 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             ? GenerateTradeChallanPdf(model)
             : GenerateStandardChallanPdf(model);
 
-    private static byte[] GenerateTradeChallanPdf(DeliveryChallanPrintDto model) =>
-        Document.Create(container =>
+    private static byte[] GenerateTradeChallanPdf(DeliveryChallanPrintDto model)
+    {
+        var labels = TradeDocumentPdfLabels.For(model.UseUrdu);
+        var fontFamily = model.UseUrdu ? UrduPdfFont.Family : "Arial";
+
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(24);
-                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("Arial"));
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily(fontFamily));
 
                 page.Content().Column(column =>
                 {
-                    column.Item().AlignCenter().Text("Delivery Challan").Bold().FontSize(14);
-                    column.Item().PaddingTop(10).Element(c => ComposeTradeHeader(c, model));
-                    column.Item().PaddingTop(10).Element(c => ComposeTradeLinesTable(c, model));
-                    column.Item().PaddingTop(16).Element(ComposeTradeSignature);
+                    column.Item().AlignCenter().Text(labels.DeliveryChallan).Bold().FontSize(14);
+                    column.Item().PaddingTop(10).Element(c => ComposeTradeHeader(c, model, labels));
+                    column.Item().PaddingTop(10).Element(c => ComposeTradeLinesTable(c, model, labels));
+                    column.Item().PaddingTop(16).Element(c => ComposeTradeSignature(c, labels));
                 });
             });
         }).GeneratePdf();
+    }
 
     private static byte[] GenerateStandardChallanPdf(DeliveryChallanPrintDto model) =>
         Document.Create(container =>
@@ -66,14 +72,17 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             });
         }).GeneratePdf();
 
-    private static void ComposeTradeHeader(IContainer container, DeliveryChallanPrintDto model)
+    private static void ComposeTradeHeader(
+        IContainer container,
+        DeliveryChallanPrintDto model,
+        TradeDocumentPdfLabels labels)
     {
         container.Row(row =>
         {
             row.RelativeItem().Border(1).BorderColor(TradeBorder).Padding(8).Column(left =>
             {
                 left.Item().Text(model.BuyerName).Bold().FontSize(10);
-                left.Item().PaddingTop(6).Text("Shipping Address.").Bold();
+                left.Item().PaddingTop(6).Text(labels.ShippingAddress).Bold();
                 left.Item().PaddingTop(4).Text(
                     string.IsNullOrWhiteSpace(model.BuyerAddress) ? "—" : model.BuyerAddress);
             });
@@ -82,19 +91,22 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             {
                 right.Item().Row(r =>
                 {
-                    r.ConstantItem(48).Text("Date:").SemiBold();
+                    r.ConstantItem(48).Text(labels.Date).SemiBold();
                     r.RelativeItem().Text(model.InvoiceDate.ToString("dd/MM/yyyy"));
                 });
                 right.Item().PaddingTop(4).Row(r =>
                 {
-                    r.ConstantItem(48).Text("Invoice #:").SemiBold();
+                    r.ConstantItem(48).Text(labels.InvoiceNumber).SemiBold();
                     r.RelativeItem().Text(model.InvoiceNumber);
                 });
             });
         });
     }
 
-    private static void ComposeTradeLinesTable(IContainer container, DeliveryChallanPrintDto model)
+    private static void ComposeTradeLinesTable(
+        IContainer container,
+        DeliveryChallanPrintDto model,
+        TradeDocumentPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -111,13 +123,13 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
 
             table.Header(header =>
             {
-                header.Cell().Element(TradeHeaderCell).Text("Item Description");
-                header.Cell().Element(TradeHeaderCell).Text("Lot No.");
-                header.Cell().Element(TradeHeaderCell).Text("Stack No.");
-                header.Cell().Element(TradeHeaderCell).Text("CTN Description");
-                header.Cell().Element(TradeHeaderCell).AlignRight().Text("No of CTN");
-                header.Cell().Element(TradeHeaderCell).AlignRight().Text("QTY");
-                header.Cell().Element(TradeHeaderCell).AlignRight().Text("Amount");
+                header.Cell().Element(TradeHeaderCell).Text(labels.ItemDescription);
+                header.Cell().Element(TradeHeaderCell).Text(labels.LotNo);
+                header.Cell().Element(TradeHeaderCell).Text(labels.StackNo);
+                header.Cell().Element(TradeHeaderCell).Text(labels.CartonDescription);
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text(labels.NoOfCtn);
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text(labels.Qty);
+                header.Cell().Element(TradeHeaderCell).AlignRight().Text(labels.Amount);
             });
 
             foreach (var line in model.Lines)
@@ -138,12 +150,12 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         });
     }
 
-    private static void ComposeTradeSignature(IContainer container)
+    private static void ComposeTradeSignature(IContainer container, TradeDocumentPdfLabels labels)
     {
         container.AlignRight().Width(180).Column(col =>
         {
             col.Item().PaddingTop(24).BorderTop(1).BorderColor(TradeBorder).PaddingTop(4)
-                .AlignCenter().Text("Customer Signature").FontSize(9);
+                .AlignCenter().Text(labels.CustomerSignature).FontSize(9);
         });
     }
 

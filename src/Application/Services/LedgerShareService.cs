@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -51,9 +52,11 @@ public class LedgerShareService : ILedgerShareService
         int customerId,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        bool useUrdu = false,
         CancellationToken cancellationToken = default)
     {
-        var pdfModel = await BuildCustomerPdfModelAsync(customerId, fromDate, toDate, cancellationToken);
+        useUrdu = ResolveUseUrdu(useUrdu);
+        var pdfModel = await BuildCustomerPdfModelAsync(customerId, fromDate, toDate, useUrdu, cancellationToken);
         return pdfModel is null ? null : _ledgerPdfService.GeneratePdf(pdfModel);
     }
 
@@ -61,9 +64,11 @@ public class LedgerShareService : ILedgerShareService
         int vendorId,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        bool useUrdu = false,
         CancellationToken cancellationToken = default)
     {
-        var pdfModel = await BuildVendorPdfModelAsync(vendorId, fromDate, toDate, cancellationToken);
+        useUrdu = ResolveUseUrdu(useUrdu);
+        var pdfModel = await BuildVendorPdfModelAsync(vendorId, fromDate, toDate, useUrdu, cancellationToken);
         return pdfModel is null ? null : _ledgerPdfService.GeneratePdf(pdfModel);
     }
 
@@ -77,6 +82,7 @@ public class LedgerShareService : ILedgerShareService
             return new LedgerShareActionResult(false, "Recipient email is required.");
         }
 
+        var useUrdu = ResolveUseUrdu(request.UseUrdu);
         var shareInfo = await GetCustomerShareInfoAsync(
             customerId,
             request.FromDate,
@@ -91,13 +97,14 @@ public class LedgerShareService : ILedgerShareService
             customerId,
             request.FromDate,
             request.ToDate,
+            useUrdu,
             cancellationToken);
         if (pdfBytes is null)
         {
             return new LedgerShareActionResult(false, "Could not generate ledger PDF.");
         }
 
-        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, cancellationToken);
+        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, useUrdu, cancellationToken);
     }
 
     public async Task<LedgerShareActionResult> SendVendorLedgerEmailAsync(
@@ -110,6 +117,7 @@ public class LedgerShareService : ILedgerShareService
             return new LedgerShareActionResult(false, "Recipient email is required.");
         }
 
+        var useUrdu = ResolveUseUrdu(request.UseUrdu);
         var shareInfo = await GetVendorShareInfoAsync(
             vendorId,
             request.FromDate,
@@ -124,14 +132,18 @@ public class LedgerShareService : ILedgerShareService
             vendorId,
             request.FromDate,
             request.ToDate,
+            useUrdu,
             cancellationToken);
         if (pdfBytes is null)
         {
             return new LedgerShareActionResult(false, "Could not generate ledger PDF.");
         }
 
-        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, cancellationToken);
+        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, useUrdu, cancellationToken);
     }
+
+    private bool ResolveUseUrdu(bool requested) =>
+        requested && TradeInvoiceLayout.SupportsUrduLedger(_currentCompany.GetRequiredCompanyId());
 
     private async Task<LedgerShareInfoDto?> BuildShareInfoAsync(
         string partyType,
@@ -152,6 +164,9 @@ public class LedgerShareService : ILedgerShareService
             .Select(c => c.CompanyName)
             .FirstOrDefaultAsync(cancellationToken) ?? "Company";
 
+        var supportsUrdu = TradeInvoiceLayout.SupportsUrduLedger(companyId.Value);
+        var isStatement = fromDate.HasValue && toDate.HasValue;
+
         if (partyType == "customer")
         {
             var customer = await _customerService.GetByIdAsync(partyId, cancellationToken);
@@ -161,9 +176,17 @@ public class LedgerShareService : ILedgerShareService
             }
 
             var closing = await ResolveCustomerClosingBalanceAsync(partyId, fromDate, toDate, cancellationToken);
-            var periodLabel = BuildPeriodLabel(fromDate, toDate);
-            var title = fromDate.HasValue && toDate.HasValue ? "Customer Statement" : "Customer Ledger";
+            var en = LedgerPdfLabels.English;
+            var ur = LedgerPdfLabels.Urdu;
+            var periodEn = en.BuildPeriodLabel(fromDate, toDate);
+            var periodUr = ur.BuildPeriodLabel(fromDate, toDate);
+            var titleEn = en.TitleFor(partyType, isStatement);
+            var titleUr = ur.TitleFor(partyType, isStatement);
 
+            var urduPartyName = RomanUrduTransliterator.ResolveDisplayName(
+                customer.BuyerName,
+                customer.BuyerNameUrdu,
+                useUrdu: true);
             return new LedgerShareInfoDto(
                 partyType,
                 partyId,
@@ -173,12 +196,17 @@ public class LedgerShareService : ILedgerShareService
                 customer.Mobile,
                 customer.Phone,
                 companyName,
-                periodLabel,
+                periodEn,
                 closing,
-                BuildWhatsAppMessage(title, customer.BuyerName, customer.BuyerId, periodLabel, closing, companyName),
+                BuildWhatsAppMessage(en, titleEn, customer.BuyerName, customer.BuyerId, periodEn, closing, companyName),
                 _emailSender.IsConfigured,
                 fromDate?.Date,
-                toDate?.Date);
+                toDate?.Date,
+                supportsUrdu,
+                supportsUrdu
+                    ? BuildWhatsAppMessage(ur, titleUr, urduPartyName, customer.BuyerId, periodUr, closing, companyName)
+                    : null,
+                customer.BuyerNameUrdu);
         }
 
         var vendor = await _vendorService.GetByIdAsync(partyId, cancellationToken);
@@ -188,8 +216,16 @@ public class LedgerShareService : ILedgerShareService
         }
 
         var vendorClosing = await ResolveVendorClosingBalanceAsync(partyId, fromDate, toDate, cancellationToken);
-        var vendorPeriod = BuildPeriodLabel(fromDate, toDate);
-        var vendorTitle = fromDate.HasValue && toDate.HasValue ? "Vendor Statement" : "Vendor Ledger";
+        var labelsEn = LedgerPdfLabels.English;
+        var labelsUr = LedgerPdfLabels.Urdu;
+        var vendorPeriodEn = labelsEn.BuildPeriodLabel(fromDate, toDate);
+        var vendorPeriodUr = labelsUr.BuildPeriodLabel(fromDate, toDate);
+        var vendorTitleEn = labelsEn.TitleFor(partyType, isStatement);
+        var vendorTitleUr = labelsUr.TitleFor(partyType, isStatement);
+        var urduVendorName = RomanUrduTransliterator.ResolveDisplayName(
+            vendor.VendorName,
+            vendor.VendorNameUrdu,
+            useUrdu: true);
 
         return new LedgerShareInfoDto(
             partyType,
@@ -200,12 +236,17 @@ public class LedgerShareService : ILedgerShareService
             null,
             vendor.Phone,
             companyName,
-            vendorPeriod,
+            vendorPeriodEn,
             vendorClosing,
-            BuildWhatsAppMessage(vendorTitle, vendor.VendorName, vendor.VendorCode, vendorPeriod, vendorClosing, companyName),
+            BuildWhatsAppMessage(labelsEn, vendorTitleEn, vendor.VendorName, vendor.VendorCode, vendorPeriodEn, vendorClosing, companyName),
             _emailSender.IsConfigured,
             fromDate?.Date,
-            toDate?.Date);
+            toDate?.Date,
+            supportsUrdu,
+            supportsUrdu
+                ? BuildWhatsAppMessage(labelsUr, vendorTitleUr, urduVendorName, vendor.VendorCode, vendorPeriodUr, vendorClosing, companyName)
+                : null,
+            vendor.VendorNameUrdu);
     }
 
     private async Task<decimal> ResolveCustomerClosingBalanceAsync(
@@ -252,16 +293,19 @@ public class LedgerShareService : ILedgerShareService
         int customerId,
         DateTime? fromDate,
         DateTime? toDate,
+        bool useUrdu,
         CancellationToken cancellationToken)
     {
         var companyName = await GetCompanyNameAsync(cancellationToken);
+        var labels = LedgerPdfLabels.For(useUrdu);
+        var isStatement = fromDate.HasValue && toDate.HasValue;
 
-        if (fromDate.HasValue && toDate.HasValue)
+        if (isStatement)
         {
             var statement = await _customerService.GetStatementAsync(
                 customerId,
-                fromDate.Value,
-                toDate.Value,
+                fromDate!.Value,
+                toDate!.Value,
                 cancellationToken);
             if (statement is null)
             {
@@ -269,15 +313,16 @@ public class LedgerShareService : ILedgerShareService
             }
 
             return MapCustomerPdf(
-                "Customer Statement",
+                labels.CustomerStatement,
                 companyName,
-                statement.Customer.BuyerName,
+                ResolvePartyName(statement.Customer.BuyerName, statement.Customer.BuyerNameUrdu, useUrdu),
                 statement.Customer.BuyerId,
                 statement.Customer.NTN,
-                $"Period: {statement.FromDate:dd/MM/yyyy} to {statement.ToDate:dd/MM/yyyy}",
+                labels.BuildPeriodLabel(statement.FromDate, statement.ToDate),
                 statement.OpeningBalance,
                 statement.ClosingBalance,
-                statement.Entries);
+                statement.Entries,
+                useUrdu);
         }
 
         var ledger = await _customerService.GetLedgerAsync(customerId, cancellationToken);
@@ -287,31 +332,35 @@ public class LedgerShareService : ILedgerShareService
         }
 
         return MapCustomerPdf(
-            "Customer Ledger",
+            labels.CustomerLedger,
             companyName,
-            ledger.Customer.BuyerName,
+            ResolvePartyName(ledger.Customer.BuyerName, ledger.Customer.BuyerNameUrdu, useUrdu),
             ledger.Customer.BuyerId,
             ledger.Customer.NTN,
-            $"Full ledger as of {DateTime.Today:dd/MM/yyyy}",
+            labels.BuildPeriodLabel(null, null),
             ledger.Customer.OpeningBalance,
             ledger.ClosingBalance,
-            ledger.Entries);
+            ledger.Entries,
+            useUrdu);
     }
 
     private async Task<PartyLedgerPdfDto?> BuildVendorPdfModelAsync(
         int vendorId,
         DateTime? fromDate,
         DateTime? toDate,
+        bool useUrdu,
         CancellationToken cancellationToken)
     {
         var companyName = await GetCompanyNameAsync(cancellationToken);
+        var labels = LedgerPdfLabels.For(useUrdu);
+        var isStatement = fromDate.HasValue && toDate.HasValue;
 
-        if (fromDate.HasValue && toDate.HasValue)
+        if (isStatement)
         {
             var statement = await _vendorService.GetStatementAsync(
                 vendorId,
-                fromDate.Value,
-                toDate.Value,
+                fromDate!.Value,
+                toDate!.Value,
                 cancellationToken);
             if (statement is null)
             {
@@ -319,15 +368,16 @@ public class LedgerShareService : ILedgerShareService
             }
 
             return MapVendorPdf(
-                "Vendor Statement",
+                labels.VendorStatement,
                 companyName,
-                statement.Vendor.VendorName,
+                ResolvePartyName(statement.Vendor.VendorName, statement.Vendor.VendorNameUrdu, useUrdu),
                 statement.Vendor.VendorCode,
                 statement.Vendor.NTN,
-                $"Period: {statement.FromDate:dd/MM/yyyy} to {statement.ToDate:dd/MM/yyyy}",
+                labels.BuildPeriodLabel(statement.FromDate, statement.ToDate),
                 statement.OpeningBalance,
                 statement.ClosingBalance,
-                statement.Entries);
+                statement.Entries,
+                useUrdu);
         }
 
         var ledger = await _vendorService.GetLedgerAsync(vendorId, cancellationToken);
@@ -337,15 +387,16 @@ public class LedgerShareService : ILedgerShareService
         }
 
         return MapVendorPdf(
-            "Vendor Ledger",
+            labels.VendorLedger,
             companyName,
-            ledger.Vendor.VendorName,
+            ResolvePartyName(ledger.Vendor.VendorName, ledger.Vendor.VendorNameUrdu, useUrdu),
             ledger.Vendor.VendorCode,
             ledger.Vendor.NTN,
-            $"Full ledger as of {DateTime.Today:dd/MM/yyyy}",
+            labels.BuildPeriodLabel(null, null),
             ledger.Vendor.OpeningBalance,
             ledger.ClosingBalance,
-            ledger.Entries);
+            ledger.Entries,
+            useUrdu);
     }
 
     private async Task<string> GetCompanyNameAsync(CancellationToken cancellationToken)
@@ -362,35 +413,59 @@ public class LedgerShareService : ILedgerShareService
         LedgerShareInfoDto shareInfo,
         LedgerEmailShareRequest request,
         byte[] pdfBytes,
+        bool useUrdu,
         CancellationToken cancellationToken)
     {
-        var title = shareInfo.PeriodLabel?.StartsWith("Period:", StringComparison.Ordinal) == true
-            ? (shareInfo.PartyType == "customer" ? "Customer Statement" : "Vendor Statement")
-            : (shareInfo.PartyType == "customer" ? "Customer Ledger" : "Vendor Ledger");
-
-        var fileName = SanitizeFileName($"{shareInfo.PartyCode}-{title.Replace(' ', '-')}.pdf");
-        var subject = $"{title} - {shareInfo.PartyName} - {shareInfo.CompanyName}";
-        var periodText = shareInfo.PeriodLabel ?? "Full ledger";
+        var labels = LedgerPdfLabels.For(useUrdu);
+        var isStatement = shareInfo.FromDate.HasValue && shareInfo.ToDate.HasValue;
+        var title = labels.TitleFor(shareInfo.PartyType, isStatement);
+        var periodText = labels.BuildPeriodLabel(shareInfo.FromDate, shareInfo.ToDate);
+        var partyName = RomanUrduTransliterator.ResolveDisplayName(
+            shareInfo.PartyName,
+            shareInfo.PartyNameUrdu,
+            useUrdu);
+        var fileName = SanitizeFileName(
+            $"{shareInfo.PartyCode}-{title.Replace(' ', '-')}{(useUrdu ? "-ur" : string.Empty)}.pdf");
+        var subject = $"{title} - {partyName} - {shareInfo.CompanyName}";
         var balance = shareInfo.ClosingBalance.ToString("N2", CultureInfo.GetCultureInfo("en-PK"));
 
-        var bodyIntro = string.IsNullOrWhiteSpace(request.Message)
-            ? $"Dear {shareInfo.PartyName},<br/><br/>Please find attached your {title.ToLowerInvariant()}."
-            : System.Net.WebUtility.HtmlEncode(request.Message).Replace("\n", "<br/>", StringComparison.Ordinal);
+        string bodyIntro;
+        if (!string.IsNullOrWhiteSpace(request.Message))
+        {
+            bodyIntro = System.Net.WebUtility.HtmlEncode(request.Message)
+                .Replace("\n", "<br/>", StringComparison.Ordinal);
+        }
+        else if (useUrdu)
+        {
+            bodyIntro =
+                $"{labels.Dear} {System.Net.WebUtility.HtmlEncode(partyName)},<br/><br/>" +
+                $"{labels.PleaseFindAttached}۔";
+        }
+        else
+        {
+            bodyIntro =
+                $"Dear {System.Net.WebUtility.HtmlEncode(partyName)},<br/><br/>" +
+                $"Please find attached your {title.ToLowerInvariant()}.";
+        }
 
         var html = new StringBuilder()
-            .Append("<div style=\"font-family:Arial,sans-serif;font-size:14px;\">")
+            .Append(useUrdu
+                ? "<div style=\"font-family:'Urdu Typesetting','Nirmala UI',Arial,sans-serif;font-size:14px;direction:rtl;text-align:right;\">"
+                : "<div style=\"font-family:Arial,sans-serif;font-size:14px;\">")
             .Append(bodyIntro)
             .Append("<br/><br/>")
-            .Append($"<strong>Party:</strong> {System.Net.WebUtility.HtmlEncode(shareInfo.PartyName)} ({System.Net.WebUtility.HtmlEncode(shareInfo.PartyCode)})<br/>")
+            .Append($"<strong>{labels.Party}:</strong> {System.Net.WebUtility.HtmlEncode(partyName)} ({System.Net.WebUtility.HtmlEncode(shareInfo.PartyCode)})<br/>")
             .Append($"<strong>{periodText}</strong><br/>")
-            .Append($"<strong>Closing balance:</strong> PKR {balance}")
-            .Append("<br/><br/>Regards,<br/>")
+            .Append($"<strong>{labels.ClosingBalance}:</strong> PKR {balance}")
+            .Append($"<br/><br/>{labels.Regards}<br/>")
             .Append(System.Net.WebUtility.HtmlEncode(shareInfo.CompanyName))
             .Append("</div>")
             .ToString();
 
         var plain = string.IsNullOrWhiteSpace(request.Message)
-            ? $"Dear {shareInfo.PartyName},\n\nPlease find attached your {title}.\n{periodText}\nClosing balance: PKR {balance}"
+            ? (useUrdu
+                ? $"{labels.Dear} {partyName},\n\n{labels.PleaseFindAttached}.\n{periodText}\n{labels.ClosingBalance}: PKR {balance}"
+                : $"Dear {partyName},\n\nPlease find attached your {title}.\n{periodText}\nClosing balance: PKR {balance}")
             : request.Message;
 
         var result = await _emailSender.SendAsync(
@@ -414,7 +489,8 @@ public class LedgerShareService : ILedgerShareService
         string periodLabel,
         decimal opening,
         decimal closing,
-        IReadOnlyList<CustomerLedgerEntryDto> entries) =>
+        IReadOnlyList<CustomerLedgerEntryDto> entries,
+        bool useUrdu) =>
         new(
             title,
             partyName,
@@ -432,7 +508,8 @@ public class LedgerShareService : ILedgerShareService
                 e.Debit,
                 e.Credit,
                 e.Balance,
-                e.PendingCredit)).ToList());
+                e.PendingCredit)).ToList(),
+            useUrdu);
 
     private static PartyLedgerPdfDto MapVendorPdf(
         string title,
@@ -443,7 +520,8 @@ public class LedgerShareService : ILedgerShareService
         string periodLabel,
         decimal opening,
         decimal closing,
-        IReadOnlyList<VendorLedgerEntryDto> entries) =>
+        IReadOnlyList<VendorLedgerEntryDto> entries,
+        bool useUrdu) =>
         new(
             title,
             partyName,
@@ -460,14 +538,14 @@ public class LedgerShareService : ILedgerShareService
                 e.Description,
                 e.Debit,
                 e.Credit,
-                e.Balance)).ToList());
+                e.Balance)).ToList(),
+            useUrdu);
 
-    private static string? BuildPeriodLabel(DateTime? fromDate, DateTime? toDate) =>
-        fromDate.HasValue && toDate.HasValue
-            ? $"Period: {fromDate.Value:dd/MM/yyyy} to {toDate.Value:dd/MM/yyyy}"
-            : $"Full ledger as of {DateTime.Today:dd/MM/yyyy}";
+    private static string ResolvePartyName(string partyName, string? partyNameUrdu, bool useUrdu) =>
+        RomanUrduTransliterator.ResolveDisplayName(partyName, partyNameUrdu, useUrdu);
 
     private static string BuildWhatsAppMessage(
+        LedgerPdfLabels labels,
         string title,
         string partyName,
         string partyCode,
@@ -477,13 +555,13 @@ public class LedgerShareService : ILedgerShareService
     {
         var balance = closingBalance.ToString("N2", CultureInfo.GetCultureInfo("en-PK"));
         return
-            $"Dear {partyName},\n\n" +
+            $"{labels.Dear} {partyName},\n\n" +
             $"{title}\n" +
-            $"Code: {partyCode}\n" +
+            $"{labels.Code}: {partyCode}\n" +
             $"{periodLabel}\n" +
-            $"Closing balance: PKR {balance}\n\n" +
-            $"Please find the ledger PDF attached or request it from us.\n\n" +
-            $"Regards,\n{companyName}";
+            $"{labels.ClosingBalance}: PKR {balance}\n\n" +
+            $"{labels.WhatsAppAttachHint}\n\n" +
+            $"{labels.Regards},\n{companyName}";
     }
 
     private static string SanitizeFileName(string fileName)

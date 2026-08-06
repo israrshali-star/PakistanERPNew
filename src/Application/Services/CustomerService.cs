@@ -115,6 +115,7 @@ public partial class CustomerService : ICustomerService
                 c.Id,
                 c.BuyerId,
                 c.BuyerName,
+                c.BuyerNameUrdu,
                 c.OpeningBalance,
                 c.OpeningBalance
                     + c.SalesInvoices
@@ -192,6 +193,7 @@ public partial class CustomerService : ICustomerService
             CompanyId = companyId,
             BuyerId = request.BuyerId.Trim(),
             BuyerName = request.BuyerName.Trim(),
+            BuyerNameUrdu = NormalizeOptionalName(request.BuyerNameUrdu),
             OpeningBalance = request.OpeningBalance,
             Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim()),
             ProvinceId = request.ProvinceId,
@@ -296,6 +298,7 @@ public partial class CustomerService : ICustomerService
 
         entity.BuyerId = request.BuyerId.Trim();
         entity.BuyerName = request.BuyerName.Trim();
+        entity.BuyerNameUrdu = NormalizeOptionalName(request.BuyerNameUrdu);
         entity.OpeningBalance = request.OpeningBalance;
         entity.Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim());
         entity.ProvinceId = request.ProvinceId;
@@ -819,6 +822,9 @@ public partial class CustomerService : ICustomerService
             _logger.LogWarning(ex, "Audit log failed for customer {RecordId}", recordId);
         }
     }
+
+    private static string? NormalizeOptionalName(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     [GeneratedRegex(@"^CUST-(\d+)$", RegexOptions.IgnoreCase)]
     private static partial Regex BuyerIdRegex();

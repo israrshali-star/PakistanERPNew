@@ -4,7 +4,7 @@ public record StockSummaryLineDto(
     int ItemId,
     string ItemCode,
     string ItemName,
-    string? StackNo,
+    string? LotNo,
     string? CategoryName,
     string UnitSymbol,
     decimal CurrentStock,

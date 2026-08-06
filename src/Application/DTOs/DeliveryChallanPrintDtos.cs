@@ -14,7 +14,8 @@ public record DeliveryChallanPrintDto(
     DateTime PrintedAt,
     IReadOnlyList<DeliveryChallanPrintLineDto> Lines,
     decimal TransportationChargesReceive = 0m,
-    int CompanyId = 0);
+    int CompanyId = 0,
+    bool UseUrdu = false);
 
 public record DeliveryChallanPrintLineDto(
     int LineNo,

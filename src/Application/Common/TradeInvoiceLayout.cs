@@ -27,6 +27,10 @@ public static class TradeInvoiceLayout
     /// <summary>Kashaf Polyester — invoice numbers use INV-001 (3 digits), not INV-0001.</summary>
     public const int KashafPolyesterCompanyId = 5;
 
+    /// <summary>Company 3 (MIA) can share customer/vendor ledgers with Urdu PDF labels.</summary>
+    public static bool SupportsUrduLedger(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     /// <summary>
     /// Companies that must submit FBR seller/buyer NTN without the check digit after '-'.
     /// Example: 1234567-8 → 1234567.

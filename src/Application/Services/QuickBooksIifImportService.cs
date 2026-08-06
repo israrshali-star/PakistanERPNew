@@ -1198,7 +1198,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             TotalCartons = pendingLines.Sum(x => Math.Round(x.Row.Cartons, 2)),
             TaxAmount = 0m,
             NetAmount = quantityOnly ? 0m : pendingLines.Sum(x => x.Amount),
-            Status = quantityOnly ? BillStatus.Draft : BillStatus.Approved,
+            Status = BillStatus.Approved,
             CreatedAt = now,
             CreatedBy = ImportUser
         };
@@ -1535,7 +1535,9 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
             bill.NetAmount = 0m;
             bill.TaxAmount = 0m;
-            bill.Status = BillStatus.Draft;
+            // Keep Approved so stack/lot availability and bill lists treat opening stock as posted qty.
+            // Amounts stay zero — inventory value remains in COA opening (no AP/inventory JE).
+            bill.Status = BillStatus.Approved;
             var openingJournalId = bill.JournalEntryId;
             bill.JournalEntryId = null;
             bill.UpdatedAt = now;
@@ -1629,7 +1631,7 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             {
                 Success = true,
                 Message =
-                    $"Opening stock bill {bill.BillNumber} set to Draft with zero amounts; {itemsRecalculated} items recalculated from inventory transactions.",
+                    $"Opening stock bill {bill.BillNumber} set to Approved with zero amounts; {itemsRecalculated} items recalculated from inventory transactions.",
                 BillLinesUpdated = billLinesUpdated,
                 TransactionsUpdated = transactionsUpdated,
                 ItemsRecalculated = itemsRecalculated

@@ -180,15 +180,17 @@ public class VendorsApiController : Controller
         int id,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
-        CancellationToken cancellationToken)
+        [FromQuery] bool urdu = false,
+        CancellationToken cancellationToken = default)
     {
-        var pdf = await _ledgerShareService.GetVendorLedgerPdfAsync(id, from, to, cancellationToken);
+        var pdf = await _ledgerShareService.GetVendorLedgerPdfAsync(id, from, to, urdu, cancellationToken);
         if (pdf is null)
         {
             return NotFound();
         }
 
-        return File(pdf, "application/pdf", $"vendor-ledger-{id}.pdf");
+        var fileName = urdu ? $"vendor-ledger-{id}-ur.pdf" : $"vendor-ledger-{id}.pdf";
+        return File(pdf, "application/pdf", fileName);
     }
 
     [HttpPost("{id:int}/ledger-email")]

@@ -8,6 +8,8 @@ public class Customer : CompanyAuditableEntity
     public int Id { get; set; }
     public string BuyerId { get; set; } = string.Empty;
     public string BuyerName { get; set; } = string.Empty;
+    /// <summary>Optional Urdu-script display name for ledger sharing.</summary>
+    public string? BuyerNameUrdu { get; set; }
     public decimal OpeningBalance { get; set; }
     public string? Address { get; set; }
     public int? ProvinceId { get; set; }

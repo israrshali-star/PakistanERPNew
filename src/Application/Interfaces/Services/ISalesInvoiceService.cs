@@ -44,11 +44,13 @@ public interface ISalesInvoiceService
 
     Task<DeliveryChallanPrintDto?> GetDeliveryChallanDataAsync(
         int id,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool useUrdu = false);
 
     Task<TradeInvoicePrintDto?> GetTradeInvoicePrintDataAsync(
         int id,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool useUrdu = false);
 
     Task<IReadOnlyList<SubmittedInvoicePrintListItemDto>> GetSubmittedInvoicesForPrintAsync(
         string? buyerName,

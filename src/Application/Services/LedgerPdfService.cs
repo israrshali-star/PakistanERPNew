@@ -1,4 +1,5 @@
 using System.Globalization;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using QuestPDF.Fluent;
@@ -14,16 +15,21 @@ public class LedgerPdfService : ILedgerPdfService
     static LedgerPdfService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        _ = UrduPdfFont.Family;
     }
 
-    public byte[] GeneratePdf(PartyLedgerPdfDto model) =>
-        Document.Create(container =>
+    public byte[] GeneratePdf(PartyLedgerPdfDto model)
+    {
+        var labels = LedgerPdfLabels.For(model.UseUrdu);
+        var fontFamily = model.UseUrdu ? UrduPdfFont.Family : "Arial";
+
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4.Landscape());
                 page.Margin(20);
-                page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
+                page.DefaultTextStyle(x => x.FontSize(8).FontFamily(fontFamily));
 
                 page.Content().Column(column =>
                 {
@@ -32,7 +38,7 @@ public class LedgerPdfService : ILedgerPdfService
                     column.Item().PaddingTop(6).Text($"{model.PartyName} ({model.PartyCode})").Bold();
                     if (!string.IsNullOrWhiteSpace(model.PartyNtn))
                     {
-                        column.Item().Text($"NTN: {model.PartyNtn}");
+                        column.Item().Text($"{labels.Ntn}: {model.PartyNtn}");
                     }
 
                     if (!string.IsNullOrWhiteSpace(model.PeriodLabel))
@@ -42,19 +48,21 @@ public class LedgerPdfService : ILedgerPdfService
 
                     column.Item().PaddingTop(4).Row(row =>
                     {
-                        row.RelativeItem().Text($"Opening: {FormatAmount(model.OpeningBalance)}");
-                        row.RelativeItem().AlignRight().Text($"Closing: {FormatAmount(model.ClosingBalance)}").Bold();
+                        row.RelativeItem().Text($"{labels.Opening}: {FormatAmount(model.OpeningBalance)}");
+                        row.RelativeItem().AlignRight()
+                            .Text($"{labels.Closing}: {FormatAmount(model.ClosingBalance)}").Bold();
                     });
 
-                    column.Item().PaddingTop(8).Element(c => ComposeTable(c, model));
+                    column.Item().PaddingTop(8).Element(c => ComposeTable(c, model, labels));
                     column.Item().PaddingTop(8).AlignRight()
-                        .Text($"Printed {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .Text($"{labels.Printed} {DateTime.Now:dd/MM/yyyy HH:mm}")
                         .FontSize(7).FontColor(Colors.Grey.Darken1);
                 });
             });
         }).GeneratePdf();
+    }
 
-    private static void ComposeTable(IContainer container, PartyLedgerPdfDto model)
+    private static void ComposeTable(IContainer container, PartyLedgerPdfDto model, LedgerPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -74,16 +82,16 @@ public class LedgerPdfService : ILedgerPdfService
 
             table.Header(header =>
             {
-                header.Cell().Element(HeaderCell).Text("Date");
-                header.Cell().Element(HeaderCell).Text("Reference");
-                header.Cell().Element(HeaderCell).Text("Description");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Debit");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Credit");
+                header.Cell().Element(HeaderCell).Text(labels.Date);
+                header.Cell().Element(HeaderCell).Text(labels.Reference);
+                header.Cell().Element(HeaderCell).Text(labels.Description);
+                header.Cell().Element(HeaderCell).AlignRight().Text(labels.Debit);
+                header.Cell().Element(HeaderCell).AlignRight().Text(labels.Credit);
                 if (model.ShowPendingColumn)
                 {
-                    header.Cell().Element(HeaderCell).AlignRight().Text("Pending");
+                    header.Cell().Element(HeaderCell).AlignRight().Text(labels.Pending);
                 }
-                header.Cell().Element(HeaderCell).AlignRight().Text("Balance");
+                header.Cell().Element(HeaderCell).AlignRight().Text(labels.Balance);
             });
 
             foreach (var line in model.Lines)

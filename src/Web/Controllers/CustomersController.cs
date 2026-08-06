@@ -271,17 +271,18 @@ public class CustomersApiController : ControllerBase
         int id,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
-        CancellationToken cancellationToken)
+        [FromQuery] bool urdu = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var pdf = await _ledgerShareService.GetCustomerLedgerPdfAsync(id, from, to, cancellationToken);
+            var pdf = await _ledgerShareService.GetCustomerLedgerPdfAsync(id, from, to, urdu, cancellationToken);
             if (pdf is null)
             {
                 return NotFound();
             }
 
-            var fileName = $"customer-ledger-{id}.pdf";
+            var fileName = urdu ? $"customer-ledger-{id}-ur.pdf" : $"customer-ledger-{id}.pdf";
             return File(pdf, "application/pdf", fileName);
         }
         catch (InvalidOperationException ex)

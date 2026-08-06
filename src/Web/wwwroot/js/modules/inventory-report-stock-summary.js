@@ -193,7 +193,7 @@
                 '<tr>' +
                 '<td><code>' + escapeHtml(line.itemCode) + '</code></td>' +
                 '<td>' + escapeHtml(line.itemName) + '</td>' +
-                '<td>' + (line.stackNo ? escapeHtml(line.stackNo) : '—') + '</td>' +
+                '<td>' + (line.lotNo ? escapeHtml(line.lotNo) : '—') + '</td>' +
                 '<td>' + (line.categoryName ? escapeHtml(line.categoryName) : '—') + '</td>' +
                 '<td>' + escapeHtml(line.unitSymbol) + '</td>' +
                 '<td class="text-end">' + formatQty(line.currentStock, line.unitSymbol) + '</td>' +

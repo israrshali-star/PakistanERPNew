@@ -135,6 +135,7 @@ public partial class VendorService : IVendorService
             CompanyId = companyId,
             VendorCode = request.VendorCode.Trim(),
             VendorName = request.VendorName.Trim(),
+            VendorNameUrdu = string.IsNullOrWhiteSpace(request.VendorNameUrdu) ? null : request.VendorNameUrdu.Trim(),
             OpeningBalance = request.OpeningBalance,
             Address = request.Address?.Trim(),
             ProvinceId = request.ProvinceId,
@@ -232,6 +233,7 @@ public partial class VendorService : IVendorService
 
         entity.VendorCode = request.VendorCode.Trim();
         entity.VendorName = request.VendorName.Trim();
+        entity.VendorNameUrdu = string.IsNullOrWhiteSpace(request.VendorNameUrdu) ? null : request.VendorNameUrdu.Trim();
         entity.OpeningBalance = request.OpeningBalance;
         entity.Address = request.Address?.Trim();
         entity.ProvinceId = request.ProvinceId;
@@ -630,6 +632,7 @@ public partial class VendorService : IVendorService
             v.Id,
             v.VendorCode,
             v.VendorName,
+            v.VendorNameUrdu,
             v.OpeningBalance,
             v.OpeningBalance
                 + v.VendorBills

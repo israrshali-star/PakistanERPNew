@@ -4,6 +4,7 @@ public record VendorDto(
     int Id,
     string VendorCode,
     string VendorName,
+    string? VendorNameUrdu,
     decimal OpeningBalance,
     decimal Balance,
     string? Address,
@@ -39,7 +40,8 @@ public record VendorSaveRequest(
     string? Email,
     string? NTN,
     decimal DefaultSalesTaxRate,
-    bool IsActive);
+    bool IsActive,
+    string? VendorNameUrdu = null);
 
 public record VendorSaveResult(bool Success, string? Message, VendorDto? Vendor);
 

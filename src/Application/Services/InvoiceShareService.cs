@@ -62,6 +62,7 @@ public class InvoiceShareService : IInvoiceShareService
                 SellerCompanyName = i.Company.CompanyName,
                 GodownEmail = i.Company.GodownEmail,
                 i.Customer.BuyerName,
+                i.Customer.BuyerNameUrdu,
                 i.Customer.Email,
                 i.Customer.Mobile,
                 i.Customer.Phone,
@@ -76,12 +77,30 @@ public class InvoiceShareService : IInvoiceShareService
 
         var canShare = CanShareInvoice(companyId.Value, invoice.Status, invoice.FbrSubmittedAt);
         var canEmailChallan = CanEmailDeliveryChallan(invoice.Status, invoice.LineCount);
+        var supportsUrdu = TradeInvoiceLayout.SupportsUrduLedger(companyId.Value);
         var message = BuildWhatsAppMessage(
             invoice.BuyerName,
             invoice.InvoiceNumber,
             invoice.InvoiceDate,
             invoice.NetTotal,
-            invoice.SellerCompanyName);
+            invoice.SellerCompanyName,
+            useUrdu: false);
+
+        string? messageUrdu = null;
+        if (supportsUrdu)
+        {
+            var urduName = RomanUrduTransliterator.ResolveDisplayName(
+                invoice.BuyerName,
+                invoice.BuyerNameUrdu,
+                useUrdu: true);
+            messageUrdu = BuildWhatsAppMessage(
+                urduName,
+                invoice.InvoiceNumber,
+                invoice.InvoiceDate,
+                invoice.NetTotal,
+                invoice.SellerCompanyName,
+                useUrdu: true);
+        }
 
         return new SalesInvoiceShareInfoDto(
             invoice.Id,
@@ -98,7 +117,9 @@ public class InvoiceShareService : IInvoiceShareService
             message,
             _emailSender.IsConfigured,
             invoice.GodownEmail,
-            canEmailChallan);
+            canEmailChallan,
+            supportsUrdu,
+            messageUrdu);
     }
 
     public async Task<SalesInvoiceShareActionResult> SendEmailAsync(
@@ -124,7 +145,19 @@ public class InvoiceShareService : IInvoiceShareService
                 "Invoice must be finalized before it can be shared.");
         }
 
-        var pdf = await GenerateInvoicePdfAsync(invoiceId, cancellationToken);
+        var useUrdu = ResolveUseUrdu(request.UseUrdu);
+        var labels = TradeDocumentPdfLabels.For(useUrdu);
+
+        var buyer = await _unitOfWork.Repository<Domain.Entities.SalesInvoice>()
+            .Query()
+            .Where(i => i.Id == invoiceId)
+            .Select(i => new { i.Customer.BuyerName, i.Customer.BuyerNameUrdu })
+            .FirstOrDefaultAsync(cancellationToken);
+        var customerName = buyer is null
+            ? shareInfo.CustomerName
+            : RomanUrduTransliterator.ResolveDisplayName(buyer.BuyerName, buyer.BuyerNameUrdu, useUrdu);
+
+        var pdf = await GenerateInvoicePdfAsync(invoiceId, useUrdu, cancellationToken);
         if (pdf is null)
         {
             return new SalesInvoiceShareActionResult(false, "Could not generate invoice PDF.");
@@ -134,22 +167,22 @@ public class InvoiceShareService : IInvoiceShareService
         var displayNumber = shareInfo.FbrInvoiceNumber ?? shareInfo.InvoiceNumber;
         var subject = $"Invoice {displayNumber} - {shareInfo.SellerCompanyName ?? "Invoice"}";
         var bodyIntro = string.IsNullOrWhiteSpace(request.Message)
-            ? $"Dear {shareInfo.CustomerName},<br/><br/>Please find attached invoice <strong>{shareInfo.InvoiceNumber}</strong> dated {shareInfo.InvoiceDate:dd/MM/yyyy}."
+            ? $"{labels.Dear} {customerName},<br/><br/>{labels.PleaseFindInvoice} <strong>{shareInfo.InvoiceNumber}</strong> dated {shareInfo.InvoiceDate:dd/MM/yyyy}."
             : System.Net.WebUtility.HtmlEncode(request.Message).Replace("\n", "<br/>", StringComparison.Ordinal);
 
         var html = new StringBuilder()
             .Append("<div style=\"font-family:Arial,sans-serif;font-size:14px;\">")
             .Append(bodyIntro)
             .Append("<br/><br/>")
-            .Append($"<strong>Amount:</strong> PKR {shareInfo.NetTotal.ToString("N2", CultureInfo.GetCultureInfo("en-PK"))}<br/>")
-            .Append($"<strong>FBR / Invoice #:</strong> {System.Net.WebUtility.HtmlEncode(displayNumber)}")
-            .Append("<br/><br/>Regards,<br/>")
+            .Append($"<strong>{labels.ClosingAmount}:</strong> PKR {shareInfo.NetTotal.ToString("N2", CultureInfo.GetCultureInfo("en-PK"))}<br/>")
+            .Append($"<strong>FBR / {labels.InvoiceNumber}</strong> {System.Net.WebUtility.HtmlEncode(displayNumber)}")
+            .Append($"<br/><br/>{labels.Regards},<br/>")
             .Append(System.Net.WebUtility.HtmlEncode(shareInfo.SellerCompanyName ?? "Pakistan Accounting ERP"))
             .Append("</div>")
             .ToString();
 
         var plain = string.IsNullOrWhiteSpace(request.Message)
-            ? $"Dear {shareInfo.CustomerName},\n\nPlease find attached invoice {shareInfo.InvoiceNumber} dated {shareInfo.InvoiceDate:dd/MM/yyyy}.\nAmount: PKR {shareInfo.NetTotal:N2}\nFBR / Invoice #: {displayNumber}"
+            ? $"{labels.Dear} {customerName},\n\n{labels.PleaseFindInvoice} {shareInfo.InvoiceNumber} dated {shareInfo.InvoiceDate:dd/MM/yyyy}.\n{labels.ClosingAmount}: PKR {shareInfo.NetTotal:N2}\nFBR / Invoice #: {displayNumber}"
             : request.Message;
 
         var result = await _emailSender.SendAsync(
@@ -193,7 +226,12 @@ public class InvoiceShareService : IInvoiceShareService
                 "Godown email is not configured. Set it in Company & FBR Settings.");
         }
 
-        var challanData = await _salesInvoiceService.GetDeliveryChallanDataAsync(invoiceId, cancellationToken);
+        var useUrdu = ResolveUseUrdu(request.UseUrdu);
+        var labels = TradeDocumentPdfLabels.For(useUrdu);
+        var challanData = await _salesInvoiceService.GetDeliveryChallanDataAsync(
+            invoiceId,
+            cancellationToken,
+            useUrdu);
         if (challanData is null || challanData.Lines.Count == 0)
         {
             return new SalesInvoiceShareActionResult(false, "Could not generate delivery challan.");
@@ -210,25 +248,25 @@ public class InvoiceShareService : IInvoiceShareService
         var subject = $"Delivery Challan {challanData.InvoiceNumber} - {challanData.BuyerName}";
 
         var bodyIntro = string.IsNullOrWhiteSpace(request.Message)
-            ? "Please find attached delivery challan for dispatch."
+            ? labels.PleaseFindChallan
             : System.Net.WebUtility.HtmlEncode(request.Message).Replace("\n", "<br/>", StringComparison.Ordinal);
 
         var html = new StringBuilder()
             .Append("<div style=\"font-family:Arial,sans-serif;font-size:14px;\">")
             .Append(bodyIntro)
             .Append("<br/><br/>")
-            .Append($"<strong>Invoice #:</strong> {System.Net.WebUtility.HtmlEncode(challanData.InvoiceNumber)}<br/>")
-            .Append($"<strong>Date:</strong> {challanData.InvoiceDate:dd/MM/yyyy}<br/>")
-            .Append($"<strong>Customer:</strong> {System.Net.WebUtility.HtmlEncode(challanData.BuyerName)}<br/>")
-            .Append($"<strong>Total cartons:</strong> {totalCartons.ToString("N2", CultureInfo.InvariantCulture)}<br/>")
-            .Append($"<strong>Total quantity:</strong> {totalQty.ToString("N2", CultureInfo.InvariantCulture)}")
-            .Append("<br/><br/>Regards,<br/>")
+            .Append($"<strong>{labels.InvoiceNumber}</strong> {System.Net.WebUtility.HtmlEncode(challanData.InvoiceNumber)}<br/>")
+            .Append($"<strong>{labels.Date}</strong> {challanData.InvoiceDate:dd/MM/yyyy}<br/>")
+            .Append($"<strong>{labels.Customer}:</strong> {System.Net.WebUtility.HtmlEncode(challanData.BuyerName)}<br/>")
+            .Append($"<strong>{labels.TotalCartons}:</strong> {totalCartons.ToString("N2", CultureInfo.InvariantCulture)}<br/>")
+            .Append($"<strong>{labels.TotalQuantity}:</strong> {totalQty.ToString("N2", CultureInfo.InvariantCulture)}")
+            .Append($"<br/><br/>{labels.Regards},<br/>")
             .Append(System.Net.WebUtility.HtmlEncode(challanData.SellerName))
             .Append("</div>")
             .ToString();
 
         var plain = string.IsNullOrWhiteSpace(request.Message)
-            ? $"Delivery challan for invoice {challanData.InvoiceNumber} dated {challanData.InvoiceDate:dd/MM/yyyy}.\nCustomer: {challanData.BuyerName}\nCartons: {totalCartons:N2}\nQuantity: {totalQty:N2}"
+            ? $"{labels.PleaseFindChallan}\n{labels.InvoiceNumber} {challanData.InvoiceNumber}\n{labels.Date} {challanData.InvoiceDate:dd/MM/yyyy}\n{labels.Customer}: {challanData.BuyerName}\n{labels.TotalCartons}: {totalCartons:N2}\n{labels.TotalQuantity}: {totalQty:N2}"
             : request.Message;
 
         var result = await _emailSender.SendAsync(
@@ -243,15 +281,23 @@ public class InvoiceShareService : IInvoiceShareService
         return new SalesInvoiceShareActionResult(result.Success, result.Message);
     }
 
+    private bool ResolveUseUrdu(bool requested) =>
+        requested && TradeInvoiceLayout.SupportsUrduLedger(_currentCompany.GetRequiredCompanyId());
+
     private async Task<(byte[] Bytes, string FileName)?> GenerateInvoicePdfAsync(
         int invoiceId,
+        bool useUrdu,
         CancellationToken cancellationToken)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
+        useUrdu = useUrdu && TradeInvoiceLayout.SupportsUrduLedger(companyId);
 
         if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
         {
-            var tradeData = await _salesInvoiceService.GetTradeInvoicePrintDataAsync(invoiceId, cancellationToken);
+            var tradeData = await _salesInvoiceService.GetTradeInvoicePrintDataAsync(
+                invoiceId,
+                cancellationToken,
+                useUrdu);
             if (tradeData is null)
             {
                 return null;
@@ -284,15 +330,17 @@ public class InvoiceShareService : IInvoiceShareService
         string invoiceNumber,
         DateTime invoiceDate,
         decimal netTotal,
-        string? sellerName)
+        string? sellerName,
+        bool useUrdu)
     {
+        var labels = TradeDocumentPdfLabels.For(useUrdu);
         var amount = netTotal.ToString("N2", CultureInfo.GetCultureInfo("en-PK"));
         return
-            $"Dear {customerName},\n\n" +
-            $"Invoice: {invoiceNumber}\n" +
-            $"Date: {invoiceDate:dd/MM/yyyy}\n" +
-            $"Amount: PKR {amount}\n\n" +
-            $"Please find the invoice PDF attached or request it from us.\n\n" +
-            $"Regards,\n{sellerName ?? "Accounts Department"}";
+            $"{labels.Dear} {customerName},\n\n" +
+            $"{labels.InvoiceNumber} {invoiceNumber}\n" +
+            $"{labels.Date} {invoiceDate:dd/MM/yyyy}\n" +
+            $"{labels.ClosingAmount}: PKR {amount}\n\n" +
+            $"{labels.WhatsAppInvoiceHint}\n\n" +
+            $"{labels.Regards},\n{sellerName ?? "Accounts Department"}";
     }
 }

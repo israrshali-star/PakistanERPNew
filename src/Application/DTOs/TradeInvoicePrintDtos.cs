@@ -13,7 +13,8 @@ public record TradeInvoicePrintDto(
     decimal TaxRateDisplay,
     decimal NetTotal,
     DateTime PrintedAt,
-    IReadOnlyList<TradeInvoicePrintLineDto> Lines);
+    IReadOnlyList<TradeInvoicePrintLineDto> Lines,
+    bool UseUrdu = false);
 
 public record TradeInvoicePrintLineDto(
     string Description,

@@ -31,6 +31,7 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
     {
         builder.ToTable("Customers");
         builder.Property(x => x.BuyerId).HasMaxLength(450).IsRequired();
+        builder.Property(x => x.BuyerNameUrdu).HasMaxLength(450);
         builder.Property(x => x.OpeningBalance).HasDefaultValue(0m);
         builder.Property(x => x.IsActive).HasDefaultValue(true);
         builder.HasIndex(x => x.CompanyId).HasDatabaseName("IX_Customers_CompanyId");
@@ -61,6 +62,7 @@ public class VendorConfiguration : IEntityTypeConfiguration<Vendor>
     {
         builder.ToTable("Vendors");
         builder.Property(x => x.VendorCode).HasMaxLength(450).IsRequired();
+        builder.Property(x => x.VendorNameUrdu).HasMaxLength(450);
         builder.Property(x => x.DefaultSalesTaxRate).HasDefaultValue(18m);
         builder.HasIndex(x => x.CompanyId).HasDatabaseName("IX_Vendors_CompanyId");
         builder.HasIndex(x => new { x.CompanyId, x.VendorCode })

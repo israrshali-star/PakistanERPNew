@@ -14,27 +14,33 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
     static TradeInvoicePdfService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        _ = UrduPdfFont.Family;
     }
 
-    public byte[] GeneratePdf(TradeInvoicePrintDto model) =>
-        Document.Create(container =>
+    public byte[] GeneratePdf(TradeInvoicePrintDto model)
+    {
+        var labels = TradeDocumentPdfLabels.For(model.UseUrdu);
+        var fontFamily = model.UseUrdu ? UrduPdfFont.Family : "Arial";
+
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(24);
-                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("Arial"));
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily(fontFamily));
 
                 page.Content().Column(column =>
                 {
-                    column.Item().Element(c => ComposeHeader(c, model));
-                    column.Item().PaddingTop(10).Element(c => ComposeLinesTable(c, model));
-                    column.Item().PaddingTop(10).Element(c => ComposeFooter(c, model));
+                    column.Item().Element(c => ComposeHeader(c, model, labels));
+                    column.Item().PaddingTop(10).Element(c => ComposeLinesTable(c, model, labels));
+                    column.Item().PaddingTop(10).Element(c => ComposeFooter(c, model, labels));
                 });
             });
         }).GeneratePdf();
+    }
 
-    private static void ComposeHeader(IContainer container, TradeInvoicePrintDto model)
+    private static void ComposeHeader(IContainer container, TradeInvoicePrintDto model, TradeDocumentPdfLabels labels)
     {
         container.Column(column =>
         {
@@ -51,12 +57,12 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
                 {
                     right.Item().Row(r =>
                     {
-                        r.ConstantItem(52).Text("Date:").SemiBold();
+                        r.ConstantItem(52).Text(labels.Date).SemiBold();
                         r.RelativeItem().Text(model.InvoiceDate.ToString("dd/MM/yyyy"));
                     });
                     right.Item().PaddingTop(4).Row(r =>
                     {
-                        r.ConstantItem(52).Text("Invoice #:").SemiBold();
+                        r.ConstantItem(52).Text(labels.InvoiceNumber).SemiBold();
                         r.RelativeItem().Text(model.InvoiceNumber);
                     });
                 });
@@ -64,7 +70,7 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
         });
     }
 
-    private static void ComposeLinesTable(IContainer container, TradeInvoicePrintDto model)
+    private static void ComposeLinesTable(IContainer container, TradeInvoicePrintDto model, TradeDocumentPdfLabels labels)
     {
         var weightLines = model.Lines
             .Where(l => TradeInvoiceLayout.CountsTowardWeightAndCartonTotals(l.ItemType, l.ItemCode))
@@ -87,12 +93,12 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
 
             table.Header(header =>
             {
-                HeaderCell(header.Cell(), "Description");
-                HeaderCell(header.Cell(), "CTN Description");
-                HeaderCell(header.Cell(), "No of Ctn");
-                HeaderCell(header.Cell(), "QTY");
-                HeaderCell(header.Cell(), "Rate");
-                HeaderCell(header.Cell(), "Amount");
+                HeaderCell(header.Cell(), labels.Description);
+                HeaderCell(header.Cell(), labels.CartonDescription);
+                HeaderCell(header.Cell(), labels.NoOfCtn);
+                HeaderCell(header.Cell(), labels.Qty);
+                HeaderCell(header.Cell(), labels.Rate);
+                HeaderCell(header.Cell(), labels.Amount);
             });
 
             foreach (var line in model.Lines)
@@ -105,7 +111,7 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
                 table.Cell().Element(BodyCell).AlignRight().Text(TradeInvoiceLayout.FormatAmount(line.Amount));
             }
 
-            table.Cell().ColumnSpan(2).Element(TotalCell).Text("Total").Bold();
+            table.Cell().ColumnSpan(2).Element(TotalCell).Text(labels.Total).Bold();
             table.Cell().Element(TotalCell).AlignRight().Text(FormatQty(totalCartons)).Bold();
             table.Cell().Element(TotalCell).AlignRight().Text(FormatQty(totalQty)).Bold();
             table.Cell().Element(TotalCell).Text(string.Empty);
@@ -113,13 +119,13 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
         });
     }
 
-    private static void ComposeFooter(IContainer container, TradeInvoicePrintDto model)
+    private static void ComposeFooter(IContainer container, TradeInvoicePrintDto model, TradeDocumentPdfLabels labels)
     {
         container.Row(row =>
         {
             row.RelativeItem().Border(1).BorderColor(BorderGray).Padding(8).Column(left =>
             {
-                left.Item().Text("Customer Total Balance").Bold();
+                left.Item().Text(labels.CustomerTotalBalance).Bold();
                 left.Item().PaddingTop(6)
                     .Text($"PKR {TradeInvoiceLayout.FormatAmount(model.CustomerTotalBalance)}")
                     .FontSize(11);
@@ -129,12 +135,12 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
             {
                 right.Item().Row(r =>
                 {
-                    r.RelativeItem().Text($"Sales Tax ({TradeInvoiceLayout.FormatTaxRatePrecise(model.TaxRateDisplay)}%)");
+                    r.RelativeItem().Text($"{labels.SalesTax} ({TradeInvoiceLayout.FormatTaxRatePrecise(model.TaxRateDisplay)}%)");
                     r.ConstantItem(70).AlignRight().Text($"PKR {TradeInvoiceLayout.FormatAmount(model.TaxAmount)}");
                 });
                 right.Item().PaddingTop(8).Row(r =>
                 {
-                    r.RelativeItem().Text("Total").Bold();
+                    r.RelativeItem().Text(labels.Total).Bold();
                     r.ConstantItem(70).AlignRight().Text($"PKR {TradeInvoiceLayout.FormatAmount(model.NetTotal)}").Bold();
                 });
             });

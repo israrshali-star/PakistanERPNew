@@ -56,13 +56,27 @@
         return config.partyType === 'vendor' ? '/api/vendors/' : '/api/customers/';
     }
 
-    function buildQueryParams(config) {
+    function isUrduSelected() {
+        return currentShareInfo
+            && currentShareInfo.supportsUrduLedger
+            && $('#ledger-share-urdu').is(':checked');
+    }
+
+    function buildDateParams(config) {
         var params = {};
         if (config.fromDate) {
             params.from = config.fromDate;
         }
         if (config.toDate) {
             params.to = config.toDate;
+        }
+        return params;
+    }
+
+    function buildQueryParams(config) {
+        var params = buildDateParams(config);
+        if (isUrduSelected()) {
+            params.urdu = 'true';
         }
         return params;
     }
@@ -81,6 +95,13 @@
         $('#ledger-share-email').val(info.partyEmail || '');
         $('#ledger-share-whatsapp').val(info.partyMobile || info.partyPhone || '');
         $('#ledger-share-message').val('');
+        $('#ledger-share-urdu').prop('checked', false);
+
+        if (info.supportsUrduLedger) {
+            $('#ledger-share-urdu-wrap').removeClass('d-none');
+        } else {
+            $('#ledger-share-urdu-wrap').addClass('d-none');
+        }
 
         if (!info.emailConfigured) {
             $('#ledger-share-email-hint').text('SMTP is not configured in appsettings.json.');
@@ -91,6 +112,16 @@
         }
 
         showShareAlert(null, null);
+    }
+
+    function resolveWhatsAppMessage() {
+        if (!currentShareInfo) {
+            return '';
+        }
+        if (isUrduSelected() && currentShareInfo.whatsAppMessageUrdu) {
+            return currentShareInfo.whatsAppMessageUrdu;
+        }
+        return currentShareInfo.whatsAppMessage || '';
     }
 
     function fetchLedgerPdfBlob(config) {
@@ -122,7 +153,7 @@
         }
 
         var phone = normalizeWhatsAppPhone($('#ledger-share-whatsapp').val());
-        var message = $('#ledger-share-message').val() || currentShareInfo.whatsAppMessage || '';
+        var message = $('#ledger-share-message').val() || resolveWhatsAppMessage();
 
         fetchLedgerPdfBlob(currentConfig)
             .then(function (pdf) {
@@ -176,7 +207,8 @@
                 toEmail: email.trim(),
                 message: $('#ledger-share-message').val() || null,
                 fromDate: currentConfig.fromDate || null,
-                toDate: currentConfig.toDate || null
+                toDate: currentConfig.toDate || null,
+                useUrdu: isUrduSelected()
             })
         })
             .done(function (result) {
@@ -214,7 +246,7 @@
         $('#ledger-share-summary').text('Loading...');
         showShareAlert(null, null);
 
-        $.getJSON(apiBase(config) + config.partyId + '/ledger-share-info', buildQueryParams(config))
+        $.getJSON(apiBase(config) + config.partyId + '/ledger-share-info', buildDateParams(config))
             .done(function (info) {
                 populateModal(info, config);
                 modal.show();

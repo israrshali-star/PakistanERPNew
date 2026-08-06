@@ -133,8 +133,9 @@
                             }
                             @if (line.SoldQuantity > 0)
                             {
+                                var remaining = line.Quantity - line.SoldQuantity;
                                 <div class="small text-warning-emphasis mt-1">
-                                    <i class="fa-solid fa-lock me-1"></i>@line.SoldQuantity.ToString("N2") sold — locked on reopen
+                                    <i class="fa-solid fa-lock me-1"></i>@line.SoldQuantity.ToString("N2") sold@(remaining <= 0.01m ? " (fully sold)" : $" — {remaining:N2} remaining")
                                 </div>
                             }
                         </td>

@@ -19,7 +19,8 @@ public record PartyLedgerPdfDto(
     decimal OpeningBalance,
     decimal ClosingBalance,
     bool ShowPendingColumn,
-    IReadOnlyList<PartyLedgerPdfLineDto> Lines);
+    IReadOnlyList<PartyLedgerPdfLineDto> Lines,
+    bool UseUrdu = false);
 
 public record LedgerShareInfoDto(
     string PartyType,
@@ -35,12 +36,16 @@ public record LedgerShareInfoDto(
     string WhatsAppMessage,
     bool EmailConfigured,
     DateTime? FromDate,
-    DateTime? ToDate);
+    DateTime? ToDate,
+    bool SupportsUrduLedger = false,
+    string? WhatsAppMessageUrdu = null,
+    string? PartyNameUrdu = null);
 
 public record LedgerEmailShareRequest(
     string ToEmail,
     string? Message,
     DateTime? FromDate,
-    DateTime? ToDate);
+    DateTime? ToDate,
+    bool UseUrdu = false);
 
 public record LedgerShareActionResult(bool Success, string? Message);

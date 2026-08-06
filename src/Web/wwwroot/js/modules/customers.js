@@ -92,6 +92,7 @@
         $('#customer-id').val('');
         $('#buyer-id').val('');
         $('#buyer-name').val('');
+        $('#buyer-name-urdu').val('');
         $('#customer-type').val('1');
         $('#invoice-type').val('1');
         $('#opening-balance').val('0');
@@ -235,6 +236,7 @@
                 $('#customer-id').val(c.id);
                 $('#buyer-id').val(c.buyerId);
                 $('#buyer-name').val(c.buyerName);
+                $('#buyer-name-urdu').val(c.buyerNameUrdu || '');
                 $('#customer-type').val(String(normalizeCustomerTypeValue(c.customerType)));
                 $('#invoice-type').val(String(normalizeInvoiceTypeValue(c.invoiceType)));
                 $('#scenario-id').val(c.scenarioId).trigger('change');
@@ -288,6 +290,7 @@
             id: id ? parseInt(id, 10) : null,
             buyerId: $('#buyer-id').val().trim(),
             buyerName: $('#buyer-name').val().trim(),
+            buyerNameUrdu: $('#buyer-name-urdu').val().trim() || null,
             openingBalance: parseFloat($('#opening-balance').val()) || 0,
             address: $('#address').val().trim() || null,
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,

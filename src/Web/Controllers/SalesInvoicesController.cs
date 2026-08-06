@@ -416,11 +416,18 @@ public class SalesInvoicesApiController : ControllerBase
 
     [HttpGet("{id:int}/delivery-challan-pdf")]
     [RequirePermission("Sales.View")]
-    public async Task<IActionResult> DeliveryChallanPdf(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> DeliveryChallanPdf(
+        int id,
+        [FromQuery] bool urdu = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var printData = await _salesInvoiceService.GetDeliveryChallanDataAsync(id, cancellationToken);
+            var useUrdu = urdu && TradeInvoiceLayout.SupportsUrduLedger(_currentCompany.GetRequiredCompanyId());
+            var printData = await _salesInvoiceService.GetDeliveryChallanDataAsync(
+                id,
+                cancellationToken,
+                useUrdu);
             if (printData is null)
             {
                 return NotFound();
@@ -438,14 +445,21 @@ public class SalesInvoicesApiController : ControllerBase
 
     [HttpGet("{id:int}/pdf")]
     [RequirePermission("Sales.View")]
-    public async Task<IActionResult> Pdf(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Pdf(
+        int id,
+        [FromQuery] bool urdu = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var companyId = _currentCompany.GetRequiredCompanyId();
+            var useUrdu = urdu && TradeInvoiceLayout.SupportsUrduLedger(companyId);
             if (companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)
             {
-                var tradeData = await _salesInvoiceService.GetTradeInvoicePrintDataAsync(id, cancellationToken);
+                var tradeData = await _salesInvoiceService.GetTradeInvoicePrintDataAsync(
+                    id,
+                    cancellationToken,
+                    useUrdu);
                 if (tradeData is null)
                 {
                     return BadRequest(new { message = "PDF is available only for posted invoices." });

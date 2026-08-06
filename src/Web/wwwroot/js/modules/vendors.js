@@ -114,6 +114,7 @@
                 $('#vendor-id').val(v.id);
                 $('#vendor-code').val(v.vendorCode);
                 $('#vendor-name').val(v.vendorName);
+                $('#vendor-name-urdu').val(v.vendorNameUrdu || '');
                 $('#province-id').val(v.provinceId || '').trigger('change');
                 $('#default-tax-rate').val(v.defaultSalesTaxRate);
                 $('#opening-balance').val(v.openingBalance);
@@ -146,6 +147,7 @@
             id: id ? parseInt(id, 10) : null,
             vendorCode: $('#vendor-code').val().trim(),
             vendorName: $('#vendor-name').val().trim(),
+            vendorNameUrdu: $('#vendor-name-urdu').val().trim() || null,
             openingBalance: parseFloat($('#opening-balance').val()) || 0,
             address: $('#address').val().trim() || null,
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,

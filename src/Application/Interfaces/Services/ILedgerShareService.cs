@@ -20,12 +20,14 @@ public interface ILedgerShareService
         int customerId,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        bool useUrdu = false,
         CancellationToken cancellationToken = default);
 
     Task<byte[]?> GetVendorLedgerPdfAsync(
         int vendorId,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        bool useUrdu = false,
         CancellationToken cancellationToken = default);
 
     Task<LedgerShareActionResult> SendCustomerLedgerEmailAsync(

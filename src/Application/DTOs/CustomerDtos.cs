@@ -6,6 +6,7 @@ public record CustomerDto(
     int Id,
     string BuyerId,
     string BuyerName,
+    string? BuyerNameUrdu,
     decimal OpeningBalance,
     decimal Balance,
     string? Address,
@@ -42,6 +43,7 @@ public class CustomerSaveRequest
     public int? Id { get; set; }
     public string BuyerId { get; set; } = string.Empty;
     public string BuyerName { get; set; } = string.Empty;
+    public string? BuyerNameUrdu { get; set; }
     public decimal OpeningBalance { get; set; }
     public string? Address { get; set; }
     public int? ProvinceId { get; set; }

@@ -8,6 +8,12 @@
             <div class="modal-body">
                 <p class="text-muted small mb-3" id="ledger-share-summary"></p>
 
+                <div class="form-check form-switch mb-3 d-none" id="ledger-share-urdu-wrap">
+                    <input class="form-check-input" type="checkbox" role="switch" id="ledger-share-urdu" />
+                    <label class="form-check-label" for="ledger-share-urdu">Send ledger in Urdu</label>
+                    <div class="form-text">Uses saved Urdu party name when set; otherwise phonetic conversion.</div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label" for="ledger-share-email">Email</label>
                     <input type="email" class="form-control" id="ledger-share-email" maxlength="200" placeholder="party@example.com" />
