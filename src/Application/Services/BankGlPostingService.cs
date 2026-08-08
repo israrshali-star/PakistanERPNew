@@ -257,7 +257,8 @@ public partial class BankGlPostingService : IBankGlPostingService
                     }
 
                     var payFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
-                    if (payFromBalance < amount)
+                    if (!TradeInvoiceLayout.AllowsInsufficientBankBalanceForCheques(companyId)
+                        && payFromBalance < amount)
                     {
                         return (false, $"Insufficient balance in pay-from account. Available: {payFromBalance:N2}", null);
                     }
@@ -281,7 +282,8 @@ public partial class BankGlPostingService : IBankGlPostingService
                 transaction.CustomerBalanceEffect = 0m;
 
                 var vendorPayFromBalance = await GetAccountBalanceAsync(companyId, transaction.ChartOfAccountId, cancellationToken);
-                if (vendorPayFromBalance < amount)
+                if (!TradeInvoiceLayout.AllowsInsufficientBankBalanceForCheques(companyId)
+                    && vendorPayFromBalance < amount)
                 {
                     return (false, $"Insufficient balance in pay-from account. Available: {vendorPayFromBalance:N2}", null);
                 }

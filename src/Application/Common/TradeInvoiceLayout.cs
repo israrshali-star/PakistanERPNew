@@ -31,6 +31,10 @@ public static class TradeInvoiceLayout
     public static bool SupportsUrduLedger(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) may write cheques / withdrawals even when the pay-from bank GL balance is insufficient.</summary>
+    public static bool AllowsInsufficientBankBalanceForCheques(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     /// <summary>
     /// Companies that must submit FBR seller/buyer NTN without the check digit after '-'.
     /// Example: 1234567-8 → 1234567.
@@ -54,8 +58,8 @@ public static class TradeInvoiceLayout
         $"{AppConstants.InvoiceNumberPrefix}{sequence.ToString($"D{InvoiceNumberPadWidth(companyId)}")}";
 
     /// <summary>
-    /// For selected companies, FBR expects NTN without check digit (3816161-3 → 3816161).
-    /// Only NTN patterns are changed; CNIC values (34101-8988500-5) are left intact.
+    /// For selected companies, FBR expects NTN without check digit (3816161-3 → 3816161, I991816-7 → I991816).
+    /// Only NTN check-digit suffixes are removed; CNIC values (34101-8988500-5) are left intact.
     /// </summary>
     public static string? NormalizeNtnForFbr(string? ntn, int companyId)
     {
@@ -70,23 +74,54 @@ public static class TradeInvoiceLayout
             return trimmed;
         }
 
-        // NTN: 7 digits + check digit separated by '-' or '.' (e.g. 3816161-3 / 2733531.3)
-        if (trimmed.Length == 9
-            && (trimmed[7] == '-' || trimmed[7] == '.')
-            && char.IsDigit(trimmed[8])
-            && IsSevenDigits(trimmed.AsSpan(0, 7)))
+        if (IsHyphenatedCnic(trimmed))
         {
-            return trimmed[..7];
+            return trimmed;
+        }
+
+        // NTN check digit: PREFIX + (-|.) + single digit (e.g. 3816161-3 / 2733531.3 / I991816-7)
+        var sepIndex = trimmed.LastIndexOfAny(['-', '.']);
+        if (sepIndex > 0
+            && sepIndex == trimmed.Length - 2
+            && char.IsDigit(trimmed[^1]))
+        {
+            var head = trimmed.AsSpan(0, sepIndex);
+            if (head.Length is >= 6 and <= 8 && IsLettersOrDigits(head))
+            {
+                return trimmed[..sepIndex];
+            }
         }
 
         return trimmed;
     }
 
-    private static bool IsSevenDigits(ReadOnlySpan<char> value)
+    /// <summary>CNIC with hyphens: #####-#######-# (15 chars).</summary>
+    private static bool IsHyphenatedCnic(string value) =>
+        value.Length == 15
+        && value[5] == '-'
+        && value[13] == '-'
+        && char.IsDigit(value[14])
+        && IsDigits(value.AsSpan(0, 5))
+        && IsDigits(value.AsSpan(6, 7));
+
+    private static bool IsDigits(ReadOnlySpan<char> value)
     {
         for (var i = 0; i < value.Length; i++)
         {
             if (!char.IsDigit(value[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsLettersOrDigits(ReadOnlySpan<char> value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (!char.IsLetterOrDigit(value[i]))
             {
                 return false;
             }
