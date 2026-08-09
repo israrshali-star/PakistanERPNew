@@ -5,7 +5,9 @@ namespace PakistanAccountingERP.Application.Common;
 /// <summary>
 /// QuickBooks AP presentation for purchase-tax companies (2, 4, 5, 6, 7).
 /// QB account ledgers show negative balances when the company owes vendors.
-/// AP excludes W/H tax (posted to 12810); signed AP = -opening + AP credits - debits.
+/// ERP stored AP net is credit-normal: opening + credits − debits (positive = owed).
+/// Signed display = −storedNet so negative means owed (matches QB).
+/// AP excludes W/H tax (posted to 12810).
 /// </summary>
 public static class PurchaseApBalance
 {
@@ -31,11 +33,13 @@ public static class PurchaseApBalance
         decimal openingBalance,
         decimal journalDebits,
         decimal journalCredits) =>
-        Math.Round(-openingBalance + journalCredits - journalDebits, 2);
+        ToSignedDisplayFromStoredNet(
+            openingBalance,
+            ComputeStoredNet(openingBalance, journalDebits, journalCredits));
 
-    /// <summary>QB signed AP from stored net and chart opening.</summary>
-    public static decimal ToSignedDisplayFromStoredNet(decimal openingBalance, decimal storedNet) =>
-        Math.Round(storedNet - (2m * openingBalance), 2);
+    /// <summary>QB signed AP from stored credit-normal net (negate so negative = owed).</summary>
+    public static decimal ToSignedDisplayFromStoredNet(decimal _, decimal storedNet) =>
+        Math.Round(-storedNet, 2);
 
     public static bool UsesInvertedLineAccumulation(int companyId, string? accountNumber) =>
         UsesQuickBooksSignedPresentation(companyId, accountNumber)

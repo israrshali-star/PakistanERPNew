@@ -442,9 +442,18 @@ public class DashboardService : IDashboardService
         int companyId,
         CancellationToken cancellationToken)
     {
+        // Purchase-tax companies: vendor subledger is the AP source of truth (matches vendor list
+        // balances). Some approved bills may lack a 20000 JE; GL-only understates AP.
+        // Display is QuickBooks-signed: negative = we owe.
+        if (PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId))
+        {
+            var outstanding = await GetVendorSubledgerPayableAsync(companyId, cancellationToken);
+            return Math.Round(-outstanding, 2);
+        }
+
         var account = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
-            .Where(a => a.CompanyId == companyId && a.AccountNumber == AccountsPayable)
+            .Where(a => a.CompanyId == companyId && a.AccountNumber == AccountsPayable && !a.IsDeleted)
             .Select(a => new { a.Id, a.OpeningBalance, a.TypeId, a.AccountNumber })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -463,26 +472,50 @@ public class DashboardService : IDashboardService
             .Select(g => new { Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) })
             .SingleOrDefaultAsync(cancellationToken);
 
-        var debits = journalTotals?.Debit ?? 0m;
-        var credits = journalTotals?.Credit ?? 0m;
-
-        if (PurchaseWithholdingTaxLayout.SupportsPurchaseWithholdingTax(companyId))
-        {
-            return PurchaseApBalance.ToSignedDisplay(
-                account.OpeningBalance,
-                debits,
-                credits);
-        }
-
         return Math.Round(
             GlAccountBalance.ComputeNet(
                 account.OpeningBalance,
-                debits,
-                credits,
+                journalTotals?.Debit ?? 0m,
+                journalTotals?.Credit ?? 0m,
                 account.TypeId,
                 account.AccountNumber,
                 companyId),
             2);
+    }
+
+    /// <summary>
+    /// Vendor payable outstanding (positive = we owe): opening + approved bills − payments − write cheques.
+    /// Same formula as vendor list CurrentBalance.
+    /// Uses separate simple aggregates — SQL Server rejects SUM(expr with subqueries).
+    /// </summary>
+    private async Task<decimal> GetVendorSubledgerPayableAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var openingTotal = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => v.CompanyId == companyId)
+            .SumAsync(v => (decimal?)v.OpeningBalance, cancellationToken) ?? 0m;
+
+        var billTotal = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .Where(b => b.CompanyId == companyId && b.Status == BillStatus.Approved)
+            .SumAsync(b => (decimal?)b.NetAmount, cancellationToken) ?? 0m;
+
+        var paymentTotal = await _unitOfWork.Repository<VendorPayment>()
+            .Query()
+            .Where(p => p.CompanyId == companyId)
+            .SumAsync(p => (decimal?)p.Amount, cancellationToken) ?? 0m;
+
+        var chequeTotal = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt => bt.CompanyId == companyId
+                         && bt.VendorId != null
+                         && bt.TransactionType == BankTransactionType.Withdrawal
+                         && bt.JournalEntryId != null)
+            .SumAsync(bt => (decimal?)bt.Amount, cancellationToken) ?? 0m;
+
+        return Math.Round(openingTotal + billTotal - paymentTotal - chequeTotal, 2);
     }
 
     private async Task<decimal> GetGlAccountBalanceAsync(
