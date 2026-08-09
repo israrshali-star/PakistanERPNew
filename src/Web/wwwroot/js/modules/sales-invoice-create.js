@@ -9,6 +9,8 @@
     var TRADE_INVOICE_COMPANY_ID = 3;
     var supportsBillLevelTaxSplit = false;
     var currentCompanyId = 0;
+    /** Pounds per kilogram — multiply a per-lb rate to get a per-kg rate. */
+    var LB_TO_KG_FACTOR = 2.2046;
     var furtherTaxAmountManual = false;
     var suppressScenarioTaxReset = false;
     var lineCounter = 0;
@@ -144,6 +146,51 @@
         if (!supportsBillLevelTaxSplit && currentCompanyId === TRADE_INVOICE_COMPANY_ID) {
             supportsBillLevelTaxSplit = true;
         }
+        updatePriceColumnForCompany();
+    }
+
+    function isTradeInvoiceCompany() {
+        return currentCompanyId === TRADE_INVOICE_COMPANY_ID;
+    }
+
+    function updatePriceColumnForCompany() {
+        if (isTradeInvoiceCompany()) {
+            $('#invoice-price-header').html(
+                'Price <span class="text-muted fw-normal small" title="Use lb→kg to convert a pound rate">(/kg)</span>'
+            );
+        } else {
+            $('#invoice-price-header').text('Price');
+        }
+    }
+
+    function buildPriceCellHtml(priceValue) {
+        var value = priceValue != null ? priceValue : 0;
+        var input =
+            '<input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="' +
+            value + '" required />';
+        if (!isTradeInvoiceCompany()) {
+            return '<td>' + input + '</td>';
+        }
+
+        return '<td>' +
+            '<div class="input-group input-group-sm">' +
+            input +
+            '<button type="button" class="btn btn-outline-secondary btn-convert-lb-kg px-1" ' +
+            'title="Convert pound rate to kg (× ' + LB_TO_KG_FACTOR + ')">lb→kg</button>' +
+            '</div>' +
+            '</td>';
+    }
+
+    function convertLinePriceLbToKg($row) {
+        var $price = $row.find('.line-price');
+        var price = parseFloat($price.val());
+        if (!Number.isFinite(price) || price <= 0) {
+            return;
+        }
+
+        var converted = Math.round(price * LB_TO_KG_FACTOR * 100) / 100;
+        $price.val(converted.toFixed(2));
+        recalcTotals();
     }
 
     function updateTaxSummaryVisibility() {
@@ -235,7 +282,7 @@
             '<td><input type="text" class="form-control form-control-xs line-carton-desc" maxlength="50" placeholder="Carton desc" /></td>' +
             '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td class="text-muted line-unit">—</td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="0" required /></td>' +
+            buildPriceCellHtml(0) +
             '<td class="tax-line-col"><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
             '<td class="text-end text-currency line-total">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
@@ -881,6 +928,9 @@
             window.LotStackLine.onLotChange($(this).closest('tr'), lineOptions());
         });
         $('#invoice-lines-body').on('input', '.line-qty, .line-price, .line-tax', recalcTotals);
+        $('#invoice-lines-body').on('click', '.btn-convert-lb-kg', function () {
+            convertLinePriceLbToKg($(this).closest('tr'));
+        });
         $('#invoice-lines-body').on('input', '.line-stack, .line-qty, .line-cartons', function () {
             window.LotStackLine.updateStackHint($(this).closest('tr'), lineOptions());
         });
