@@ -25,7 +25,8 @@ public record FbrSubmissionRequest(
     decimal DiscountAmount,
     decimal TaxAmount,
     decimal NetTotal,
-    IReadOnlyList<FbrSubmissionLineRequest> Lines);
+    IReadOnlyList<FbrSubmissionLineRequest> Lines,
+    int CompanyId = 0);
 
 public record FbrSubmissionLineRequest(
     string? ItemCode,

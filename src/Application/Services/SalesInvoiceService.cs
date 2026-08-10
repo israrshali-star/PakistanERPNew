@@ -1454,7 +1454,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         if (!fbrResult.Success)
         {
-            return new SalesInvoiceActionResult(false, fbrResult.Message, null);
+            return new SalesInvoiceActionResult(
+                false,
+                fbrResult.Message,
+                null,
+                fbrResult.ResponseJson);
         }
 
         invoice.FbrInvoiceNumber = fbrResult.FbrInvoiceNumber;
@@ -1478,7 +1482,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             ? "FBR submission stored in simulation mode."
             : "Invoice submitted to FBR successfully.";
 
-        return new SalesInvoiceActionResult(true, message, detail);
+        return new SalesInvoiceActionResult(true, message, detail, fbrResult.ResponseJson);
     }
 
     public async Task<FbrPayloadPreviewDto?> GetFbrPayloadPreviewAsync(
@@ -2263,7 +2267,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.DiscountAmount,
             invoice.TaxAmount,
             invoice.NetTotal,
-            lines);
+            lines,
+            companyId);
 
         return (true, null, request, company.FbrPostUrl, company.ApiToken);
     }

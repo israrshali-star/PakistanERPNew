@@ -78,7 +78,11 @@ public record SalesInvoiceDetailDto(
     decimal CustomerTotalBalance = 0m,
     bool CanDownloadInvoicePdf = false);
 
-public record SalesInvoiceActionResult(bool Success, string? Message, SalesInvoiceDetailDto? Invoice);
+public record SalesInvoiceActionResult(
+    bool Success,
+    string? Message,
+    SalesInvoiceDetailDto? Invoice,
+    string? ResponseJson = null);
 
 public record SalesInvoiceCustomerLookupDto(
     int Id,

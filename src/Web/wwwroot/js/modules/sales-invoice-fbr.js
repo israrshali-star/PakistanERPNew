@@ -11,6 +11,45 @@
         return body.message || body.Message || fallback;
     }
 
+    function getResponseJson(body) {
+        if (!body) {
+            return null;
+        }
+        return body.responseJson || body.ResponseJson || null;
+    }
+
+    function formatJsonText(value) {
+        if (!value) {
+            return '';
+        }
+        if (typeof value !== 'string') {
+            try {
+                return JSON.stringify(value, null, 2);
+            } catch (e) {
+                return String(value);
+            }
+        }
+        try {
+            return JSON.stringify(JSON.parse(value), null, 2);
+        } catch (e) {
+            return value;
+        }
+    }
+
+    function showFbrErrorInModal(xhr) {
+        var body = xhr && xhr.responseJSON;
+        var message = getApiErrorMessage(xhr, 'FBR submission failed.');
+        var responseJson = getResponseJson(body);
+
+        if (responseJson) {
+            $('#fbr-payload-json').text(formatJsonText(responseJson));
+            $('#fbr-payload-hint').text('FBR API response (submission failed). Fix the issues below and submit again.');
+        }
+
+        $('#fbr-payload-error').removeClass('d-none').text(message);
+        $('#btn-confirm-fbr-submit').prop('disabled', false);
+    }
+
     function ensureModal() {
         if (fbrModal) {
             return fbrModal;
@@ -24,7 +63,7 @@
         return fbrModal;
     }
 
-    function submitToFbr(invoiceId, onSuccess) {
+    function submitToFbr(invoiceId, onSuccess, onError) {
         $.ajax({
             url: '/api/sales-invoices/' + invoiceId + '/submit-fbr',
             method: 'POST'
@@ -35,6 +74,10 @@
                 }
             })
             .fail(function (xhr) {
+                if (onError) {
+                    onError(xhr);
+                    return;
+                }
                 alert(getApiErrorMessage(xhr, 'FBR submission failed.'));
             });
     }
@@ -74,13 +117,19 @@
             var id = $(this).data('invoice-id');
             var $btn = $(this);
             $btn.prop('disabled', true);
-            submitToFbr(id, function (result) {
-                modal.hide();
-                if (onSuccess) {
-                    onSuccess(result);
+            $('#fbr-payload-error').addClass('d-none').text('');
+            submitToFbr(
+                id,
+                function (result) {
+                    modal.hide();
+                    if (onSuccess) {
+                        onSuccess(result);
+                    }
+                },
+                function (xhr) {
+                    showFbrErrorInModal(xhr);
                 }
-            });
-            $btn.prop('disabled', false);
+            );
         });
     }
 

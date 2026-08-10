@@ -38,7 +38,9 @@ public static class FbrPayloadBuilder
             BuyerRegistrationType = request.BuyerRegistrationType,
             InvoiceRefNo = request.InvoiceNumber,
             ScenarioId = request.ScenarioCode,
-            Items = request.Lines.Select(MapLine).ToList()
+            Items = request.Lines
+                .Select(line => MapLine(line, TradeInvoiceLayout.UsesFbrAlignedSalesTaxRounding(request.CompanyId)))
+                .ToList()
         };
 
     public static object BuildObject(FbrSubmissionRequest request) => BuildPayload(request);
@@ -54,14 +56,35 @@ public static class FbrPayloadBuilder
             _ => DefaultSaleType
         };
 
-    private static FbrInvoiceItemPayload MapLine(FbrSubmissionLineRequest line)
+    private static FbrInvoiceItemPayload MapLine(FbrSubmissionLineRequest line, bool alignSalesTaxToFbr)
     {
         var valueExcludingSt = Math.Round(Math.Max(0m, line.Quantity * line.Price - line.Discount), 2);
-        var salesTax = line.FurtherTaxAmount > 0m
-            ? Math.Round(line.SalesTaxAmount, 2)
-            : Math.Round(line.TaxAmount, 2);
-        var furtherTax = Math.Round(line.FurtherTaxAmount, 2);
-        var totalValues = Math.Round(line.LineTotal, 2);
+        decimal salesTax;
+        decimal furtherTax;
+        decimal totalValues;
+        decimal discount;
+
+        if (alignSalesTaxToFbr)
+        {
+            // FBR recalculates ST from ValueSalesExcludingST × Rate using round-half-up.
+            valueExcludingSt = Math.Round(valueExcludingSt, 2, MidpointRounding.AwayFromZero);
+            salesTax = Math.Round(
+                valueExcludingSt * line.TaxRate / 100m,
+                2,
+                MidpointRounding.AwayFromZero);
+            furtherTax = Math.Round(line.FurtherTaxAmount, 2, MidpointRounding.AwayFromZero);
+            totalValues = Math.Round(valueExcludingSt + salesTax + furtherTax, 2, MidpointRounding.AwayFromZero);
+            discount = Math.Round(line.Discount, 2, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            salesTax = line.FurtherTaxAmount > 0m
+                ? Math.Round(line.SalesTaxAmount, 2)
+                : Math.Round(line.TaxAmount, 2);
+            furtherTax = Math.Round(line.FurtherTaxAmount, 2);
+            totalValues = Math.Round(line.LineTotal, 2);
+            discount = Math.Round(line.Discount, 2);
+        }
 
         return new FbrInvoiceItemPayload
         {
@@ -79,7 +102,7 @@ public static class FbrPayloadBuilder
             FurtherTax = furtherTax,
             SroScheduleNo = null,
             FedPayable = 0m,
-            Discount = Math.Round(line.Discount, 2),
+            Discount = discount,
             SaleType = line.SaleType,
             SroItemSerialNo = null
         };

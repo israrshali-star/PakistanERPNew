@@ -50,6 +50,13 @@ public static class TradeInvoiceLayout
     public static bool UsesFbrNtnWithoutCheckDigit(int companyId) =>
         FbrNtnWithoutCheckDigitCompanyIds.Contains(companyId);
 
+    /// <summary>
+    /// Recalculate FBR line sales tax with round-half-up (AwayFromZero) so FBR validation matches.
+    /// Company 3 (MIA) keeps ERP-stored line tax amounts in the FBR payload.
+    /// </summary>
+    public static bool UsesFbrAlignedSalesTaxRounding(int companyId) =>
+        companyId != TradeInvoiceCompanyId;
+
     /// <summary>Digit pad width for auto invoice numbers (INV-001 vs INV-0001).</summary>
     public static int InvoiceNumberPadWidth(int companyId) =>
         companyId == KashafPolyesterCompanyId ? 3 : 4;

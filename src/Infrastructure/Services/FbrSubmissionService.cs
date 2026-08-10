@@ -75,11 +75,36 @@ public class FbrSubmissionService : IFbrSubmissionService
                     false);
             }
 
-            var fbrNumber = TryExtractFbrInvoiceNumber(responseBody) ?? $"FBR-{request.InvoiceNumber}";
+            var parsed = ParseFbrResponse(responseBody);
+            if (!parsed.IsValid)
+            {
+                _logger.LogWarning(
+                    "FBR validation failed for invoice {InvoiceNumber}: {Error}",
+                    request.InvoiceNumber,
+                    parsed.ErrorMessage);
+
+                return new FbrSubmissionResult(
+                    false,
+                    parsed.ErrorMessage ?? "FBR rejected the invoice.",
+                    null,
+                    responseBody,
+                    false);
+            }
+
+            if (string.IsNullOrWhiteSpace(parsed.InvoiceNumber))
+            {
+                return new FbrSubmissionResult(
+                    false,
+                    "FBR accepted the request but did not return an invoice number.",
+                    null,
+                    responseBody,
+                    false);
+            }
+
             return new FbrSubmissionResult(
                 true,
                 "Invoice submitted to FBR successfully.",
-                fbrNumber,
+                parsed.InvoiceNumber,
                 responseBody,
                 false);
         }
@@ -90,31 +115,130 @@ public class FbrSubmissionService : IFbrSubmissionService
         }
     }
 
-    private static string? TryExtractFbrInvoiceNumber(string responseBody)
+    private static FbrParseResult ParseFbrResponse(string responseBody)
     {
         try
         {
             using var doc = JsonDocument.Parse(responseBody);
             var root = doc.RootElement;
 
-            foreach (var key in new[] { "fbrInvoiceNumber", "FbrInvoiceNumber", "invoiceNumber", "InvoiceNumber", "irn" })
+            if (root.TryGetProperty("validationResponse", out var validation)
+                && validation.ValueKind == JsonValueKind.Object)
             {
-                if (root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                var statusCode = GetStringProp(validation, "statusCode");
+                var status = GetStringProp(validation, "status");
+                var isInvalid = string.Equals(statusCode, "01", StringComparison.Ordinal)
+                    || string.Equals(status, "Invalid", StringComparison.OrdinalIgnoreCase);
+
+                if (isInvalid)
                 {
-                    var text = value.GetString();
+                    return new FbrParseResult(false, null, BuildValidationErrorMessage(validation));
+                }
+            }
+
+            var invoiceNumber = TryGetInvoiceNumber(root);
+            return new FbrParseResult(true, invoiceNumber, null);
+        }
+        catch (JsonException)
+        {
+            return new FbrParseResult(false, null, "FBR returned a non-JSON response.");
+        }
+    }
+
+    private static string BuildValidationErrorMessage(JsonElement validation)
+    {
+        var parts = new List<string>();
+
+        var topError = GetStringProp(validation, "error");
+        var topErrorCode = GetStringProp(validation, "errorCode");
+        if (!string.IsNullOrWhiteSpace(topError))
+        {
+            parts.Add(string.IsNullOrWhiteSpace(topErrorCode)
+                ? topError
+                : $"[{topErrorCode}] {topError}");
+        }
+
+        if (validation.TryGetProperty("invoiceStatuses", out var statuses)
+            && statuses.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in statuses.EnumerateArray())
+            {
+                var itemStatus = GetStringProp(item, "status");
+                var itemStatusCode = GetStringProp(item, "statusCode");
+                var itemInvalid = string.Equals(itemStatusCode, "01", StringComparison.Ordinal)
+                    || string.Equals(itemStatus, "Invalid", StringComparison.OrdinalIgnoreCase);
+                if (!itemInvalid)
+                {
+                    continue;
+                }
+
+                var itemSNo = GetStringProp(item, "itemSNo") ?? "?";
+                var itemError = GetStringProp(item, "error") ?? "Invalid line.";
+                var itemErrorCode = GetStringProp(item, "errorCode");
+                parts.Add(string.IsNullOrWhiteSpace(itemErrorCode)
+                    ? $"Line {itemSNo}: {itemError}"
+                    : $"Line {itemSNo} [{itemErrorCode}]: {itemError}");
+            }
+        }
+
+        if (parts.Count == 0)
+        {
+            return "FBR validation failed (status Invalid). See response JSON for details.";
+        }
+
+        return "FBR validation failed. " + string.Join(" ", parts);
+    }
+
+    private static string? TryGetInvoiceNumber(JsonElement root)
+    {
+        foreach (var key in new[] { "invoiceNumber", "InvoiceNumber", "fbrInvoiceNumber", "FbrInvoiceNumber", "irn" })
+        {
+            if (root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+            {
+                var text = value.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text.Trim();
+                }
+            }
+        }
+
+        if (root.TryGetProperty("validationResponse", out var validation)
+            && validation.ValueKind == JsonValueKind.Object
+            && validation.TryGetProperty("invoiceStatuses", out var statuses)
+            && statuses.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in statuses.EnumerateArray())
+            {
+                if (item.TryGetProperty("invoiceNo", out var invoiceNo)
+                    && invoiceNo.ValueKind == JsonValueKind.String)
+                {
+                    var text = invoiceNo.GetString();
                     if (!string.IsNullOrWhiteSpace(text))
                     {
-                        return text;
+                        return text.Trim();
                     }
                 }
             }
         }
-        catch (JsonException)
-        {
-            // ignore parse errors; caller will fall back to generated number
-        }
 
         return null;
+    }
+
+    private static string? GetStringProp(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            JsonValueKind.Null => null,
+            _ => value.ToString()
+        };
     }
 
     private static string Truncate(string? value, int maxLength)
@@ -127,4 +251,5 @@ public class FbrSubmissionService : IFbrSubmissionService
         return value[..maxLength] + "...";
     }
 
+    private sealed record FbrParseResult(bool IsValid, string? InvoiceNumber, string? ErrorMessage);
 }
