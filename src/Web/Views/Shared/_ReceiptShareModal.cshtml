@@ -8,6 +8,12 @@
             <div class="modal-body">
                 <p class="text-muted small mb-3" id="receipt-share-summary"></p>
 
+                <div class="form-check form-switch mb-3 d-none" id="receipt-share-urdu-wrap">
+                    <input class="form-check-input" type="checkbox" role="switch" id="receipt-share-urdu" />
+                    <label class="form-check-label" for="receipt-share-urdu">Print / send receipt in Urdu</label>
+                    <div class="form-text">Uses saved Urdu customer name when set; otherwise phonetic conversion.</div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label" for="receipt-share-whatsapp">WhatsApp number</label>
                     <input type="text" class="form-control" id="receipt-share-whatsapp" maxlength="20" placeholder="03xx-xxxxxxx or 923xxxxxxxxx" />
@@ -25,7 +31,7 @@
             <div class="modal-footer flex-wrap">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-outline-primary" id="btn-receipt-share-download-pdf">
-                    <i class="fa-solid fa-file-pdf me-1"></i>Download PDF
+                    <i class="fa-solid fa-file-pdf me-1"></i>Print / PDF
                 </button>
                 <button type="button" class="btn btn-success" id="btn-receipt-share-whatsapp">
                     <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp

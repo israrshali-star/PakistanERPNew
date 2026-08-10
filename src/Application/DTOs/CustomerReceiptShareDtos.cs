@@ -13,7 +13,8 @@ public record CustomerReceiptPdfDto(
     string? ChequeNumber,
     DateTime? ChequeDate,
     string? Notes,
-    string StatusLabel);
+    string StatusLabel,
+    bool UseUrdu = false);
 
 public record CustomerReceiptShareInfoDto(
     int ReceiptId,
@@ -27,4 +28,7 @@ public record CustomerReceiptShareInfoDto(
     string? CustomerMobile,
     string? CustomerPhone,
     string CompanyName,
-    string WhatsAppMessage);
+    string WhatsAppMessage,
+    bool SupportsUrduReceipt = false,
+    string? WhatsAppMessageUrdu = null,
+    string? CustomerNameUrdu = null);

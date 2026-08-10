@@ -250,17 +250,21 @@ public class CustomerReceiptsApiController : ControllerBase
 
     [HttpGet("{id:int}/pdf")]
     [RequirePermission("Sales.View")]
-    public async Task<IActionResult> Pdf(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Pdf(
+        int id,
+        [FromQuery] bool urdu = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var pdf = await _customerReceiptShareService.GetReceiptPdfAsync(id, cancellationToken);
+            var pdf = await _customerReceiptShareService.GetReceiptPdfAsync(id, urdu, cancellationToken);
             if (pdf is null)
             {
                 return NotFound();
             }
 
-            return File(pdf, "application/pdf", $"customer-receipt-{id}.pdf");
+            var suffix = urdu ? "-ur" : string.Empty;
+            return File(pdf, "application/pdf", $"customer-receipt-{id}{suffix}.pdf");
         }
         catch (InvalidOperationException ex)
         {

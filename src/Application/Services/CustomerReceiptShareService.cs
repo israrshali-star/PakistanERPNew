@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -34,6 +35,20 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             return null;
         }
 
+        var supportsUrdu = TradeInvoiceLayout.SupportsUrduLedger(model.CompanyId);
+        string? messageUrdu = null;
+        if (supportsUrdu)
+        {
+            var urduName = RomanUrduTransliterator.ResolveDisplayName(
+                model.CustomerName,
+                model.CustomerNameUrdu,
+                useUrdu: true);
+            messageUrdu = BuildWhatsAppMessage(model with
+            {
+                CustomerName = urduName
+            }, useUrdu: true);
+        }
+
         return new CustomerReceiptShareInfoDto(
             model.ReceiptId,
             model.ReceiptNumber,
@@ -46,10 +61,16 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             model.CustomerMobile,
             model.CustomerPhone,
             model.CompanyName,
-            BuildWhatsAppMessage(model));
+            BuildWhatsAppMessage(model, useUrdu: false),
+            supportsUrdu,
+            messageUrdu,
+            model.CustomerNameUrdu);
     }
 
-    public async Task<byte[]?> GetReceiptPdfAsync(int receiptId, CancellationToken cancellationToken = default)
+    public async Task<byte[]?> GetReceiptPdfAsync(
+        int receiptId,
+        bool useUrdu = false,
+        CancellationToken cancellationToken = default)
     {
         var model = await LoadReceiptShareModelAsync(receiptId, cancellationToken);
         if (model is null)
@@ -57,7 +78,8 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             return null;
         }
 
-        return _receiptPdfService.GeneratePdf(MapPdfDto(model));
+        useUrdu = useUrdu && TradeInvoiceLayout.SupportsUrduLedger(model.CompanyId);
+        return _receiptPdfService.GeneratePdf(MapPdfDto(model, useUrdu));
     }
 
     private async Task<ReceiptShareModel?> LoadReceiptShareModelAsync(
@@ -77,6 +99,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             .Select(r => new
             {
                 r.Id,
+                r.CompanyId,
                 r.ReceiptNumber,
                 r.ReceiptDate,
                 r.Amount,
@@ -89,6 +112,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
                 r.ChequeNumber,
                 r.Notes,
                 CustomerName = r.Customer.BuyerName,
+                CustomerNameUrdu = r.Customer.BuyerNameUrdu,
                 CustomerCode = r.Customer.BuyerId,
                 CustomerEmail = r.Customer.Email,
                 CustomerMobile = r.Customer.Mobile,
@@ -105,8 +129,10 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
 
         return new ReceiptShareModel(
             row.Id,
+            row.CompanyId,
             row.ReceiptNumber,
             row.CustomerName,
+            row.CustomerNameUrdu,
             row.CustomerCode,
             row.ReceiptDate,
             row.Amount,
@@ -129,11 +155,17 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             row.CompanyName);
     }
 
-    private static CustomerReceiptPdfDto MapPdfDto(ReceiptShareModel model) =>
-        new(
+    private static CustomerReceiptPdfDto MapPdfDto(ReceiptShareModel model, bool useUrdu)
+    {
+        var customerName = RomanUrduTransliterator.ResolveDisplayName(
+            model.CustomerName,
+            model.CustomerNameUrdu,
+            useUrdu);
+
+        return new CustomerReceiptPdfDto(
             model.CompanyName,
             model.ReceiptNumber,
-            model.CustomerName,
+            customerName,
             model.CustomerCode,
             model.ReceiptDate,
             model.Amount,
@@ -143,25 +175,28 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             model.ChequeNumber,
             model.ChequeDate,
             model.Notes,
-            model.StatusLabel);
+            model.StatusLabel,
+            useUrdu);
+    }
 
-    private static string BuildWhatsAppMessage(ReceiptShareModel model)
+    private static string BuildWhatsAppMessage(ReceiptShareModel model, bool useUrdu)
     {
+        var labels = CustomerReceiptPdfLabels.For(useUrdu);
         var amount = model.Amount.ToString("N2", CultureInfo.GetCultureInfo("en-PK"));
         var message =
-            $"Dear {model.CustomerName},\n\n" +
-            $"Receipt: {model.ReceiptNumber}\n" +
-            $"Customer: {model.CustomerCode}\n" +
-            $"Date: {model.ReceiptDate:dd/MM/yyyy}\n" +
-            $"Amount: PKR {amount}\n" +
-            $"Payment: {model.PaymentMethodLabel}\n";
+            $"{labels.Dear} {model.CustomerName},\n\n" +
+            $"{labels.Receipt}: {model.ReceiptNumber}\n" +
+            $"{labels.Customer}: {model.CustomerCode}\n" +
+            $"{labels.Date}: {model.ReceiptDate:dd/MM/yyyy}\n" +
+            $"{labels.Amount}: PKR {amount}\n" +
+            $"{labels.Payment}: {model.PaymentMethodLabel}\n";
 
         if (!string.IsNullOrWhiteSpace(model.ChequeNumber))
         {
-            message += $"Cheque/Ref #: {model.ChequeNumber}";
+            message += $"{labels.ChequeRef}: {model.ChequeNumber}";
             if (model.ChequeDate.HasValue)
             {
-                message += $" · Date: {model.ChequeDate.Value:dd/MM/yyyy}";
+                message += $" · {labels.Date}: {model.ChequeDate.Value:dd/MM/yyyy}";
             }
 
             message += '\n';
@@ -169,12 +204,12 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
         else if (!string.IsNullOrWhiteSpace(model.Notes)
                  && model.PaymentMethodLabel.Contains("Bank Transfer", StringComparison.OrdinalIgnoreCase))
         {
-            message += $"Ref #: {model.Notes.Trim()}\n";
+            message += $"{labels.RefNo}: {model.Notes.Trim()}\n";
         }
 
         return message +
-               "\nPlease find the receipt PDF attached or request it from us.\n\n" +
-               $"Regards,\n{model.CompanyName}";
+               $"\n{labels.WhatsAppAttachHint}\n\n" +
+               $"{labels.Regards},\n{model.CompanyName}";
     }
 
     private static string GetPaymentMethodLabel(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>
@@ -226,8 +261,10 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
 
     private sealed record ReceiptShareModel(
         int ReceiptId,
+        int CompanyId,
         string ReceiptNumber,
         string CustomerName,
+        string? CustomerNameUrdu,
         string CustomerCode,
         DateTime ReceiptDate,
         decimal Amount,

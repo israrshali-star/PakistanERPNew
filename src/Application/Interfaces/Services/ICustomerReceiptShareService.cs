@@ -6,5 +6,8 @@ public interface ICustomerReceiptShareService
 {
     Task<CustomerReceiptShareInfoDto?> GetShareInfoAsync(int receiptId, CancellationToken cancellationToken = default);
 
-    Task<byte[]?> GetReceiptPdfAsync(int receiptId, CancellationToken cancellationToken = default);
+    Task<byte[]?> GetReceiptPdfAsync(
+        int receiptId,
+        bool useUrdu = false,
+        CancellationToken cancellationToken = default);
 }

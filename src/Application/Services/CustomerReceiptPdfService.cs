@@ -16,53 +16,65 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
     static CustomerReceiptPdfService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        _ = UrduPdfFont.Family;
     }
 
-    public byte[] GeneratePdf(CustomerReceiptPdfDto model) =>
-        Document.Create(container =>
+    public byte[] GeneratePdf(CustomerReceiptPdfDto model)
+    {
+        var labels = CustomerReceiptPdfLabels.For(model.UseUrdu);
+        var fontFamily = model.UseUrdu ? UrduPdfFont.Family : "Arial";
+
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(28);
-                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Arial"));
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(fontFamily));
 
                 page.Content().Column(column =>
                 {
                     column.Item().Row(row =>
                     {
                         row.RelativeItem().AlignLeft().Text(model.CompanyName).FontSize(11);
-                        row.RelativeItem().AlignRight().Text("Payment Receipt").Bold().FontSize(16);
+                        row.RelativeItem().AlignRight().Text(labels.PaymentReceipt).Bold().FontSize(16);
                     });
 
-                    column.Item().PaddingTop(18).Element(c => ComposeReceivedFromBox(c, model));
+                    column.Item().PaddingTop(18).Element(c => ComposeReceivedFromBox(c, model, labels));
                     column.Item().PaddingTop(14).Row(row =>
                     {
-                        row.RelativeItem().Element(c => ComposeLeftDetailsTable(c, model));
+                        row.RelativeItem().Element(c => ComposeLeftDetailsTable(c, model, labels));
                         row.ConstantItem(12);
-                        row.RelativeItem().Element(c => ComposeRightAmountTable(c, model));
+                        row.RelativeItem().Element(c => ComposeRightAmountTable(c, model, labels));
                     });
 
-                    column.Item().PaddingTop(16).Text("Invoices Paid").Bold().FontSize(11);
-                    column.Item().PaddingTop(6).Element(ComposeInvoicesPaidTable);
+                    column.Item().PaddingTop(16).Text(labels.InvoicesPaid).Bold().FontSize(11);
+                    column.Item().PaddingTop(6).Element(c => ComposeInvoicesPaidTable(c, labels));
 
                     column.Item().PaddingTop(10).AlignRight()
-                        .Text($"Receipt #: {model.ReceiptNumber}  ·  Printed {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .Text($"{labels.ReceiptNumber}: {model.ReceiptNumber}  ·  {labels.Printed} {DateTime.Now:dd/MM/yyyy HH:mm}")
                         .FontSize(8).FontColor(Colors.Grey.Darken1);
                 });
             });
         }).GeneratePdf();
+    }
 
-    private static void ComposeReceivedFromBox(IContainer container, CustomerReceiptPdfDto model)
+    private static void ComposeReceivedFromBox(
+        IContainer container,
+        CustomerReceiptPdfDto model,
+        CustomerReceiptPdfLabels labels)
     {
         container.Border(1).BorderColor(BorderColor).Padding(10).Column(box =>
         {
-            box.Item().AlignCenter().Text("Received From").Bold().FontSize(11);
+            box.Item().AlignCenter().Text(labels.ReceivedFrom).Bold().FontSize(11);
             box.Item().PaddingTop(8).AlignCenter().Text(model.CustomerName).Bold().FontSize(13);
         });
     }
 
-    private static void ComposeLeftDetailsTable(IContainer container, CustomerReceiptPdfDto model)
+    private static void ComposeLeftDetailsTable(
+        IContainer container,
+        CustomerReceiptPdfDto model,
+        CustomerReceiptPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -72,18 +84,21 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
                 columns.RelativeColumn(1.4f);
             });
 
-            AddDetailRow(table, "Date", model.ReceiptDate.ToString("dd/MM/yyyy"));
-            AddDetailRow(table, "Payment Method", model.PaymentMethodLabel);
-            AddDetailRow(table, "Check/Ref No", ResolveCheckRefNo(model));
+            AddDetailRow(table, labels.Date, model.ReceiptDate.ToString("dd/MM/yyyy"));
+            AddDetailRow(table, labels.PaymentMethod, model.PaymentMethodLabel);
+            AddDetailRow(table, labels.CheckRefNo, ResolveCheckRefNo(model));
             AddDetailRow(
                 table,
-                "Amount in words",
+                labels.AmountInWords,
                 AmountInWords.ToPakistaniRupees(model.Amount),
                 valueFontSize: 8);
         });
     }
 
-    private static void ComposeRightAmountTable(IContainer container, CustomerReceiptPdfDto model)
+    private static void ComposeRightAmountTable(
+        IContainer container,
+        CustomerReceiptPdfDto model,
+        CustomerReceiptPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -93,12 +108,12 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
                 columns.RelativeColumn(1f);
             });
 
-            AddDetailRow(table, "Payment Amount", $"PKR {FormatAmount(model.Amount)}", valueBold: true);
-            AddDetailRow(table, "Total Amount Due", $"PKR {FormatAmount(model.TotalAmountDue)}", valueBold: true);
+            AddDetailRow(table, labels.PaymentAmount, $"PKR {FormatAmount(model.Amount)}", valueBold: true);
+            AddDetailRow(table, labels.TotalAmountDue, $"PKR {FormatAmount(model.TotalAmountDue)}", valueBold: true);
         });
     }
 
-    private static void ComposeInvoicesPaidTable(IContainer container)
+    private static void ComposeInvoicesPaidTable(IContainer container, CustomerReceiptPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -111,9 +126,9 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
 
             table.Header(header =>
             {
-                header.Cell().Element(HeaderCell).Text("Invoice #");
-                header.Cell().Element(HeaderCell).Text("Date");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Amount");
+                header.Cell().Element(HeaderCell).Text(labels.InvoiceNumber);
+                header.Cell().Element(HeaderCell).Text(labels.Date);
+                header.Cell().Element(HeaderCell).AlignRight().Text(labels.Amount);
             });
 
             table.Cell().ColumnSpan(3).Element(BodyCell).AlignCenter()
@@ -155,7 +170,6 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
             return model.ChequeNumber.Trim();
         }
 
-        // Bank transfer receipts often store the transfer reference in Notes.
         if (!string.IsNullOrWhiteSpace(model.Notes)
             && model.PaymentMethodLabel.Contains("Bank Transfer", StringComparison.OrdinalIgnoreCase))
         {

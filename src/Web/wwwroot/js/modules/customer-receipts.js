@@ -429,6 +429,8 @@
                     className: 'text-end',
                     render: function (data, type, row) {
                         var buttons = [
+                            '<button type="button" class="btn btn-sm btn-outline-danger btn-print-receipt me-1" data-id="' + row.id + '" title="Print / PDF">' +
+                            '<i class="fa-solid fa-print"></i></button>',
                             '<button type="button" class="btn btn-sm btn-outline-success btn-share-receipt" data-id="' + row.id + '" title="Share on WhatsApp">' +
                             '<i class="fa-brands fa-whatsapp"></i></button>'
                         ];
@@ -743,6 +745,15 @@
         });
         $('#receipt-customer-id').on('change', updateCustomerBalanceHint);
         $('#receipt-form').on('submit', saveReceipt);
+
+        $('#customer-receipts-table').on('click', '.btn-print-receipt', function () {
+            var id = $(this).data('id');
+            if (window.ReceiptShare && window.ReceiptShare.print) {
+                window.ReceiptShare.print(id);
+            } else {
+                window.open('/api/customer-receipts/' + id + '/pdf', '_blank');
+            }
+        });
 
         $('#customer-receipts-table').on('click', '.btn-share-receipt', function () {
             if (window.ReceiptShare) {

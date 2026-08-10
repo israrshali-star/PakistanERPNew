@@ -27,7 +27,7 @@ public static class TradeInvoiceLayout
     /// <summary>Kashaf Polyester — invoice numbers use INV-001 (3 digits), not INV-0001.</summary>
     public const int KashafPolyesterCompanyId = 5;
 
-    /// <summary>Company 3 (MIA) can share customer/vendor ledgers with Urdu PDF labels.</summary>
+    /// <summary>Company 3 (MIA) can share customer/vendor ledgers and customer receipts with Urdu PDF labels.</summary>
     public static bool SupportsUrduLedger(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 

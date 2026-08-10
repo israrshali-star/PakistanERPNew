@@ -52,21 +52,61 @@
         }
     }
 
+    function supportsUrdu() {
+        return !!(currentShareInfo && (currentShareInfo.supportsUrduReceipt || currentShareInfo.SupportsUrduReceipt));
+    }
+
+    function isUrduSelected() {
+        return supportsUrdu() && $('#receipt-share-urdu').is(':checked');
+    }
+
+    function resolveWhatsAppMessage() {
+        if (!currentShareInfo) {
+            return '';
+        }
+        if (isUrduSelected()) {
+            return currentShareInfo.whatsAppMessageUrdu
+                || currentShareInfo.WhatsAppMessageUrdu
+                || currentShareInfo.whatsAppMessage
+                || currentShareInfo.WhatsAppMessage
+                || '';
+        }
+        return currentShareInfo.whatsAppMessage || currentShareInfo.WhatsAppMessage || '';
+    }
+
+    function pdfUrl(receiptId) {
+        var url = '/api/customer-receipts/' + receiptId + '/pdf';
+        if (isUrduSelected()) {
+            url += '?urdu=true';
+        }
+        return url;
+    }
+
     function populateModal(info) {
         currentShareInfo = info;
-        currentReceiptId = info.receiptId;
+        currentReceiptId = info.receiptId || info.ReceiptId;
 
         $('#receipt-share-summary').text(
-            info.receiptNumber + ' · ' + info.customerName + ' · ' +
-            formatCurrency(info.amount) + ' · ' + info.paymentMethodLabel
+            (info.receiptNumber || info.ReceiptNumber) + ' · ' +
+            (info.customerName || info.CustomerName) + ' · ' +
+            formatCurrency(info.amount || info.Amount) + ' · ' +
+            (info.paymentMethodLabel || info.PaymentMethodLabel)
         );
-        $('#receipt-share-whatsapp').val(info.customerMobile || info.customerPhone || '');
-        $('#receipt-share-message').val(info.whatsAppMessage || '');
+        $('#receipt-share-whatsapp').val(info.customerMobile || info.CustomerMobile || info.customerPhone || info.CustomerPhone || '');
+        $('#receipt-share-urdu').prop('checked', false);
+
+        if (supportsUrdu()) {
+            $('#receipt-share-urdu-wrap').removeClass('d-none');
+        } else {
+            $('#receipt-share-urdu-wrap').addClass('d-none');
+        }
+
+        $('#receipt-share-message').val(resolveWhatsAppMessage());
         showShareAlert(null, null);
     }
 
     function fetchReceiptPdfBlob(receiptId) {
-        return fetch('/api/customer-receipts/' + receiptId + '/pdf').then(function (response) {
+        return fetch(pdfUrl(receiptId)).then(function (response) {
             if (!response.ok) {
                 return response.json().then(function (body) {
                     throw new Error(body.message || body.Message || 'Could not load PDF.');
@@ -88,7 +128,7 @@
         }
 
         var phone = normalizeWhatsAppPhone($('#receipt-share-whatsapp').val());
-        var message = ($('#receipt-share-message').val() || currentShareInfo.whatsAppMessage || '').trim();
+        var message = ($('#receipt-share-message').val() || resolveWhatsAppMessage() || '').trim();
         if (!message) {
             showShareAlert('danger', 'Enter a message to send.');
             return;
@@ -127,7 +167,11 @@
         if (!currentReceiptId) {
             return;
         }
-        window.open('/api/customer-receipts/' + currentReceiptId + '/pdf', '_blank');
+        window.open(pdfUrl(currentReceiptId), '_blank');
+    }
+
+    function printReceipt(receiptId) {
+        window.open('/api/customer-receipts/' + receiptId + '/pdf', '_blank');
     }
 
     function openShareModal(receiptId) {
@@ -153,9 +197,13 @@
     $(function () {
         $('#btn-receipt-share-whatsapp').on('click', shareViaWhatsApp);
         $('#btn-receipt-share-download-pdf').on('click', downloadPdf);
+        $('#receipt-share-urdu').on('change', function () {
+            $('#receipt-share-message').val(resolveWhatsAppMessage());
+        });
     });
 
     window.ReceiptShare = {
-        open: openShareModal
+        open: openShareModal,
+        print: printReceipt
     };
 })(window);
