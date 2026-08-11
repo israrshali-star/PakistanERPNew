@@ -45,7 +45,13 @@
         if (!value) {
             return '';
         }
-        var d = new Date(value);
+        if (typeof value === 'string') {
+            var match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+            if (match) {
+                return match[3] + '/' + match[2] + '/' + match[1];
+            }
+        }
+        var d = value instanceof Date ? value : new Date(value);
         if (isNaN(d.getTime())) {
             return value;
         }
@@ -56,11 +62,25 @@
         if (!value) {
             return '';
         }
-        var d = new Date(value);
+
+        // Prefer the calendar date from the API string (yyyy-MM-dd…) so timezone
+        // conversion does not move the posting date to the previous day.
+        if (typeof value === 'string') {
+            var match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+            if (match) {
+                return match[1] + '-' + match[2] + '-' + match[3];
+            }
+        }
+
+        var d = value instanceof Date ? value : new Date(value);
         if (isNaN(d.getTime())) {
             return '';
         }
-        return d.toISOString().slice(0, 10);
+
+        var year = d.getFullYear();
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
     }
 
     function showFormError(message) {
