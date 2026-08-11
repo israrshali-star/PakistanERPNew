@@ -65,6 +65,8 @@ public record CustomerSaveResult(bool Success, string? Message, CustomerDto? Cus
 
 public record NextBuyerIdDto(string BuyerId);
 
+public record CustomerLedgerAttachmentLinkDto(int Id, string FileName);
+
 public record CustomerLedgerEntryDto(
     DateTime Date,
     string Reference,
@@ -72,7 +74,9 @@ public record CustomerLedgerEntryDto(
     decimal Debit,
     decimal Credit,
     decimal Balance,
-    decimal PendingCredit = 0m);
+    decimal PendingCredit = 0m,
+    int? ReceiptId = null,
+    IReadOnlyList<CustomerLedgerAttachmentLinkDto>? Attachments = null);
 
 public record CustomerLedgerDto(
     CustomerDto Customer,

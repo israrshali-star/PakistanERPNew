@@ -213,13 +213,87 @@
         $('#receipt-form')
             .find('input, select, textarea, button[type="submit"]')
             .not('[data-bs-dismiss="modal"]')
+            .not('#receipt-attachment-upload')
             .prop('disabled', isReadOnly);
         $('#btn-generate-receipt-number').prop('disabled', isReadOnly);
+        $('#receipt-attachment-upload').prop('disabled', false);
         if (isReadOnly) {
             $('#receipt-deposited-warning').removeClass('d-none');
         } else {
             $('#receipt-deposited-warning').addClass('d-none');
         }
+    }
+
+    function clearAttachmentUi() {
+        $('#receipt-attachment-upload').val('');
+        $('#receipt-attachments-list').empty();
+    }
+
+    function renderAttachments(attachments) {
+        var $list = $('#receipt-attachments-list');
+        $list.empty();
+        var items = attachments || [];
+        if (!items.length) {
+            return;
+        }
+
+        items.forEach(function (item) {
+            var id = item.id || item.Id;
+            var name = item.fileName || item.FileName || 'file';
+            var size = item.fileSizeBytes || item.FileSizeBytes || 0;
+            var sizeKb = size ? (size / 1024).toFixed(1) + ' KB' : '';
+            var $row = $('<li class="list-group-item d-flex justify-content-between align-items-center px-0"></li>');
+            $row.append(
+                $('<a></a>')
+                    .attr('href', '/api/customer-receipts/attachments/' + id + '/download')
+                    .attr('target', '_blank')
+                    .text(name + (sizeKb ? ' (' + sizeKb + ')' : ''))
+            );
+            if (canEdit) {
+                $row.append(
+                    $('<button type="button" class="btn btn-sm btn-outline-danger btn-delete-receipt-attachment"></button>')
+                        .attr('data-id', id)
+                        .attr('title', 'Delete attachment')
+                        .html('<i class="fa-solid fa-trash"></i>')
+                );
+            }
+            $list.append($row);
+        });
+    }
+
+    function uploadReceiptFiles(receiptId, files) {
+        if (!receiptId || !files || !files.length) {
+            return $.Deferred().resolve().promise();
+        }
+
+        var uploads = Array.prototype.map.call(files, function (file) {
+            var formData = new FormData();
+            formData.append('file', file);
+            return $.ajax({
+                url: '/api/customer-receipts/' + receiptId + '/attachments',
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false
+            });
+        });
+
+        return $.when.apply($, uploads);
+    }
+
+    function reloadAttachments(receiptId) {
+        if (!receiptId) {
+            clearAttachmentUi();
+            return;
+        }
+
+        $.getJSON('/api/customer-receipts/' + receiptId + '/attachments')
+            .done(function (items) {
+                renderAttachments(items);
+            })
+            .fail(function () {
+                // keep existing list on failure
+            });
     }
 
     function updateCustomerBalanceHint() {
@@ -244,6 +318,7 @@
         $('#receipt-bank-id, #same-bank-id').val('').trigger('change');
         setChequeBankType(null);
         $('#same-bank-cheque-number, #same-bank-cheque-date, #cheque-number, #cheque-date, #cheque-drawn-bank, #receipt-notes').val('');
+        clearAttachmentUi();
         setFormReadOnly(false);
         togglePaymentFields();
         updateCustomerBalanceHint();
@@ -528,6 +603,7 @@
                 setFormReadOnly(receipt.isDeposited === true || !!receipt.clearedAt);
                 updateCustomerBalanceHint();
                 updateAmountInWords();
+                renderAttachments(receipt.attachments || receipt.Attachments || []);
                 receiptModal.show();
             })
             .fail(function (xhr) {
@@ -647,15 +723,36 @@
                             : 'Other-bank cheque saved. It will appear on Banking → Make Deposit. Enter another receipt or close when finished.'))
                     : (id ? 'Receipt updated. Close when finished.' : 'Receipt saved. Enter another receipt or close when finished.');
 
-                loadLookups().always(function () {
-                    if (id) {
-                        showFormSuccess(savedMsg);
-                        updateCustomerBalanceHint();
-                    } else {
-                        prepareFormForNextReceipt();
-                        showFormSuccess(savedMsg);
-                    }
-                });
+                var savedReceipt = res.receipt || res.Receipt;
+                var savedId = (savedReceipt && (savedReceipt.id || savedReceipt.Id)) || id;
+                var pendingFiles = $('#receipt-attachment-upload')[0].files;
+
+                var afterAttachments = function () {
+                    loadLookups().always(function () {
+                        if (id) {
+                            showFormSuccess(savedMsg);
+                            updateCustomerBalanceHint();
+                            reloadAttachments(savedId);
+                            $('#receipt-attachment-upload').val('');
+                        } else {
+                            prepareFormForNextReceipt();
+                            showFormSuccess(savedMsg);
+                        }
+                    });
+                };
+
+                if (savedId && pendingFiles && pendingFiles.length) {
+                    uploadReceiptFiles(savedId, pendingFiles)
+                        .done(afterAttachments)
+                        .fail(function (xhr) {
+                            showFormError(getApiErrorMessage(xhr, 'Receipt saved, but document upload failed.'));
+                            if (id) {
+                                reloadAttachments(savedId);
+                            }
+                        });
+                } else {
+                    afterAttachments();
+                }
             })
             .fail(function (xhr) {
                 var body = xhr.responseJSON;
@@ -748,11 +845,60 @@
 
         $('#customer-receipts-table').on('click', '.btn-print-receipt', function () {
             var id = $(this).data('id');
+            var pdfUrl = '/api/customer-receipts/' + id + '/pdf';
+            if (window.PrintChoice) {
+                window.PrintChoice.open({
+                    title: 'Print customer receipt',
+                    summary: 'Choose Print for the printer dialog, or Save as PDF to download the receipt PDF.',
+                    pdfUrl: pdfUrl
+                });
+                return;
+            }
             if (window.ReceiptShare && window.ReceiptShare.print) {
                 window.ReceiptShare.print(id);
             } else {
-                window.open('/api/customer-receipts/' + id + '/pdf', '_blank');
+                window.open(pdfUrl, '_blank');
             }
+        });
+
+        $('#receipt-attachment-upload').on('change', function () {
+            var receiptId = parseInt($('#receipt-id').val(), 10) || 0;
+            var input = this;
+            if (!receiptId || !input.files || !input.files.length) {
+                return;
+            }
+
+            uploadReceiptFiles(receiptId, input.files)
+                .done(function () {
+                    showFormSuccess('Document uploaded.');
+                    reloadAttachments(receiptId);
+                })
+                .fail(function (xhr) {
+                    showFormError(getApiErrorMessage(xhr, 'Failed to upload document.'));
+                })
+                .always(function () {
+                    input.value = '';
+                });
+        });
+
+        $('#receipt-attachments-list').on('click', '.btn-delete-receipt-attachment', function () {
+            var attachmentId = $(this).data('id');
+            var receiptId = parseInt($('#receipt-id').val(), 10) || 0;
+            if (!confirm('Delete this document?')) {
+                return;
+            }
+
+            $.ajax({
+                url: '/api/customer-receipts/attachments/' + attachmentId,
+                method: 'DELETE'
+            })
+                .done(function () {
+                    showFormSuccess('Document deleted.');
+                    reloadAttachments(receiptId);
+                })
+                .fail(function (xhr) {
+                    showFormError(getApiErrorMessage(xhr, 'Failed to delete document.'));
+                });
         });
 
         $('#customer-receipts-table').on('click', '.btn-share-receipt', function () {

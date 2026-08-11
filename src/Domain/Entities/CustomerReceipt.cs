@@ -28,4 +28,5 @@ public class CustomerReceipt : CompanyAuditableEntity
     public Bank? Bank { get; set; }
     public BankTransaction? DepositedBankTransaction { get; set; }
     public Company Company { get; set; } = null!;
+    public ICollection<CustomerReceiptAttachment> Attachments { get; set; } = new List<CustomerReceiptAttachment>();
 }

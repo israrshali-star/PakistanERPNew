@@ -47,7 +47,7 @@
         $tbody.empty();
 
         if (!data.entries || data.entries.length === 0) {
-            $tbody.append('<tr><td colspan="7" class="text-muted text-center">No transactions in this period.</td></tr>');
+            $tbody.append('<tr><td colspan="8" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#statement-footer').addClass('d-none');
             return;
         }
@@ -59,6 +59,18 @@
 
             var pending = entry.pendingCredit > 0 ? formatAmount(entry.pendingCredit) : '—';
             var rowClass = entry.pendingCredit > 0 ? ' class="table-warning"' : '';
+            var docsHtml = '—';
+            var attachments = entry.attachments || entry.Attachments || [];
+            if (attachments.length) {
+                docsHtml = attachments.map(function (doc) {
+                    var id = doc.id || doc.Id;
+                    var name = doc.fileName || doc.FileName || 'document';
+                    return '<a class="btn btn-sm btn-outline-primary me-1" href="/api/customers/receipt-attachments/' + id + '/download" target="_blank" title="' +
+                        $('<div>').text(name).html() + '"><i class="fa-solid fa-eye me-1"></i>View</a>' +
+                        '<a class="btn btn-sm btn-outline-secondary" href="/api/customers/receipt-attachments/' + id + '/download?download=1" title="Download">' +
+                        '<i class="fa-solid fa-download"></i></a>';
+                }).join(' ');
+            }
 
             $tbody.append(
                 '<tr' + rowClass + '>' +
@@ -69,6 +81,7 @@
                 '<td class="text-end">' + (entry.credit > 0 ? formatAmount(entry.credit) : '—') + '</td>' +
                 '<td class="text-end text-muted">' + pending + '</td>' +
                 '<td class="text-end fw-semibold">' + formatAmount(entry.balance) + '</td>' +
+                '<td class="no-print">' + docsHtml + '</td>' +
                 '</tr>'
             );
         });

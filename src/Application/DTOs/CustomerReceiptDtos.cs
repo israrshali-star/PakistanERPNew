@@ -20,7 +20,8 @@ public record CustomerReceiptDto(
     CustomerReceiptStatus Status,
     bool IsDeposited,
     DateTime? ClearedAt,
-    DateTime? ReturnedAt);
+    DateTime? ReturnedAt,
+    IReadOnlyList<DocumentAttachmentDto>? Attachments = null);
 
 public record CustomerReceiptListItemDto(
     int Id,

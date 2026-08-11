@@ -42,6 +42,7 @@ public class CompanyDataPurgeService : ICompanyDataPurgeService
                 DELETE FROM VendorBillAttachments WHERE CompanyId = {0};
                 DELETE FROM VendorBillLines WHERE VendorBillId IN (SELECT Id FROM VendorBills WHERE CompanyId = {0});
                 DELETE FROM VendorBills WHERE CompanyId = {0};
+                DELETE FROM CustomerReceiptAttachments WHERE CompanyId = {0};
                 DELETE FROM CustomerReceipts WHERE CompanyId = {0};
                 DELETE FROM VendorPayments WHERE CompanyId = {0};
                 DELETE FROM JournalEntryLines WHERE JournalEntryId IN (SELECT Id FROM JournalEntries WHERE CompanyId = {0});

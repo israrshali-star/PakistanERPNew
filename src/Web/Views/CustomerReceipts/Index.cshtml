@@ -189,6 +189,16 @@
                             <textarea class="form-control" id="receipt-notes" rows="2" maxlength="500"></textarea>
                             <div class="form-text d-none" id="receipt-notes-hint"></div>
                         </div>
+                        <div class="col-12" id="receipt-attachments-section">
+                            <label class="form-label" for="receipt-attachment-upload">Upload document</label>
+                            <input type="file" class="form-control" id="receipt-attachment-upload"
+                                   accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
+                            <div class="form-text">
+                                Upload cheque copy or bank transfer screenshot/picture (JPG, PNG, or PDF).
+                                You can attach files when creating or editing a receipt.
+                            </div>
+                            <ul class="list-group list-group-flush mt-2" id="receipt-attachments-list"></ul>
+                        </div>
                     </div>
                     <div class="alert alert-warning d-none mt-3" id="receipt-deposited-warning">
                         This cheque has already been deposited and cannot be edited.
@@ -206,7 +216,9 @@
 </div>
 
 @section Scripts {
+    <partial name="_PrintChoiceModal" />
     <partial name="_ReceiptShareModal" />
+    <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/customer-receipt-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/customer-receipts.js" asp-append-version="true"></script>
 }

@@ -41,6 +41,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SalesInvoiceLine> SalesInvoiceLines => Set<SalesInvoiceLine>();
     public DbSet<SalesInvoiceAttachment> SalesInvoiceAttachments => Set<SalesInvoiceAttachment>();
     public DbSet<CustomerReceipt> CustomerReceipts => Set<CustomerReceipt>();
+    public DbSet<CustomerReceiptAttachment> CustomerReceiptAttachments => Set<CustomerReceiptAttachment>();
     public DbSet<VendorBill> VendorBills => Set<VendorBill>();
     public DbSet<VendorBillLine> VendorBillLines => Set<VendorBillLine>();
     public DbSet<VendorBillAttachment> VendorBillAttachments => Set<VendorBillAttachment>();

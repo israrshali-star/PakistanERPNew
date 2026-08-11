@@ -17,6 +17,7 @@ public class LedgerShareService : ILedgerShareService
     private readonly IVendorService _vendorService;
     private readonly ILedgerPdfService _ledgerPdfService;
     private readonly IEmailSender _emailSender;
+    private readonly ICustomerReceiptAttachmentService _receiptAttachmentService;
 
     public LedgerShareService(
         IUnitOfWork unitOfWork,
@@ -24,7 +25,8 @@ public class LedgerShareService : ILedgerShareService
         ICustomerService customerService,
         IVendorService vendorService,
         ILedgerPdfService ledgerPdfService,
-        IEmailSender emailSender)
+        IEmailSender emailSender,
+        ICustomerReceiptAttachmentService receiptAttachmentService)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
@@ -32,6 +34,7 @@ public class LedgerShareService : ILedgerShareService
         _vendorService = vendorService;
         _ledgerPdfService = ledgerPdfService;
         _emailSender = emailSender;
+        _receiptAttachmentService = receiptAttachmentService;
     }
 
     public Task<LedgerShareInfoDto?> GetCustomerShareInfoAsync(
@@ -104,7 +107,19 @@ public class LedgerShareService : ILedgerShareService
             return new LedgerShareActionResult(false, "Could not generate ledger PDF.");
         }
 
-        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, useUrdu, cancellationToken);
+        var receiptDocs = await CollectCustomerReceiptEmailAttachmentsAsync(
+            customerId,
+            request.FromDate,
+            request.ToDate,
+            cancellationToken);
+
+        return await SendLedgerEmailAsync(
+            shareInfo,
+            request,
+            pdfBytes,
+            useUrdu,
+            receiptDocs,
+            cancellationToken);
     }
 
     public async Task<LedgerShareActionResult> SendVendorLedgerEmailAsync(
@@ -139,11 +154,71 @@ public class LedgerShareService : ILedgerShareService
             return new LedgerShareActionResult(false, "Could not generate ledger PDF.");
         }
 
-        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, useUrdu, cancellationToken);
+        return await SendLedgerEmailAsync(shareInfo, request, pdfBytes, useUrdu, null, cancellationToken);
     }
 
     private bool ResolveUseUrdu(bool requested) =>
         requested && TradeInvoiceLayout.SupportsUrduLedger(_currentCompany.GetRequiredCompanyId());
+
+    private async Task<IReadOnlyList<EmailAttachment>> CollectCustomerReceiptEmailAttachmentsAsync(
+        int customerId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<CustomerLedgerEntryDto> entries;
+        if (fromDate.HasValue && toDate.HasValue)
+        {
+            var statement = await _customerService.GetStatementAsync(
+                customerId,
+                fromDate.Value,
+                toDate.Value,
+                cancellationToken);
+            entries = statement?.Entries ?? Array.Empty<CustomerLedgerEntryDto>();
+        }
+        else
+        {
+            var ledger = await _customerService.GetLedgerAsync(customerId, cancellationToken);
+            entries = ledger?.Entries ?? Array.Empty<CustomerLedgerEntryDto>();
+        }
+
+        var attachmentIds = entries
+            .Where(e => e.Attachments is { Count: > 0 })
+            .SelectMany(e => e.Attachments!)
+            .Select(a => a.Id)
+            .Distinct()
+            .ToList();
+
+        if (attachmentIds.Count == 0)
+        {
+            return Array.Empty<EmailAttachment>();
+        }
+
+        var emailAttachments = new List<EmailAttachment>();
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var attachmentId in attachmentIds)
+        {
+            var file = await _receiptAttachmentService.DownloadAsync(attachmentId, cancellationToken);
+            if (file is null)
+            {
+                continue;
+            }
+
+            var uniqueName = file.FileName;
+            var stem = Path.GetFileNameWithoutExtension(file.FileName);
+            var ext = Path.GetExtension(file.FileName);
+            var suffix = 1;
+            while (!usedNames.Add(uniqueName))
+            {
+                uniqueName = $"{stem}-{suffix++}{ext}";
+            }
+
+            emailAttachments.Add(new EmailAttachment(uniqueName, file.Content, file.ContentType));
+        }
+
+        return emailAttachments;
+    }
 
     private async Task<LedgerShareInfoDto?> BuildShareInfoAsync(
         string partyType,
@@ -414,6 +489,7 @@ public class LedgerShareService : ILedgerShareService
         LedgerEmailShareRequest request,
         byte[] pdfBytes,
         bool useUrdu,
+        IReadOnlyList<EmailAttachment>? extraAttachments,
         CancellationToken cancellationToken)
     {
         var labels = LedgerPdfLabels.For(useUrdu);
@@ -448,6 +524,12 @@ public class LedgerShareService : ILedgerShareService
                 $"Please find attached your {title.ToLowerInvariant()}.";
         }
 
+        var docsNote = extraAttachments is { Count: > 0 }
+            ? (useUrdu
+                ? "<br/><br/>چیک / بینک ٹرانسفر دستاویزات بھی منسلک ہیں۔"
+                : "<br/><br/>Cheque / bank transfer documents are also attached for reconciliation.")
+            : string.Empty;
+
         var html = new StringBuilder()
             .Append(useUrdu
                 ? "<div style=\"font-family:'Urdu Typesetting','Nirmala UI',Arial,sans-serif;font-size:14px;direction:rtl;text-align:right;\">"
@@ -457,6 +539,7 @@ public class LedgerShareService : ILedgerShareService
             .Append($"<strong>{labels.Party}:</strong> {System.Net.WebUtility.HtmlEncode(partyName)} ({System.Net.WebUtility.HtmlEncode(shareInfo.PartyCode)})<br/>")
             .Append($"<strong>{periodText}</strong><br/>")
             .Append($"<strong>{labels.ClosingBalance}:</strong> PKR {balance}")
+            .Append(docsNote)
             .Append($"<br/><br/>{labels.Regards}<br/>")
             .Append(System.Net.WebUtility.HtmlEncode(shareInfo.CompanyName))
             .Append("</div>")
@@ -468,13 +551,29 @@ public class LedgerShareService : ILedgerShareService
                 : $"Dear {partyName},\n\nPlease find attached your {title}.\n{periodText}\nClosing balance: PKR {balance}")
             : request.Message;
 
+        if (extraAttachments is { Count: > 0 } && string.IsNullOrWhiteSpace(request.Message))
+        {
+            plain += useUrdu
+                ? "\n\nچیک / بینک ٹرانسفر دستاویزات بھی منسلک ہیں۔"
+                : "\n\nCheque / bank transfer documents are also attached for reconciliation.";
+        }
+
+        var attachments = new List<EmailAttachment>
+        {
+            new(fileName, pdfBytes, "application/pdf")
+        };
+        if (extraAttachments is { Count: > 0 })
+        {
+            attachments.AddRange(extraAttachments);
+        }
+
         var result = await _emailSender.SendAsync(
             new EmailMessage(
                 request.ToEmail.Trim(),
                 subject,
                 html,
                 plain,
-                [new EmailAttachment(fileName, pdfBytes, "application/pdf")]),
+                attachments),
             cancellationToken);
 
         return new LedgerShareActionResult(result.Success, result.Message);
@@ -501,14 +600,24 @@ public class LedgerShareService : ILedgerShareService
             opening,
             closing,
             true,
-            entries.Select(e => new PartyLedgerPdfLineDto(
-                e.Date,
-                e.Reference,
-                e.Description,
-                e.Debit,
-                e.Credit,
-                e.Balance,
-                e.PendingCredit)).ToList(),
+            entries.Select(e =>
+            {
+                var description = e.Description;
+                if (e.Attachments is { Count: > 0 })
+                {
+                    var names = string.Join(", ", e.Attachments.Select(a => a.FileName));
+                    description = $"{description} [Docs: {names}]";
+                }
+
+                return new PartyLedgerPdfLineDto(
+                    e.Date,
+                    e.Reference,
+                    description,
+                    e.Debit,
+                    e.Credit,
+                    e.Balance,
+                    e.PendingCredit);
+            }).ToList(),
             useUrdu);
 
     private static PartyLedgerPdfDto MapVendorPdf(

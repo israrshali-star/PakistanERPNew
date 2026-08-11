@@ -151,7 +151,17 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                 r.Status,
                 r.IsDeposited,
                 r.ClearedAt,
-                r.ReturnedAt))
+                r.ReturnedAt,
+                r.Attachments
+                    .OrderByDescending(a => a.CreatedAt)
+                    .Select(a => new DocumentAttachmentDto(
+                        a.Id,
+                        a.FileName,
+                        a.ContentType,
+                        a.FileSizeBytes,
+                        a.CreatedAt,
+                        a.CreatedBy))
+                    .ToList()))
             .FirstOrDefaultAsync(cancellationToken);
     }
 

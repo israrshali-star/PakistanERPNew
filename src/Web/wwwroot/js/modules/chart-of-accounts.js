@@ -1474,20 +1474,22 @@
 
 
 
-        $('#btn-ledger-export-pdf').on('click', function () {
-
-            if (!ledgerAccountId) {
-
-                return;
-
-            }
-
-            window.open(buildLedgerExportUrl('pdf'), '_blank');
-
-        });
-
         $('#btn-ledger-print').on('click', function () {
             if (!ledgerAccountId) {
+                return;
+            }
+            if (window.PrintChoice) {
+                window.PrintChoice.open({
+                    title: 'Print account ledger',
+                    summary: 'Choose Print for the printer dialog, or Save as PDF to download the ledger PDF.',
+                    onPrint: function () {
+                        document.body.classList.add('modal-print-account-ledger');
+                        window.print();
+                    },
+                    onPdf: function () {
+                        window.open(buildLedgerExportUrl('pdf'), '_blank');
+                    }
+                });
                 return;
             }
             document.body.classList.add('modal-print-account-ledger');
@@ -1497,7 +1499,6 @@
         window.addEventListener('afterprint', function () {
             document.body.classList.remove('modal-print-account-ledger');
         });
-
 
 
         $('#btn-ledger-export-excel').on('click', function () {

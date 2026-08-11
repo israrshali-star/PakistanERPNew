@@ -542,7 +542,36 @@ public partial class CustomerService : ICustomerService
             })
             .ToListAsync(cancellationToken);
 
-        var movements = new List<(DateTime Date, int SortKey, string Reference, string Description, decimal Debit, decimal Credit, decimal PendingCredit)>();
+        var receiptIds = receipts.Select(r => r.Id).ToList();
+        var attachmentRows = receiptIds.Count == 0
+            ? new List<(int Id, int CustomerReceiptId, string FileName)>()
+            : (await _unitOfWork.Repository<CustomerReceiptAttachment>()
+                .Query()
+                .Where(a => receiptIds.Contains(a.CustomerReceiptId))
+                .OrderBy(a => a.CreatedAt)
+                .Select(a => new { a.Id, a.CustomerReceiptId, a.FileName })
+                .ToListAsync(cancellationToken))
+              .Select(a => (a.Id, a.CustomerReceiptId, a.FileName))
+              .ToList();
+
+        var attachmentsByReceipt = attachmentRows
+            .GroupBy(a => a.CustomerReceiptId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<CustomerLedgerAttachmentLinkDto>)g
+                    .Select(a => new CustomerLedgerAttachmentLinkDto(a.Id, a.FileName))
+                    .ToList());
+
+        var movements = new List<(
+            DateTime Date,
+            int SortKey,
+            string Reference,
+            string Description,
+            decimal Debit,
+            decimal Credit,
+            decimal PendingCredit,
+            int? ReceiptId,
+            IReadOnlyList<CustomerLedgerAttachmentLinkDto> Attachments)>();
 
         foreach (var invoice in invoices)
         {
@@ -562,11 +591,16 @@ public partial class CustomerService : ICustomerService
                 invoice.InvoiceType.ToString(),
                 debit,
                 credit,
-                0m));
+                0m,
+                null,
+                Array.Empty<CustomerLedgerAttachmentLinkDto>()));
         }
 
         foreach (var receipt in receipts)
         {
+            attachmentsByReceipt.TryGetValue(receipt.Id, out var receiptAttachments);
+            receiptAttachments ??= Array.Empty<CustomerLedgerAttachmentLinkDto>();
+
             if (CustomerReceiptBalanceRules.IsChequeReturned(receipt.Status))
             {
                 var returnedRef = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
@@ -579,7 +613,9 @@ public partial class CustomerService : ICustomerService
                     $"Cheque Returned ({returnedRef})",
                     receipt.Amount,
                     0m,
-                    0m));
+                    0m,
+                    receipt.Id,
+                    receiptAttachments));
                 continue;
             }
 
@@ -605,7 +641,9 @@ public partial class CustomerService : ICustomerService
                 description,
                 0m,
                 isPendingCheque ? 0m : receipt.Amount,
-                isPendingCheque ? receipt.Amount : 0m));
+                isPendingCheque ? receipt.Amount : 0m,
+                receipt.Id,
+                receiptAttachments));
         }
 
         var chequeQuery = _unitOfWork.Repository<BankTransaction>()
@@ -661,7 +699,9 @@ public partial class CustomerService : ICustomerService
                 description,
                 cheque.CustomerBalanceEffect > 0m ? cheque.CustomerBalanceEffect : 0m,
                 cheque.CustomerBalanceEffect < 0m ? Math.Abs(cheque.CustomerBalanceEffect) : 0m,
-                0m));
+                0m,
+                null,
+                Array.Empty<CustomerLedgerAttachmentLinkDto>()));
         }
 
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
@@ -675,7 +715,9 @@ public partial class CustomerService : ICustomerService
                 movement.Debit,
                 movement.Credit,
                 balance,
-                movement.PendingCredit));
+                movement.PendingCredit,
+                movement.ReceiptId,
+                movement.Attachments.Count > 0 ? movement.Attachments : null));
         }
 
         return entries;

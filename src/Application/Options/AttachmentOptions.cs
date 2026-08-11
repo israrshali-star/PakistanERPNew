@@ -6,4 +6,5 @@ public class AttachmentOptions
     public int MaxFileSizeMb { get; set; } = 10;
     public int MaxFilesPerInvoice { get; set; } = 10;
     public int MaxFilesPerBill { get; set; } = 10;
+    public int MaxFilesPerReceipt { get; set; } = 10;
 }

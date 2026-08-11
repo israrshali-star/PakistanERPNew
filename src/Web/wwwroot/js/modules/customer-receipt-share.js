@@ -167,11 +167,29 @@
         if (!currentReceiptId) {
             return;
         }
-        window.open(pdfUrl(currentReceiptId), '_blank');
+        var url = pdfUrl(currentReceiptId);
+        if (window.PrintChoice) {
+            window.PrintChoice.open({
+                title: 'Print customer receipt',
+                summary: 'Choose Print for the printer dialog, or Save as PDF to download the receipt PDF.',
+                pdfUrl: url
+            });
+            return;
+        }
+        window.open(url, '_blank');
     }
 
     function printReceipt(receiptId) {
-        window.open('/api/customer-receipts/' + receiptId + '/pdf', '_blank');
+        var url = '/api/customer-receipts/' + receiptId + '/pdf';
+        if (window.PrintChoice) {
+            window.PrintChoice.open({
+                title: 'Print customer receipt',
+                summary: 'Choose Print for the printer dialog, or Save as PDF to download the receipt PDF.',
+                pdfUrl: url
+            });
+            return;
+        }
+        window.open(url, '_blank');
     }
 
     function openShareModal(receiptId) {

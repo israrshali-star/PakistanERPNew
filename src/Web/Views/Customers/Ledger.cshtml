@@ -59,12 +59,13 @@
                     <th class="text-end">Credit</th>
                     <th class="text-end">Pending</th>
                     <th class="text-end">Balance</th>
+                    <th class="no-print">Documents</th>
                 </tr>
             </thead>
             <tbody>
                 @if (Model.Entries.Count == 0)
                 {
-                    <tr><td colspan="7" class="text-muted text-center">No ledger entries yet.</td></tr>
+                    <tr><td colspan="8" class="text-muted text-center">No ledger entries yet.</td></tr>
                 }
                 else
                 {
@@ -78,6 +79,31 @@
                             <td class="text-end text-currency">@(entry.Credit > 0 ? entry.Credit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency text-muted">@(entry.PendingCredit > 0 ? entry.PendingCredit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency fw-semibold">@entry.Balance.ToString("N2")</td>
+                            <td class="no-print">
+                                @if (entry.Attachments is { Count: > 0 })
+                                {
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var doc in entry.Attachments)
+                                        {
+                                            <a class="btn btn-sm btn-outline-primary"
+                                               href="/api/customers/receipt-attachments/@doc.Id/download"
+                                               target="_blank"
+                                               title="@doc.FileName">
+                                                <i class="fa-solid fa-eye me-1"></i>View
+                                            </a>
+                                            <a class="btn btn-sm btn-outline-secondary"
+                                               href="/api/customers/receipt-attachments/@doc.Id/download?download=1"
+                                               title="Download @doc.FileName">
+                                                <i class="fa-solid fa-download"></i>
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                         </tr>
                     }
                 }
@@ -96,10 +122,12 @@
                         <th class="text-end text-currency">@totalCredit.ToString("N2")</th>
                         <th class="text-end text-currency text-muted">@(movementEntries.Sum(e => e.PendingCredit) > 0 ? movementEntries.Sum(e => e.PendingCredit).ToString("N2") : "—")</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                        <th class="no-print"></th>
                     </tr>
                     <tr class="table-light">
                         <th colspan="6" class="text-end">Closing Balance</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                        <th class="no-print"></th>
                     </tr>
                 </tfoot>
             }
@@ -108,12 +136,25 @@
 </div>
 </div>
 
+<partial name="_PrintChoiceModal" />
 <partial name="_LedgerShareModal" />
 
 @section Scripts {
+    <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
     <script>
         document.getElementById('btn-print-ledger').addEventListener('click', function () {
+            if (window.PrintChoice) {
+                window.PrintChoice.open({
+                    title: 'Print customer ledger',
+                    summary: 'Choose Print for the printer dialog, or Save as PDF to download the ledger PDF.',
+                    onPrint: function () { window.print(); },
+                    onPdf: function () {
+                        window.open('/api/customers/@Model.Customer.Id/ledger-pdf', '_blank');
+                    }
+                });
+                return;
+            }
             window.print();
         });
         document.getElementById('btn-share-ledger').addEventListener('click', function () {

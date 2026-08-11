@@ -74,11 +74,16 @@ public class CustomersApiController : ControllerBase
 {
     private readonly ICustomerService _customerService;
     private readonly ILedgerShareService _ledgerShareService;
+    private readonly ICustomerReceiptAttachmentService _receiptAttachmentService;
 
-    public CustomersApiController(ICustomerService customerService, ILedgerShareService ledgerShareService)
+    public CustomersApiController(
+        ICustomerService customerService,
+        ILedgerShareService ledgerShareService,
+        ICustomerReceiptAttachmentService receiptAttachmentService)
     {
         _customerService = customerService;
         _ledgerShareService = ledgerShareService;
+        _receiptAttachmentService = receiptAttachmentService;
     }
 
     [HttpGet("datatable")]
@@ -314,6 +319,36 @@ public class CustomersApiController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>View/download receipt cheque or bank-transfer documents while reconciling customer ledger.</summary>
+    [HttpGet("receipt-attachments/{attachmentId:int}/download")]
+    [RequirePermission("Customers.View")]
+    public async Task<IActionResult> DownloadReceiptAttachment(
+        int attachmentId,
+        [FromQuery] bool download = false,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var file = await _receiptAttachmentService.DownloadAsync(attachmentId, cancellationToken);
+            if (file is null)
+            {
+                return NotFound();
+            }
+
+            if (download)
+            {
+                return File(file.Content, file.ContentType, file.FileName);
+            }
+
+            Response.Headers.ContentDisposition = $"inline; filename=\"{file.FileName}\"";
+            return File(file.Content, file.ContentType);
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }

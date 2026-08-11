@@ -111,12 +111,25 @@
 </div>
 </div>
 
+<partial name="_PrintChoiceModal" />
 <partial name="_LedgerShareModal" />
 
 @section Scripts {
+    <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
     <script>
         document.getElementById('btn-print-ledger').addEventListener('click', function () {
+            if (window.PrintChoice) {
+                window.PrintChoice.open({
+                    title: 'Print vendor ledger',
+                    summary: 'Choose Print for the printer dialog, or Save as PDF to download the ledger PDF.',
+                    onPrint: function () { window.print(); },
+                    onPdf: function () {
+                        window.open('/api/vendors/@Model.Vendor.Id/ledger-pdf', '_blank');
+                    }
+                });
+                return;
+            }
             window.print();
         });
         document.getElementById('btn-share-ledger').addEventListener('click', function () {
