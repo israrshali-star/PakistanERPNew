@@ -32,6 +32,7 @@
         var $tbody = $('#statement-entries');
         var canOpenReceipt = $tbody.data('can-open-receipt') === true || $tbody.data('can-open-receipt') === 'true';
         var canEditReceipt = $tbody.data('can-edit-receipt') === true || $tbody.data('can-edit-receipt') === 'true';
+        var returnUrl = $tbody.attr('data-return-url') || '';
         var colSpan = canOpenReceipt ? 9 : 8;
 
         $('#stmt-customer-name').text(data.customer.buyerName);
@@ -77,9 +78,13 @@
             }
 
             var receiptId = entry.receiptId || entry.ReceiptId || 0;
+            var editHref = '/CustomerReceipts?edit=' + receiptId;
+            if (returnUrl) {
+                editHref += '&returnUrl=' + encodeURIComponent(returnUrl);
+            }
             var refHtml = '<code>' + $('<div>').text(entry.reference).html() + '</code>';
             if (receiptId && canOpenReceipt) {
-                refHtml = '<a href="/CustomerReceipts?edit=' + receiptId + '" class="text-decoration-none" title="' +
+                refHtml = '<a href="' + editHref + '" class="text-decoration-none" title="' +
                     (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' + refHtml + '</a>';
             }
 
@@ -87,7 +92,7 @@
             if (canOpenReceipt) {
                 if (receiptId) {
                     actionsHtml = '<td class="no-print text-end">' +
-                        '<a href="/CustomerReceipts?edit=' + receiptId + '" class="btn btn-sm ' +
+                        '<a href="' + editHref + '" class="btn btn-sm ' +
                         (canEditReceipt ? 'btn-outline-primary' : 'btn-outline-secondary') + '" title="' +
                         (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' +
                         '<i class="fa-solid ' + (canEditReceipt ? 'fa-pen' : 'fa-eye') + ' me-1"></i>' +

@@ -6,6 +6,8 @@
     var canOpenReceipt = await PermissionService.HasPermissionAsync("Sales.View")
         || await PermissionService.HasPermissionAsync("Sales.Edit");
     var canEditReceipt = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var receiptReturnUrl = Uri.EscapeDataString(
+        Url.Action("Ledger", "Customers", new { id = Model.Customer.Id }) ?? $"/Customers/Ledger/{Model.Customer.Id}");
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
@@ -85,7 +87,7 @@
                             <td>
                                 @if (entry.ReceiptId.HasValue && canOpenReceipt)
                                 {
-                                    <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value"
+                                    <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value&amp;returnUrl=@receiptReturnUrl"
                                        class="text-decoration-none"
                                        title="@(canEditReceipt ? "Edit receipt" : "Open receipt")">
                                         <code>@entry.Reference</code>
@@ -131,7 +133,7 @@
                                 <td class="no-print text-end">
                                     @if (entry.ReceiptId.HasValue)
                                     {
-                                        <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value"
+                                        <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value&amp;returnUrl=@receiptReturnUrl"
                                            class="btn btn-sm @(canEditReceipt ? "btn-outline-primary" : "btn-outline-secondary")"
                                            title="@(canEditReceipt ? "Edit receipt" : "Open receipt")">
                                             <i class="fa-solid @(canEditReceipt ? "fa-pen" : "fa-eye") me-1"></i>@(canEditReceipt ? "Edit" : "Open")

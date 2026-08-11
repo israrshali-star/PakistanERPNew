@@ -7,6 +7,9 @@
     var canOpenReceipt = await PermissionService.HasPermissionAsync("Sales.View")
         || await PermissionService.HasPermissionAsync("Sales.Edit");
     var canEditReceipt = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var receiptReturnUrl = customer is null
+        ? string.Empty
+        : (Url.Action("Statement", "Customers", new { id = customer.Id }) ?? $"/Customers/Statement/{customer.Id}");
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
@@ -79,7 +82,8 @@
             </thead>
             <tbody id="statement-entries"
                    data-can-open-receipt="@canOpenReceipt.ToString().ToLower()"
-                   data-can-edit-receipt="@canEditReceipt.ToString().ToLower()">
+                   data-can-edit-receipt="@canEditReceipt.ToString().ToLower()"
+                   data-return-url="@receiptReturnUrl">
                 <tr><td colspan="@(canOpenReceipt ? 9 : 8)" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="statement-footer" class="d-none">

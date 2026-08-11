@@ -7,6 +7,30 @@
     var canEdit = false;
     var canDelete = false;
     var customers = [];
+    var returnAfterEditUrl = null;
+    var openedFromReturnUrl = false;
+
+    function isSafeReturnUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return false;
+        }
+        if (url.charAt(0) !== '/' || url.indexOf('//') === 0) {
+            return false;
+        }
+        return url.indexOf('/Customers/Ledger/') === 0
+            || url.indexOf('/Customers/Statement/') === 0;
+    }
+
+    function goBackToReturnUrl() {
+        if (!returnAfterEditUrl || !isSafeReturnUrl(returnAfterEditUrl)) {
+            return false;
+        }
+        var url = returnAfterEditUrl;
+        returnAfterEditUrl = null;
+        openedFromReturnUrl = false;
+        window.location.href = url;
+        return true;
+    }
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -728,6 +752,10 @@
                 var pendingFiles = $('#receipt-attachment-upload')[0].files;
 
                 var afterAttachments = function () {
+                    if (id && openedFromReturnUrl && goBackToReturnUrl()) {
+                        return;
+                    }
+
                     loadLookups().always(function () {
                         if (id) {
                             showFormSuccess(savedMsg);
@@ -806,6 +834,9 @@
         }
 
         document.getElementById('receiptModal').addEventListener('hidden.bs.modal', function () {
+            if (openedFromReturnUrl && goBackToReturnUrl()) {
+                return;
+            }
             resetReceiptForm();
             clearFormMessages();
             $('#receiptModalLabel').text('New Customer Receipt');
@@ -923,8 +954,16 @@
             markChequeReturned($(this).data('id'));
         });
 
-        var editId = parseInt(new URLSearchParams(window.location.search).get('edit') || '', 10);
+        var params = new URLSearchParams(window.location.search);
+        var editId = parseInt(params.get('edit') || '', 10);
+        var returnUrl = params.get('returnUrl') || '';
+        if (returnUrl && isSafeReturnUrl(returnUrl)) {
+            returnAfterEditUrl = returnUrl;
+        }
         if (editId > 0) {
+            if (returnAfterEditUrl) {
+                openedFromReturnUrl = true;
+            }
             openEditModal(editId);
             if (window.history && window.history.replaceState) {
                 var cleanUrl = window.location.pathname + window.location.hash;
