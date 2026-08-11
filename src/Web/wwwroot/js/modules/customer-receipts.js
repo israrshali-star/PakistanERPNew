@@ -922,6 +922,15 @@
         $('#customer-receipts-table').on('click', '.btn-mark-returned', function () {
             markChequeReturned($(this).data('id'));
         });
+
+        var editId = parseInt(new URLSearchParams(window.location.search).get('edit') || '', 10);
+        if (editId > 0) {
+            openEditModal(editId);
+            if (window.history && window.history.replaceState) {
+                var cleanUrl = window.location.pathname + window.location.hash;
+                window.history.replaceState({}, document.title, cleanUrl);
+            }
+        }
     });
 
     function markChequeReturned(id) {

@@ -1,7 +1,12 @@
 @using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
 @{
     ViewData["Title"] = "Customer Statement";
     var customer = ViewBag.Customer as CustomerDto;
+    var canOpenReceipt = await PermissionService.HasPermissionAsync("Sales.View")
+        || await PermissionService.HasPermissionAsync("Sales.Edit");
+    var canEditReceipt = await PermissionService.HasPermissionAsync("Sales.Edit");
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
@@ -66,16 +71,26 @@
                     <th class="text-end">Pending (PKR)</th>
                     <th class="text-end">Balance (PKR)</th>
                     <th class="no-print">Documents</th>
+                    @if (canOpenReceipt)
+                    {
+                        <th class="no-print text-end">Actions</th>
+                    }
                 </tr>
             </thead>
-            <tbody id="statement-entries">
-                <tr><td colspan="8" class="text-muted text-center">No data loaded.</td></tr>
+            <tbody id="statement-entries"
+                   data-can-open-receipt="@canOpenReceipt.ToString().ToLower()"
+                   data-can-edit-receipt="@canEditReceipt.ToString().ToLower()">
+                <tr><td colspan="@(canOpenReceipt ? 9 : 8)" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="statement-footer" class="d-none">
                 <tr class="table-light">
                     <th colspan="6" class="text-end">Closing Balance</th>
                     <th class="text-end" id="stmt-closing-balance">0.00</th>
                     <th class="no-print"></th>
+                    @if (canOpenReceipt)
+                    {
+                        <th class="no-print"></th>
+                    }
                 </tr>
             </tfoot>
         </table>

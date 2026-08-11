@@ -29,6 +29,11 @@
     }
 
     function renderStatement(data) {
+        var $tbody = $('#statement-entries');
+        var canOpenReceipt = $tbody.data('can-open-receipt') === true || $tbody.data('can-open-receipt') === 'true';
+        var canEditReceipt = $tbody.data('can-edit-receipt') === true || $tbody.data('can-edit-receipt') === 'true';
+        var colSpan = canOpenReceipt ? 9 : 8;
+
         $('#stmt-customer-name').text(data.customer.buyerName);
         $('#stmt-buyer-id').text(data.customer.buyerId);
 
@@ -43,11 +48,10 @@
             'Period: ' + formatDate(data.fromDate) + ' to ' + formatDate(data.toDate)
         );
 
-        var $tbody = $('#statement-entries');
         $tbody.empty();
 
         if (!data.entries || data.entries.length === 0) {
-            $tbody.append('<tr><td colspan="8" class="text-muted text-center">No transactions in this period.</td></tr>');
+            $tbody.append('<tr><td colspan="' + colSpan + '" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#statement-footer').addClass('d-none');
             return;
         }
@@ -72,16 +76,39 @@
                 }).join(' ');
             }
 
+            var receiptId = entry.receiptId || entry.ReceiptId || 0;
+            var refHtml = '<code>' + $('<div>').text(entry.reference).html() + '</code>';
+            if (receiptId && canOpenReceipt) {
+                refHtml = '<a href="/CustomerReceipts?edit=' + receiptId + '" class="text-decoration-none" title="' +
+                    (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' + refHtml + '</a>';
+            }
+
+            var actionsHtml = '';
+            if (canOpenReceipt) {
+                if (receiptId) {
+                    actionsHtml = '<td class="no-print text-end">' +
+                        '<a href="/CustomerReceipts?edit=' + receiptId + '" class="btn btn-sm ' +
+                        (canEditReceipt ? 'btn-outline-primary' : 'btn-outline-secondary') + '" title="' +
+                        (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' +
+                        '<i class="fa-solid ' + (canEditReceipt ? 'fa-pen' : 'fa-eye') + ' me-1"></i>' +
+                        (canEditReceipt ? 'Edit' : 'Open') +
+                        '</a></td>';
+                } else {
+                    actionsHtml = '<td class="no-print text-end"><span class="text-muted">—</span></td>';
+                }
+            }
+
             $tbody.append(
                 '<tr' + rowClass + '>' +
                 '<td>' + dateText + '</td>' +
-                '<td><code>' + $('<div>').text(entry.reference).html() + '</code></td>' +
+                '<td>' + refHtml + '</td>' +
                 '<td>' + $('<div>').text(entry.description).html() + '</td>' +
                 '<td class="text-end">' + (entry.debit > 0 ? formatAmount(entry.debit) : '—') + '</td>' +
                 '<td class="text-end">' + (entry.credit > 0 ? formatAmount(entry.credit) : '—') + '</td>' +
                 '<td class="text-end text-muted">' + pending + '</td>' +
                 '<td class="text-end fw-semibold">' + formatAmount(entry.balance) + '</td>' +
                 '<td class="no-print">' + docsHtml + '</td>' +
+                actionsHtml +
                 '</tr>'
             );
         });
