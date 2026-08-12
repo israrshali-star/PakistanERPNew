@@ -76,9 +76,10 @@ public class CustomerReceiptAttachmentService : ICustomerReceiptAttachmentServic
             return new DocumentAttachmentSaveResult(false, "Receipt not found.", null);
         }
 
-        var maxFiles = _options.MaxFilesPerReceipt > 0
-            ? _options.MaxFilesPerReceipt
-            : (_options.MaxFilesPerInvoice > 0 ? _options.MaxFilesPerInvoice : 10);
+        var maxFiles = TradeInvoiceLayout.GetCustomerReceiptAttachmentLimit(companyId)
+            ?? (_options.MaxFilesPerReceipt > 0
+                ? _options.MaxFilesPerReceipt
+                : (_options.MaxFilesPerInvoice > 0 ? _options.MaxFilesPerInvoice : 10));
 
         var existingCount = await _unitOfWork.Repository<CustomerReceiptAttachment>()
             .Query()

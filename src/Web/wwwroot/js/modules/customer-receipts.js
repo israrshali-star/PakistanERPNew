@@ -9,6 +9,9 @@
     var customers = [];
     var returnAfterEditUrl = null;
     var openedFromReturnUrl = false;
+    var currentCompanyId = 0;
+    var maxReceiptAttachments = 10;
+    var TRADE_INVOICE_COMPANY_ID = 3;
 
     function isSafeReturnUrl(url) {
         if (!url || typeof url !== 'string') {
@@ -260,7 +263,7 @@
             .not('#receipt-attachment-upload')
             .prop('disabled', isReadOnly);
         $('#btn-generate-receipt-number').prop('disabled', isReadOnly);
-        $('#receipt-attachment-upload').prop('disabled', false);
+        updateAttachmentUploadState(getListedAttachmentCount());
         if (isReadOnly) {
             $('#receipt-deposited-warning').removeClass('d-none');
         } else {
@@ -271,12 +274,57 @@
     function clearAttachmentUi() {
         $('#receipt-attachment-upload').val('');
         $('#receipt-attachments-list').empty();
+        updateAttachmentUploadState(0);
+    }
+
+    function updateAttachmentHint() {
+        var $hint = $('#receipt-attachments-hint');
+        if (!$hint.length) {
+            return;
+        }
+
+        var base = 'Upload cheque copy or bank transfer screenshot/picture (JPG, PNG, or PDF). '
+            + 'You can attach files when creating or editing a receipt.';
+        if (currentCompanyId === TRADE_INVOICE_COMPANY_ID) {
+            $hint.text(base + ' Maximum ' + maxReceiptAttachments + ' files per receipt.');
+        } else {
+            $hint.text(base);
+        }
+    }
+
+    function updateAttachmentUploadState(existingCount) {
+        var remaining = Math.max(0, maxReceiptAttachments - (existingCount || 0));
+        var $input = $('#receipt-attachment-upload');
+        $input.prop('disabled', remaining <= 0);
+        if (remaining <= 0) {
+            $input.attr('title', 'Maximum ' + maxReceiptAttachments + ' attachments allowed per receipt.');
+        } else {
+            $input.removeAttr('title');
+        }
+    }
+
+    function getSelectedAttachmentCount() {
+        var input = $('#receipt-attachment-upload')[0];
+        return input && input.files ? input.files.length : 0;
+    }
+
+    function getListedAttachmentCount() {
+        return $('#receipt-attachments-list li').length;
+    }
+
+    function validateAttachmentSelection(selectedCount, existingCount) {
+        var total = (existingCount || 0) + (selectedCount || 0);
+        if (total > maxReceiptAttachments) {
+            return 'Maximum ' + maxReceiptAttachments + ' attachments allowed per receipt.';
+        }
+        return null;
     }
 
     function renderAttachments(attachments) {
         var $list = $('#receipt-attachments-list');
         $list.empty();
         var items = attachments || [];
+        updateAttachmentUploadState(items.length);
         if (!items.length) {
             return;
         }
@@ -310,19 +358,35 @@
             return $.Deferred().resolve().promise();
         }
 
-        var uploads = Array.prototype.map.call(files, function (file) {
+        var deferred = $.Deferred();
+        var index = 0;
+        var fileList = Array.prototype.slice.call(files);
+
+        function uploadNext() {
+            if (index >= fileList.length) {
+                deferred.resolve();
+                return;
+            }
+
             var formData = new FormData();
-            formData.append('file', file);
-            return $.ajax({
+            formData.append('file', fileList[index]);
+            index += 1;
+
+            $.ajax({
                 url: '/api/customer-receipts/' + receiptId + '/attachments',
                 method: 'POST',
                 data: formData,
                 processData: false,
                 contentType: false
-            });
-        });
+            })
+                .done(uploadNext)
+                .fail(function (xhr) {
+                    deferred.reject(xhr);
+                });
+        }
 
-        return $.when.apply($, uploads);
+        uploadNext();
+        return deferred.promise();
     }
 
     function reloadAttachments(receiptId) {
@@ -746,6 +810,15 @@
             return;
         }
 
+        var pendingCount = getSelectedAttachmentCount();
+        if (pendingCount) {
+            var attachmentError = validateAttachmentSelection(pendingCount, getListedAttachmentCount());
+            if (attachmentError) {
+                showFormError(attachmentError);
+                return;
+            }
+        }
+
         var payload = buildPayload();
         var id = payload.id;
         var method = id ? 'PUT' : 'POST';
@@ -863,7 +936,10 @@
         });
 
         ensureCompanySelected()
-            .done(function () {
+            .done(function (company) {
+                currentCompanyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                maxReceiptAttachments = currentCompanyId === TRADE_INVOICE_COMPANY_ID ? 2 : 10;
+                updateAttachmentHint();
                 hideCompanyWarning();
                 loadLookups().always(initDataTable);
             })
@@ -915,7 +991,20 @@
         $('#receipt-attachment-upload').on('change', function () {
             var receiptId = parseInt($('#receipt-id').val(), 10) || 0;
             var input = this;
-            if (!receiptId || !input.files || !input.files.length) {
+            if (!input.files || !input.files.length) {
+                return;
+            }
+
+            var existingCount = getListedAttachmentCount();
+            var selectionError = validateAttachmentSelection(input.files.length, existingCount);
+            if (selectionError) {
+                showFormError(selectionError);
+                input.value = '';
+                return;
+            }
+
+            // Create mode: files stay pending until the receipt is saved.
+            if (!receiptId) {
                 return;
             }
 

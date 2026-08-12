@@ -31,6 +31,10 @@ public static class TradeInvoiceLayout
     public static bool SupportsUrduLedger(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Max receipt attachments for a company; null means use the global Attachments config default.</summary>
+    public static int? GetCustomerReceiptAttachmentLimit(int companyId) =>
+        companyId == TradeInvoiceCompanyId ? 2 : null;
+
     /// <summary>Company 3 (MIA) may write cheques / withdrawals even when the pay-from bank GL balance is insufficient.</summary>
     public static bool AllowsInsufficientBankBalanceForCheques(int companyId) =>
         companyId == TradeInvoiceCompanyId;

@@ -106,20 +106,22 @@
                             <td class="no-print">
                                 @if (entry.Attachments is { Count: > 0 })
                                 {
-                                    <div class="d-flex flex-wrap gap-1">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
                                         @foreach (var doc in entry.Attachments)
                                         {
-                                            <a class="btn btn-sm btn-outline-primary"
-                                               href="/api/customers/receipt-attachments/@doc.Id/download"
-                                               target="_blank"
-                                               title="@doc.FileName">
-                                                <i class="fa-solid fa-eye me-1"></i>View
-                                            </a>
-                                            <a class="btn btn-sm btn-outline-secondary"
-                                               href="/api/customers/receipt-attachments/@doc.Id/download?download=1"
-                                               title="Download @doc.FileName">
-                                                <i class="fa-solid fa-download"></i>
-                                            </a>
+                                            <span class="d-inline-flex align-items-center gap-1">
+                                                <a class="btn btn-link btn-sm p-0 text-primary"
+                                                   href="/api/customers/receipt-attachments/@doc.Id/download"
+                                                   target="_blank"
+                                                   title="View @doc.FileName">
+                                                    <i class="fa-solid fa-eye"></i>
+                                                </a>
+                                                <a class="btn btn-link btn-sm p-0 text-secondary"
+                                                   href="/api/customers/receipt-attachments/@doc.Id/download?download=1"
+                                                   title="Download @doc.FileName">
+                                                    <i class="fa-solid fa-download"></i>
+                                                </a>
+                                            </span>
                                         }
                                     </div>
                                 }

@@ -70,10 +70,12 @@
                 docsHtml = attachments.map(function (doc) {
                     var id = doc.id || doc.Id;
                     var name = doc.fileName || doc.FileName || 'document';
-                    return '<a class="btn btn-sm btn-outline-primary me-1" href="/api/customers/receipt-attachments/' + id + '/download" target="_blank" title="' +
-                        $('<div>').text(name).html() + '"><i class="fa-solid fa-eye me-1"></i>View</a>' +
-                        '<a class="btn btn-sm btn-outline-secondary" href="/api/customers/receipt-attachments/' + id + '/download?download=1" title="Download">' +
-                        '<i class="fa-solid fa-download"></i></a>';
+                    var safeName = $('<div>').text(name).html();
+                    return '<span class="d-inline-flex align-items-center gap-1 me-2">' +
+                        '<a class="btn btn-link btn-sm p-0 text-primary" href="/api/customers/receipt-attachments/' + id + '/download" target="_blank" title="View ' +
+                        safeName + '"><i class="fa-solid fa-eye"></i></a>' +
+                        '<a class="btn btn-link btn-sm p-0 text-secondary" href="/api/customers/receipt-attachments/' + id + '/download?download=1" title="Download ' +
+                        safeName + '"><i class="fa-solid fa-download"></i></a></span>';
                 }).join(' ');
             }
 
