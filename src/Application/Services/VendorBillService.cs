@@ -41,6 +41,7 @@ public partial class VendorBillService : IVendorBillService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? refNo = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -51,16 +52,26 @@ public partial class VendorBillService : IVendorBillService
 
         var recordsTotal = await query.CountAsync(cancellationToken);
 
-        if (fromDate.HasValue)
-        {
-            var from = fromDate.Value.Date;
-            query = query.Where(b => b.BillDate >= from);
-        }
+        var refTerm = refNo?.Trim();
+        var searchByRefNo = !string.IsNullOrWhiteSpace(refTerm);
 
-        if (toDate.HasValue)
+        if (searchByRefNo)
         {
-            var to = toDate.Value.Date.AddDays(1);
-            query = query.Where(b => b.BillDate < to);
+            query = query.Where(b => b.RefNo != null && b.RefNo.Contains(refTerm!));
+        }
+        else
+        {
+            if (fromDate.HasValue)
+            {
+                var from = fromDate.Value.Date;
+                query = query.Where(b => b.BillDate >= from);
+            }
+
+            if (toDate.HasValue)
+            {
+                var to = toDate.Value.Date.AddDays(1);
+                query = query.Where(b => b.BillDate < to);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
@@ -85,6 +96,7 @@ public partial class VendorBillService : IVendorBillService
             .Select(b => new VendorBillListItemDto(
                 b.Id,
                 b.BillNumber,
+                b.RefNo,
                 b.Vendor.VendorName,
                 b.BillDate,
                 b.NetAmount,
@@ -1476,10 +1488,11 @@ public partial class VendorBillService : IVendorBillService
         return request.OrderColumn switch
         {
             0 => desc ? query.OrderByDescending(b => b.BillNumber) : query.OrderBy(b => b.BillNumber),
-            1 => desc ? query.OrderByDescending(b => b.Vendor.VendorName) : query.OrderBy(b => b.Vendor.VendorName),
-            2 => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate),
-            3 => desc ? query.OrderByDescending(b => b.NetAmount) : query.OrderBy(b => b.NetAmount),
-            4 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
+            1 => desc ? query.OrderByDescending(b => b.RefNo) : query.OrderBy(b => b.RefNo),
+            2 => desc ? query.OrderByDescending(b => b.Vendor.VendorName) : query.OrderBy(b => b.Vendor.VendorName),
+            3 => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate),
+            4 => desc ? query.OrderByDescending(b => b.NetAmount) : query.OrderBy(b => b.NetAmount),
+            5 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
             _ => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate)
         };
     }

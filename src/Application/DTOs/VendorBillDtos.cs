@@ -5,6 +5,7 @@ namespace PakistanAccountingERP.Application.DTOs;
 public record VendorBillListItemDto(
     int Id,
     string BillNumber,
+    string? RefNo,
     string VendorName,
     DateTime BillDate,
     decimal NetAmount,

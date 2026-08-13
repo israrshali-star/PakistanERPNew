@@ -112,16 +112,18 @@ public class VendorBillsApiController : ControllerBase
                 Start: int.TryParse(Request.Query["start"], out var start) ? start : 0,
                 Length: int.TryParse(Request.Query["length"], out var length) ? length : 10,
                 SearchValue: Request.Query["search[value]"],
-                OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 2,
+                OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 3,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
             DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
             DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+            var refNo = Request.Query["refNo"].ToString();
 
             var result = await _vendorBillService.GetDataTableAsync(
                 request,
                 fromDate,
                 toDate,
+                refNo,
                 cancellationToken);
             return Ok(new
             {

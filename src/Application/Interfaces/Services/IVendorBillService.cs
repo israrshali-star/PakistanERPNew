@@ -8,6 +8,7 @@ public interface IVendorBillService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? refNo = null,
         CancellationToken cancellationToken = default);
 
     Task<VendorBillDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default);

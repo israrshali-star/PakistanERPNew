@@ -69,6 +69,7 @@
                 data: function (d) {
                     d.fromDate = $('#filter-from').val();
                     d.toDate = $('#filter-to').val();
+                    d.refNo = $('#filter-ref-no').val();
                 },
                 error: function (xhr) {
                     alert(getApiErrorMessage(xhr, 'Failed to load bills. Select a company from the top navbar.'));
@@ -79,6 +80,12 @@
                     data: 'billNumber',
                     render: function (d, type, row) {
                         return '<a href="/VendorBills/Details/' + row.id + '"><code>' + escapeHtml(d) + '</code></a>';
+                    }
+                },
+                {
+                    data: 'refNo',
+                    render: function (d) {
+                        return d ? '<code>' + escapeHtml(d) + '</code>' : '<span class="text-muted">—</span>';
                     }
                 },
                 { data: 'vendorName' },
@@ -128,7 +135,7 @@
                     }
                 }
             ],
-            order: [[2, 'asc']],
+            order: [[3, 'asc']],
             pageLength: 25,
             language: { emptyTable: 'No vendor bills yet.' }
         });
@@ -141,6 +148,12 @@
         initDefaultDateFilters();
         $('#btn-apply-filter').on('click', reloadDataTable);
         $('#filter-from, #filter-to').on('change', reloadDataTable);
+        $('#filter-ref-no').on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                reloadDataTable();
+            }
+        });
 
         $.getJSON('/api/company/current')
             .done(initDataTable)
