@@ -8,6 +8,8 @@ public interface ISalesInvoiceService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? customerName = null,
+        string? invoiceNumber = null,
         CancellationToken cancellationToken = default);
 
     Task<NextInvoiceNumberDto> GenerateNextInvoiceNumberAsync(CancellationToken cancellationToken = default);

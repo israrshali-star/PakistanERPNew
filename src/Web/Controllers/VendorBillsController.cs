@@ -117,12 +117,14 @@ public class VendorBillsApiController : ControllerBase
 
             DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
             DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+            var vendorName = Request.Query["vendorName"].ToString();
             var refNo = Request.Query["refNo"].ToString();
 
             var result = await _vendorBillService.GetDataTableAsync(
                 request,
                 fromDate,
                 toDate,
+                vendorName,
                 refNo,
                 cancellationToken);
             return Ok(new

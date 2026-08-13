@@ -8,6 +8,7 @@ public interface IVendorBillService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? vendorName = null,
         string? refNo = null,
         CancellationToken cancellationToken = default);
 

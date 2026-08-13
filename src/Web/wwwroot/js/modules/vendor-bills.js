@@ -69,6 +69,7 @@
                 data: function (d) {
                     d.fromDate = $('#filter-from').val();
                     d.toDate = $('#filter-to').val();
+                    d.vendorName = $('#filter-vendor-name').val();
                     d.refNo = $('#filter-ref-no').val();
                 },
                 error: function (xhr) {
@@ -148,7 +149,7 @@
         initDefaultDateFilters();
         $('#btn-apply-filter').on('click', reloadDataTable);
         $('#filter-from, #filter-to').on('change', reloadDataTable);
-        $('#filter-ref-no').on('keydown', function (e) {
+        $('#filter-vendor-name, #filter-ref-no').on('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 reloadDataTable();

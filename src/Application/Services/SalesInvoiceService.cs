@@ -56,6 +56,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? customerName = null,
+        string? invoiceNumber = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -66,16 +68,36 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var recordsTotal = await query.CountAsync(cancellationToken);
 
-        if (fromDate.HasValue)
+        var searchByCustomerOrInvoice =
+            !string.IsNullOrWhiteSpace(customerName) || !string.IsNullOrWhiteSpace(invoiceNumber);
+
+        if (!searchByCustomerOrInvoice)
         {
-            var from = fromDate.Value.Date;
-            query = query.Where(i => i.InvoiceDate >= from);
+            if (fromDate.HasValue)
+            {
+                var from = fromDate.Value.Date;
+                query = query.Where(i => i.InvoiceDate >= from);
+            }
+
+            if (toDate.HasValue)
+            {
+                var to = toDate.Value.Date.AddDays(1);
+                query = query.Where(i => i.InvoiceDate < to);
+            }
         }
 
-        if (toDate.HasValue)
+        if (!string.IsNullOrWhiteSpace(customerName))
         {
-            var to = toDate.Value.Date.AddDays(1);
-            query = query.Where(i => i.InvoiceDate < to);
+            var buyerTerm = customerName.Trim();
+            query = query.Where(i => i.Customer.BuyerName.Contains(buyerTerm));
+        }
+
+        if (!string.IsNullOrWhiteSpace(invoiceNumber))
+        {
+            var invTerm = invoiceNumber.Trim();
+            query = query.Where(i =>
+                i.InvoiceNumber.Contains(invTerm)
+                || (i.FbrInvoiceNumber != null && i.FbrInvoiceNumber.Contains(invTerm)));
         }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
@@ -84,7 +106,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             query = query.Where(i =>
                 i.InvoiceNumber.Contains(term)
                 || i.Customer.BuyerName.Contains(term)
-                || i.Customer.BuyerId.Contains(term));
+                || i.Customer.BuyerId.Contains(term)
+                || (i.FbrInvoiceNumber != null && i.FbrInvoiceNumber.Contains(term)));
         }
 
         var recordsFiltered = await query.CountAsync(cancellationToken);

@@ -225,11 +225,15 @@ public class SalesInvoicesApiController : ControllerBase
 
             DateTime? fromDate = DateTime.TryParse(Request.Query["fromDate"], out var from) ? from.Date : null;
             DateTime? toDate = DateTime.TryParse(Request.Query["toDate"], out var to) ? to.Date : null;
+            var customerName = Request.Query["customerName"].ToString();
+            var invoiceNumber = Request.Query["invoiceNumber"].ToString();
 
             var result = await _salesInvoiceService.GetDataTableAsync(
                 request,
                 fromDate,
                 toDate,
+                customerName,
+                invoiceNumber,
                 cancellationToken);
             return Ok(new
             {

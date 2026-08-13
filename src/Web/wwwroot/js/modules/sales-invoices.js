@@ -196,6 +196,8 @@
                 data: function (d) {
                     d.fromDate = $('#filter-from').val();
                     d.toDate = $('#filter-to').val();
+                    d.customerName = $('#filter-customer-name').val();
+                    d.invoiceNumber = $('#filter-invoice-number').val();
                 },
                 error: function (xhr) {
                     alert(getApiErrorMessage(xhr, 'Failed to load invoices. Select a company from the top navbar.'));
@@ -305,6 +307,12 @@
         $('#filter-from, #filter-to').on('change', function () {
             reloadDataTable();
             loadBulkPrintInvoices();
+        });
+        $('#filter-customer-name, #filter-invoice-number').on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                reloadDataTable();
+            }
         });
 
         $('#btn-bulk-search').on('click', loadBulkPrintInvoices);

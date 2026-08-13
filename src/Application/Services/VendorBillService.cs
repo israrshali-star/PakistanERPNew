@@ -41,6 +41,7 @@ public partial class VendorBillService : IVendorBillService
         DataTableRequest request,
         DateTime? fromDate = null,
         DateTime? toDate = null,
+        string? vendorName = null,
         string? refNo = null,
         CancellationToken cancellationToken = default)
     {
@@ -52,14 +53,10 @@ public partial class VendorBillService : IVendorBillService
 
         var recordsTotal = await query.CountAsync(cancellationToken);
 
-        var refTerm = refNo?.Trim();
-        var searchByRefNo = !string.IsNullOrWhiteSpace(refTerm);
+        var searchByVendorOrRef =
+            !string.IsNullOrWhiteSpace(vendorName) || !string.IsNullOrWhiteSpace(refNo);
 
-        if (searchByRefNo)
-        {
-            query = query.Where(b => b.RefNo != null && b.RefNo.Contains(refTerm!));
-        }
-        else
+        if (!searchByVendorOrRef)
         {
             if (fromDate.HasValue)
             {
@@ -72,6 +69,18 @@ public partial class VendorBillService : IVendorBillService
                 var to = toDate.Value.Date.AddDays(1);
                 query = query.Where(b => b.BillDate < to);
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(vendorName))
+        {
+            var vendorTerm = vendorName.Trim();
+            query = query.Where(b => b.Vendor.VendorName.Contains(vendorTerm));
+        }
+
+        if (!string.IsNullOrWhiteSpace(refNo))
+        {
+            var refTerm = refNo.Trim();
+            query = query.Where(b => b.RefNo != null && b.RefNo.Contains(refTerm));
         }
 
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
