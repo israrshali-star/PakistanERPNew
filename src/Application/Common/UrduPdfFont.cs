@@ -2,7 +2,7 @@ using QuestPDF.Drawing;
 
 namespace PakistanAccountingERP.Application.Common;
 
-/// <summary>Registers a Windows Urdu-capable font for QuestPDF documents.</summary>
+/// <summary>Registers Jameel Noori Nastaleeq (bundled, then Windows) for QuestPDF Urdu documents.</summary>
 public static class UrduPdfFont
 {
     public const string FamilyName = "LedgerUrdu";
@@ -12,15 +12,7 @@ public static class UrduPdfFont
 
     private static string Register()
     {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "UrdType.ttf"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "NIRMALA.TTF"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arialuni.ttf"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "segoeui.ttf"),
-        };
-
-        foreach (var path in candidates)
+        foreach (var path in CandidateFontPaths())
         {
             if (!File.Exists(path))
             {
@@ -40,5 +32,36 @@ public static class UrduPdfFont
         }
 
         return "Arial";
+    }
+
+    private static IEnumerable<string> CandidateFontPaths()
+    {
+        var windowsFonts = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+        var bundledName = "JameelNooriNastaleeq.ttf";
+
+        foreach (var root in EnumerateSearchRoots())
+        {
+            yield return Path.Combine(root, "wwwroot", "fonts", bundledName);
+            yield return Path.Combine(root, "fonts", bundledName);
+            yield return Path.Combine(root, "Fonts", bundledName);
+        }
+
+        yield return Path.Combine(windowsFonts, "Jameel Noori Nastaleeq.ttf");
+        yield return Path.Combine(windowsFonts, "UrdType.ttf");
+        yield return Path.Combine(windowsFonts, "NIRMALA.TTF");
+        yield return Path.Combine(windowsFonts, "arialuni.ttf");
+        yield return Path.Combine(windowsFonts, "segoeui.ttf");
+    }
+
+    private static IEnumerable<string> EnumerateSearchRoots()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            if (seen.Add(dir.FullName))
+            {
+                yield return dir.FullName;
+            }
+        }
     }
 }

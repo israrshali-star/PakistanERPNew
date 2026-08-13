@@ -1,0 +1,38 @@
+@font-face {
+    font-family: "Jameel Noori Nastaleeq";
+    src: url("/fonts/JameelNooriNastaleeq.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+[lang="ur"],
+[dir="rtl"],
+.font-urdu {
+    font-family: "Jameel Noori Nastaleeq", "Urdu Typesetting", serif;
+    line-height: 2.1;
+}
+
+input.form-control[lang="ur"],
+textarea.form-control[lang="ur"] {
+    font-size: 1.2rem;
+    min-height: 2.6rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+}
+
+.urdu-phonetic-bar {
+    margin-bottom: 0.25rem;
+}
+
+.urdu-phonetic-toggle {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+}
+
+.urdu-phonetic-hint {
+    direction: ltr;
+    text-align: left;
+    font-family: inherit;
+    line-height: 1.4;
+}
