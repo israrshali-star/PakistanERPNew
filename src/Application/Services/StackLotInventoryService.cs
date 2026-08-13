@@ -104,6 +104,70 @@ public class StackLotInventoryService : IStackLotInventoryService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<LotItemOptionDto>> SearchLotNumbersAsync(
+        string? query,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var take = limit <= 0 ? 20 : Math.Min(limit, 50);
+        var term = string.IsNullOrWhiteSpace(query) ? string.Empty : query.Trim();
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var fromItems = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId
+                        && i.IsActive
+                        && i.LotNo != ""
+                        && i.ItemType != ItemType.Service
+                        && (term == ""
+                            || i.ItemCode.Contains(term)
+                            || i.LotNo.Contains(term)
+                            || i.ItemName.Contains(term)))
+            .Select(i => new { i.ItemCode, i.LotNo })
+            .Take(take * 2)
+            .ToListAsync(cancellationToken);
+
+        var fromServices = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId
+                        && i.IsActive
+                        && i.ItemType == ItemType.Service
+                        && (term == ""
+                            || i.ItemCode.Contains(term)
+                            || i.ItemName.Contains(term)))
+            .Select(i => new { i.ItemCode, LotNo = string.Empty })
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        var fromPurchases = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
+                        && l.ItemId != null
+                        && l.LotNo != null
+                        && l.LotNo != ""
+                        && (term == ""
+                            || l.Item!.ItemCode.Contains(term)
+                            || l.LotNo.Contains(term)
+                            || l.Item.ItemName.Contains(term)))
+            .Select(l => new { ItemCode = l.Item!.ItemCode, LotNo = l.LotNo! })
+            .Take(take * 2)
+            .ToListAsync(cancellationToken);
+
+        return fromItems
+            .Concat(fromServices)
+            .Concat(fromPurchases)
+            .Select(x => new LotItemOptionDto(x.ItemCode.Trim(), x.LotNo.Trim()))
+            .Where(x => !string.IsNullOrWhiteSpace(x.ItemCode))
+            .GroupBy(x => (ItemCode: x.ItemCode.ToUpperInvariant(), LotNo: x.LotNo.ToUpperInvariant()))
+            .Select(g => g.First())
+            .OrderBy(x => x.ItemCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.LotNo, StringComparer.OrdinalIgnoreCase)
+            .Take(take)
+            .ToList();
+    }
+
     public async Task<LotDetailLookupDto?> GetLotDetailAsync(
         string lotNo,
         string? itemCode = null,

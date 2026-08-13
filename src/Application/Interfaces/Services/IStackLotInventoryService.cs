@@ -20,6 +20,11 @@ public interface IStackLotInventoryService
 
     Task<IReadOnlyList<LotItemOptionDto>> GetLotNumbersAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<LotItemOptionDto>> SearchLotNumbersAsync(
+        string? query,
+        int limit,
+        CancellationToken cancellationToken = default);
+
     Task<LotDetailLookupDto?> GetLotDetailAsync(
         string lotNo,
         string? itemCode = null,

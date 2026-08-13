@@ -155,6 +155,18 @@
                 reloadDataTable();
             }
         });
+        if (window.initPaAjaxTypeahead) {
+            window.initPaAjaxTypeahead($('#filter-vendor-name'), {
+                entity: 'vendor',
+                pickValue: function (item) { return item.vendorName || item.text; },
+                onSelect: reloadDataTable
+            });
+            window.initPaAjaxTypeahead($('#filter-ref-no'), {
+                entity: 'bill',
+                pickValue: function (item) { return item.name || item.code || item.text; },
+                onSelect: reloadDataTable
+            });
+        }
 
         $.getJSON('/api/company/current')
             .done(initDataTable)

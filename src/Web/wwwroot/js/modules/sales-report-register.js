@@ -73,6 +73,15 @@
     }
 
     function loadCustomers() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#filter-customer'), {
+                entity: 'customer',
+                placeholder: 'Type to search customer',
+                allowClear: true
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/sales-reports/customers').done(function (customers) {
             var $select = $('#filter-customer');
             (customers || []).forEach(function (c) {

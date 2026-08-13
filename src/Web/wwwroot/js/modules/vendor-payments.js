@@ -110,6 +110,30 @@
         }
     }
 
+    function cacheVendor(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            vendorCode: item.vendorCode,
+            vendorName: item.vendorName,
+            balance: item.balance
+        };
+        var index = vendors.findIndex(function (v) { return v.id === id; });
+        if (index >= 0) {
+            vendors[index] = mapped;
+        } else {
+            vendors.push(mapped);
+        }
+    }
+
     function updateVendorBalanceHint() {
         var vendorId = parseInt($('#payment-vendor-id').val(), 10) || 0;
         var vendor = vendors.find(function (v) { return v.id === vendorId; });
@@ -135,78 +159,32 @@
         updateVendorBalanceHint();
     }
 
-    function initSelect2($element) {
-        if ($element.data('select2')) {
-            $element.select2('destroy');
-        }
-
-        $element.select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            dropdownParent: $('#paymentModal'),
-            minimumResultsForSearch: 0
-        });
-    }
-
-    function populateVendorSelect(vendorsList) {
-        var $vendor = $('#payment-vendor-id');
-        var selectedVendor = $vendor.val();
-
-        if ($vendor.data('select2')) {
-            $vendor.select2('destroy');
-        }
-
-        $vendor.find('option:not(:first)').remove();
-        (vendorsList || []).forEach(function (v) {
-            $vendor.append(
-                $('<option></option>')
-                    .val(v.id)
-                    .text(v.vendorCode + ' — ' + v.vendorName)
-            );
-        });
-
-        if (selectedVendor) {
-            $vendor.val(selectedVendor);
-        }
-
-        initSelect2($vendor);
-    }
-
-    function populateBankSelect(banksList) {
-        var $bank = $('#payment-bank-id');
-        var selectedBank = $bank.val();
-
-        if ($bank.data('select2')) {
-            $bank.select2('destroy');
-        }
-
-        $bank.find('option:not(:first)').remove();
-        (banksList || []).forEach(function (b) {
-            $bank.append(
-                $('<option></option>')
-                    .val(b.id)
-                    .text(b.bankName + ' (' + b.accountNumber + ')')
-            );
-        });
-
-        if (selectedBank && $bank.find('option[value="' + selectedBank + '"]').length) {
-            $bank.val(selectedBank);
-        } else {
-            $bank.val('');
-        }
-
-        initSelect2($bank);
-    }
+    var lookupsReady = false;
 
     function loadLookups() {
-        return $.when(
-            $.getJSON('/api/vendor-payments/vendors'),
-            $.getJSON('/api/vendor-payments/banks')
-        ).then(function (vendorsRes, banksRes) {
-            vendors = vendorsRes[0] || [];
-            populateVendorSelect(vendors);
-            populateBankSelect(banksRes[0] || []);
-        });
+        if (lookupsReady) {
+            return $.Deferred().resolve().promise();
+        }
+
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#payment-vendor-id'), {
+                entity: 'vendor',
+                dropdownParent: '#paymentModal',
+                placeholder: 'Type to search vendor',
+                onSelect: function (item) {
+                    cacheVendor(item);
+                    updateVendorBalanceHint();
+                }
+            });
+            window.initPaAjaxSelect2($('#payment-bank-id'), {
+                entity: 'bank',
+                dropdownParent: '#paymentModal',
+                placeholder: 'Type to search bank'
+            });
+        }
+
+        lookupsReady = true;
+        return $.Deferred().resolve().promise();
     }
 
     function initDefaultDateFilters() {
@@ -323,9 +301,24 @@
                 $('#payment-number').val(payment.paymentNumber);
                 $('#payment-date').val(toInputDate(payment.paymentDate));
                 $('#payment-amount').val(payment.amount);
-                $('#payment-vendor-id').val(payment.vendorId).trigger('change');
+                var vendorLabel = [payment.vendorCode, payment.vendorName].filter(Boolean).join(' — ');
+                if (window.setPaSelect2Value) {
+                    window.setPaSelect2Value($('#payment-vendor-id'), payment.vendorId, vendorLabel, { trigger: false });
+                } else {
+                    $('#payment-vendor-id').val(payment.vendorId);
+                }
+                $.getJSON('/api/lookup/search', { entity: 'vendor', id: payment.vendorId }).done(function (data) {
+                    if (data.results && data.results[0]) {
+                        cacheVendor(data.results[0]);
+                    }
+                    updateVendorBalanceHint();
+                });
                 $('#payment-method').val(payment.paymentMethod).trigger('change');
-                $('#payment-bank-id').val(payment.bankId || '').trigger('change');
+                if (window.setPaSelect2Value) {
+                    window.setPaSelect2Value($('#payment-bank-id'), payment.bankId || '', payment.bankName || '');
+                } else {
+                    $('#payment-bank-id').val(payment.bankId || '').trigger('change');
+                }
                 $('#cheque-number').val(payment.chequeNumber || '');
                 $('#cheque-date').val(toInputDate(payment.chequeDate));
                 $('#payment-notes').val(payment.notes || '');

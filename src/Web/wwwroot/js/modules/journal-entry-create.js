@@ -26,17 +26,25 @@
         return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    function buildAccountOptions(selectedId) {
-        var html = '<option value="">— Select account —</option>';
-        accounts.forEach(function (account) {
-            var selected = String(account.id) === String(selectedId) ? ' selected' : '';
-            html += '<option value="' + account.id + '"' + selected + '>' +
-                account.accountNumber + ' — ' + account.accountName + '</option>';
-        });
+    function buildAccountOptions(selectedId, selectedText) {
+        var html = '<option value="">— Type to search account —</option>';
+        if (selectedId) {
+            html += '<option value="' + selectedId + '" selected>' +
+                (selectedText || selectedId) + '</option>';
+        }
         return html;
     }
 
     function initAccountSelect($select) {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($select, {
+                entity: 'account',
+                dropdownParent: '#journal-entry-form',
+                placeholder: 'Type to search account'
+            });
+            return;
+        }
+
         if ($.fn.select2) {
             $select.select2({ theme: 'bootstrap-5', width: '100%', dropdownParent: $('#journal-entry-form') });
         }
@@ -68,7 +76,9 @@
         lineCounter += 1;
         var $row = $(
             '<tr data-line-id="line-' + lineCounter + '">' +
-            '<td><select class="form-select form-select-sm line-account" required>' + buildAccountOptions(prefill && prefill.accountId) + '</select></td>' +
+            '<td><select class="form-select form-select-sm line-account" required>' +
+            buildAccountOptions(prefill && prefill.accountId, prefill && prefill.accountText) +
+            '</select></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-debit" min="0" step="0.01" value="' + ((prefill && prefill.debit) || 0) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-credit" min="0" step="0.01" value="' + ((prefill && prefill.credit) || 0) + '" /></td>' +
             '<td><input type="text" class="form-control form-control-sm line-memo" maxlength="200" value="' + ((prefill && prefill.memo) || '') + '" /></td>' +
@@ -105,6 +115,8 @@
             existingLines.forEach(function (line) {
                 addLine({
                     accountId: line.accountId,
+                    accountText: line.accountText ||
+                        ([line.accountNumber, line.accountName].filter(Boolean).join(' — ')),
                     debit: line.debit,
                     credit: line.credit,
                     memo: line.memo
@@ -119,24 +131,12 @@
 
     function loadLookups() {
         if (editEntryId) {
-            return $.getJSON('/api/journal-entries/accounts').then(function (accountsData) {
-                accounts = accountsData || [];
-                if (accounts.length === 0) {
-                    showError('No chart of accounts found. Set up accounts under Chart of Accounts first.');
-                }
-                populateLines();
-            });
+            populateLines();
+            return $.Deferred().resolve().promise();
         }
 
-        return $.when(
-            $.getJSON('/api/journal-entries/next-entry-number'),
-            $.getJSON('/api/journal-entries/accounts')
-        ).then(function (numberRes, accountsRes) {
-            $('#entry-number').val(numberRes[0].entryNumber);
-            accounts = accountsRes[0] || [];
-            if (accounts.length === 0) {
-                showError('No chart of accounts found. Set up accounts under Chart of Accounts first.');
-            }
+        return $.getJSON('/api/journal-entries/next-entry-number').then(function (numberRes) {
+            $('#entry-number').val(numberRes.entryNumber);
             populateLines();
         });
     }

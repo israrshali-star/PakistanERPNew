@@ -95,6 +95,20 @@
     }
 
     function loadLookups() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#filter-item'), {
+                entity: 'item',
+                placeholder: 'Type to search item',
+                allowClear: true
+            });
+            window.initPaAjaxSelect2($('#filter-warehouse'), {
+                entity: 'warehouse',
+                placeholder: 'Type to search warehouse',
+                allowClear: true
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.when(
             $.getJSON('/api/inventory-reports/items'),
             $.getJSON('/api/inventory-reports/warehouses')

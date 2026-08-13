@@ -205,6 +205,15 @@
     }
 
     function loadItems() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#filter-item'), {
+                entity: 'item',
+                placeholder: 'Type to search item',
+                allowClear: true
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/purchase-reports/stack-lot-items').done(function (items) {
             var $select = $('#filter-item');
             (items || []).forEach(function (item) {

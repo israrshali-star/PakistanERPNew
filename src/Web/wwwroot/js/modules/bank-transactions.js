@@ -38,26 +38,64 @@
         $('.transfer-fields').toggleClass('d-none', !isTransfer);
     }
 
+    function cacheBank(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            bankName: item.bankName,
+            accountNumber: item.accountNumber,
+            currentBalance: item.balance
+        };
+        var index = banks.findIndex(function (b) { return b.id === id; });
+        if (index >= 0) {
+            banks[index] = mapped;
+        } else {
+            banks.push(mapped);
+        }
+    }
+
     function updateBankBalanceHint() {
         var bankId = parseInt($('#txn-bank-id').val(), 10) || 0;
         var bank = banks.find(function (b) { return b.id === bankId; });
         $('#txn-bank-balance').text(bank ? 'Available balance: PKR ' + formatMoney(bank.currentBalance) : '');
     }
 
-    function buildBankOptions($select, excludeId) {
-        $select.find('option:not(:first)').remove();
-        banks.forEach(function (b) {
-            if (excludeId && b.id === excludeId) return;
-            $select.append($('<option></option>').val(b.id).text(b.bankName + ' (' + b.accountNumber + ')'));
-        });
-    }
-
     function loadBanks() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#filter-bank-id'), {
+                entity: 'bank',
+                placeholder: 'Type to search bank',
+                allowClear: true
+            });
+            window.initPaAjaxSelect2($('#txn-bank-id, #txn-transfer-to-id'), {
+                entity: 'bank',
+                dropdownParent: '#bankTxnModal',
+                placeholder: 'Type to search bank',
+                onSelect: function (item) {
+                    cacheBank(item);
+                    updateBankBalanceHint();
+                }
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/bank-transactions/banks').done(function (res) {
             banks = res || [];
-            buildBankOptions($('#filter-bank-id'));
-            buildBankOptions($('#txn-bank-id'));
-            buildBankOptions($('#txn-transfer-to-id'));
+            ['#filter-bank-id', '#txn-bank-id', '#txn-transfer-to-id'].forEach(function (selector) {
+                var $select = $(selector);
+                $select.find('option:not(:first)').remove();
+                banks.forEach(function (b) {
+                    $select.append($('<option></option>').val(b.id).text(b.bankName + ' (' + b.accountNumber + ')'));
+                });
+            });
         });
     }
 

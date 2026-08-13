@@ -218,7 +218,19 @@
     }
 
     function getSelectedParty() {
-        var $opt = $('#op-counter-account-id option:selected');
+        var $select = $('#op-counter-account-id');
+        var selected = $select.data('select2') ? ($select.select2('data')[0] || null) : null;
+        if (selected && (selected.customerId || selected.vendorId || selected.chartOfAccountId)) {
+            return {
+                customerId: selected.customerId || null,
+                vendorId: selected.vendorId || null,
+                chartOfAccountId: selected.chartOfAccountId || null,
+                partyName: selected.partyName || selected.text,
+                balance: parseFloat(selected.balance) || 0
+            };
+        }
+
+        var $opt = $select.find('option:selected');
         if (!$opt.length || !$opt.val()) return null;
 
         var parts = String($opt.val()).split(':');
@@ -541,11 +553,19 @@
                 resolveCashAccount();
                 buildOptions($('#op-bank-account-id'), bankAccounts);
             }));
-            requests.push($.getJSON('/api/bank-transactions/coa-counter').done(function (res) {
-                counterAccounts = res || [];
-                buildPartyOptions($('#op-counter-account-id'), counterAccounts);
-                refreshSelect2($('#op-counter-account-id'));
-            }));
+            if (window.initPaAjaxSelect2) {
+                window.initPaAjaxSelect2($('#op-counter-account-id'), {
+                    entity: 'party',
+                    placeholder: 'Type to search customer, vendor, or account',
+                    allowClear: true
+                });
+            } else {
+                requests.push($.getJSON('/api/bank-transactions/coa-counter').done(function (res) {
+                    counterAccounts = res || [];
+                    buildPartyOptions($('#op-counter-account-id'), counterAccounts);
+                    refreshSelect2($('#op-counter-account-id'));
+                }));
+            }
         } else {
             requests.push($.getJSON('/api/bank-transactions/coa-deposit').done(function (res) {
                 bankAccounts = res || [];
@@ -735,10 +755,8 @@
 
         if (window.initPaSelect2) {
             window.initPaSelect2($('.select2').not('#op-counter-account-id'), {});
-            window.initPaSelect2($('#op-counter-account-id'), { matcher: partySelectMatcher });
         } else {
-            $('.select2').select2({ theme: 'bootstrap-5', width: '100%', minimumResultsForSearch: 0 });
-            refreshSelect2($('#op-counter-account-id'));
+            $('.select2').not('#op-counter-account-id').select2({ theme: 'bootstrap-5', width: '100%', minimumResultsForSearch: 0 });
         }
         $('#op-date').val(new Date().toISOString().slice(0, 10));
 

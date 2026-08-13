@@ -190,6 +190,30 @@
         recalcTotals();
     }
 
+    function cacheVendor(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            vendorCode: item.vendorCode,
+            vendorName: item.vendorName,
+            defaultTaxRate: item.defaultTaxRate
+        };
+        var index = vendors.findIndex(function (v) { return v.id === id; });
+        if (index >= 0) {
+            vendors[index] = mapped;
+        } else {
+            vendors.push(mapped);
+        }
+    }
+
     function onVendorChange() {
         var vendorId = parseInt($('#vendor-id').val(), 10);
         var vendor = vendors.find(function (v) { return v.id === vendorId; });
@@ -216,9 +240,29 @@
         $('#bill-number').val(bill.billNumber || bill.BillNumber);
         $('#bill-date').val((bill.billDate || bill.BillDate || '').substring(0, 10));
         $('#ref-no').val(bill.refNo || bill.RefNo || '');
-        $('#vendor-id').val(String(bill.vendorId || bill.VendorId)).trigger('change');
+        var vendorId = bill.vendorId || bill.VendorId;
+        var vendorLabel = [bill.vendorCode || bill.VendorCode, bill.vendorName || bill.VendorName]
+            .filter(Boolean).join(' — ');
+        if (window.setPaSelect2Value) {
+            window.setPaSelect2Value($('#vendor-id'), vendorId, vendorLabel, { trigger: false });
+        } else {
+            $('#vendor-id').val(String(vendorId));
+        }
+        $.getJSON('/api/lookup/search', { entity: 'vendor', id: vendorId }).done(function (data) {
+            if (data.results && data.results[0]) {
+                cacheVendor(data.results[0]);
+            }
+            $('#vendor-id').trigger('change');
+        });
         if (bill.warehouseId || bill.WarehouseId) {
-            $('#warehouse-id').val(String(bill.warehouseId || bill.WarehouseId)).trigger('change');
+            var warehouseId = bill.warehouseId || bill.WarehouseId;
+            var warehouseLabel = [bill.warehouseCode || bill.WarehouseCode, bill.warehouseName || bill.WarehouseName]
+                .filter(Boolean).join(' — ');
+            if (window.setPaSelect2Value) {
+                window.setPaSelect2Value($('#warehouse-id'), warehouseId, warehouseLabel || warehouseId);
+            } else {
+                $('#warehouse-id').val(String(warehouseId)).trigger('change');
+            }
         }
 
         var subTotal = bill.subTotal != null ? bill.subTotal : bill.SubTotal;
@@ -349,75 +393,39 @@
 
         return $.when(
             numberRequest,
-            $.getJSON('/api/vendor-bills/vendors'),
-            $.getJSON('/api/vendor-bills/items'),
-            $.getJSON('/api/vendor-bills/warehouses'),
-            $.getJSON('/api/vendor-bills/purchase-tax-settings'),
-            window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, vendorsRes, itemsRes, warehousesRes, purchaseTaxRes) {
+            $.getJSON('/api/vendor-bills/purchase-tax-settings')
+        ).then(function (numberRes, purchaseTaxRes) {
             if (!editId) {
                 $('#bill-number').val(numberRes[0].billNumber || numberRes[0].BillNumber);
             }
-            vendors = vendorsRes[0] || [];
-            items = itemsRes[0] || [];
-            warehouses = warehousesRes[0] || [];
             applyPurchaseTaxSettings(purchaseTaxRes[0] || {});
 
-            var $vendor = $('#vendor-id');
-            $vendor.find('option:not(:first)').remove();
-            vendors.forEach(function (v) {
-                $vendor.append($('<option></option>').val(v.id).text(v.vendorCode + ' — ' + v.vendorName));
-            });
-
-            if ($.fn.select2) {
-                $vendor.select2({
-                    theme: 'bootstrap-5',
-                    width: '100%',
-                    minimumResultsForSearch: 0
+            if (window.initPaAjaxSelect2) {
+                window.initPaAjaxSelect2($('#vendor-id'), {
+                    entity: 'vendor',
+                    placeholder: 'Type to search vendor',
+                    onSelect: cacheVendor
+                });
+                window.initPaAjaxSelect2($('#warehouse-id'), {
+                    entity: 'warehouse',
+                    placeholder: 'Type to search warehouse'
                 });
             }
 
-            var $warehouse = $('#warehouse-id');
-            $warehouse.find('option:not(:first)').remove();
-            warehouses.forEach(function (w) {
-                $warehouse.append($('<option></option>').val(w.id).text(w.code + ' — ' + w.name));
+            $.getJSON('/api/lookup/search', { entity: 'item', q: '', limit: 1 }).done(function (data) {
+                if (!data.results || data.results.length === 0) {
+                    $('#no-items-hint').removeClass('d-none');
+                } else {
+                    $('#no-items-hint').addClass('d-none');
+                }
             });
-
-            if ($.fn.select2) {
-                $warehouse.select2({
-                    theme: 'bootstrap-5',
-                    width: '100%',
-                    minimumResultsForSearch: 0
-                });
-            }
-
-            if (items.length === 0) {
-                $('#no-items-hint').removeClass('d-none');
-            } else {
-                $('#no-items-hint').addClass('d-none');
-            }
-
-            if (vendors.length === 0) {
-                showError('No active vendors found. Add a vendor under Purchase → Vendors first.');
-            }
 
             if (editId) {
                 loadEditBill();
             } else if ($('#bill-lines-body tr').length === 0) {
-                var firstOption = window.LotStackLine.lotNumbers[0];
-                var firstLot = firstOption
-                    ? (typeof firstOption === 'string'
-                        ? firstOption
-                        : window.LotStackLine.buildLotSelectValue(
-                            firstOption.itemCode || firstOption.ItemCode,
-                            firstOption.lotNo || firstOption.LotNo))
-                    : null;
-                var firstItem = items[0];
                 addLine({
-                    lotNo: firstLot || (firstItem && firstItem.lotNo),
                     qty: 1,
-                    cartons: 0,
-                    rate: firstItem && firstItem.purchaseRate
+                    cartons: 0
                 });
             }
         });

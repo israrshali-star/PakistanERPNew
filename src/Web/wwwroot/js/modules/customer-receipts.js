@@ -418,6 +418,30 @@
             });
     }
 
+    function cacheCustomer(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            buyerId: item.buyerId,
+            buyerName: item.buyerName,
+            balance: item.balance
+        };
+        var index = customers.findIndex(function (c) { return c.id === id; });
+        if (index >= 0) {
+            customers[index] = mapped;
+        } else {
+            customers.push(mapped);
+        }
+    }
+
     function updateCustomerBalanceHint() {
         var customerId = parseInt($('#receipt-customer-id').val(), 10) || 0;
         var customer = customers.find(function (c) { return c.id === customerId; });
@@ -473,76 +497,32 @@
         });
     }
 
-    function populateCustomerSelect(customersList) {
-        var $customer = $('#receipt-customer-id');
-        var selectedCustomer = $customer.val();
-
-        if ($customer.data('select2')) {
-            $customer.select2('destroy');
-        }
-
-        $customer.find('option:not(:first)').remove();
-        (customersList || []).forEach(function (c) {
-            $customer.append(
-                $('<option></option>')
-                    .val(c.id)
-                    .text(c.buyerId + ' — ' + c.buyerName)
-            );
-        });
-
-        if (selectedCustomer) {
-            $customer.val(selectedCustomer);
-        }
-
-        initSelect2($customer);
-    }
-
-    function populateBankSelect(banksList) {
-        var $bank = $('#receipt-bank-id');
-        var $sameBank = $('#same-bank-id');
-        var selectedBank = $bank.val();
-        var selectedSameBank = $sameBank.val();
-
-        [$bank, $sameBank].forEach(function ($el) {
-            if ($el.data('select2')) {
-                $el.select2('destroy');
-            }
-
-            $el.find('option:not(:first)').remove();
-            (banksList || []).forEach(function (b) {
-                $el.append(
-                    $('<option></option>')
-                        .val(b.id)
-                        .text(b.bankName + ' (' + b.accountNumber + ')')
-                );
-            });
-        });
-
-        if (selectedBank && $bank.find('option[value="' + selectedBank + '"]').length) {
-            $bank.val(selectedBank);
-        } else {
-            $bank.val('');
-        }
-
-        if (selectedSameBank && $sameBank.find('option[value="' + selectedSameBank + '"]').length) {
-            $sameBank.val(selectedSameBank);
-        } else {
-            $sameBank.val('');
-        }
-
-        initSelect2($bank);
-        initSelect2($sameBank);
-    }
+    var lookupsReady = false;
 
     function loadLookups() {
-        return $.when(
-            $.getJSON('/api/customer-receipts/customers'),
-            $.getJSON('/api/customer-receipts/banks')
-        ).then(function (customersRes, banksRes) {
-            customers = customersRes[0] || [];
-            populateCustomerSelect(customers);
-            populateBankSelect(banksRes[0] || []);
-        });
+        if (lookupsReady) {
+            return $.Deferred().resolve().promise();
+        }
+
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#receipt-customer-id'), {
+                entity: 'customer',
+                dropdownParent: '#receiptModal',
+                placeholder: 'Type to search customer',
+                onSelect: function (item) {
+                    cacheCustomer(item);
+                    updateCustomerBalanceHint();
+                }
+            });
+            window.initPaAjaxSelect2($('#receipt-bank-id, #same-bank-id'), {
+                entity: 'bank',
+                dropdownParent: '#receiptModal',
+                placeholder: 'Type to search bank'
+            });
+        }
+
+        lookupsReady = true;
+        return $.Deferred().resolve().promise();
     }
 
     function initDefaultDateFilters() {
@@ -713,11 +693,31 @@
                 $('#receipt-number').val(receipt.receiptNumber);
                 $('#receipt-date').val(toInputDate(receipt.receiptDate));
                 $('#receipt-amount').val(receipt.amount);
-                $('#receipt-customer-id').val(receipt.customerId).trigger('change');
+                var customerLabel = [receipt.customerCode, receipt.customerName].filter(Boolean).join(' — ');
+                if (window.setPaSelect2Value) {
+                    window.setPaSelect2Value($('#receipt-customer-id'), receipt.customerId, customerLabel, { trigger: false });
+                } else {
+                    $('#receipt-customer-id').val(receipt.customerId);
+                }
+                $.getJSON('/api/lookup/search', { entity: 'customer', id: receipt.customerId }).done(function (data) {
+                    if (data.results && data.results[0]) {
+                        cacheCustomer(data.results[0]);
+                    }
+                    updateCustomerBalanceHint();
+                });
                 $('#payment-method').val(receipt.paymentMethod).trigger('change');
                 setChequeBankType(receipt.chequeBankType || 2);
-                $('#receipt-bank-id').val(receipt.bankId || '').trigger('change');
-                $('#same-bank-id').val(receipt.chequeBankType === 1 ? (receipt.bankId || '') : '').trigger('change');
+                if (window.setPaSelect2Value) {
+                    window.setPaSelect2Value($('#receipt-bank-id'), receipt.bankId || '', receipt.bankName || '');
+                    window.setPaSelect2Value(
+                        $('#same-bank-id'),
+                        receipt.chequeBankType === 1 ? (receipt.bankId || '') : '',
+                        receipt.bankName || ''
+                    );
+                } else {
+                    $('#receipt-bank-id').val(receipt.bankId || '').trigger('change');
+                    $('#same-bank-id').val(receipt.chequeBankType === 1 ? (receipt.bankId || '') : '').trigger('change');
+                }
                 if (receipt.chequeBankType === 1) {
                     $('#same-bank-cheque-number').val(receipt.chequeNumber || '');
                     $('#same-bank-cheque-date').val(toInputDate(receipt.chequeDate));

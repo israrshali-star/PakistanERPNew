@@ -155,6 +155,28 @@
                 }
             }
         });
+        if (window.initPaAjaxTypeahead) {
+            var reloadJournal = function () {
+                if (dataTable) {
+                    dataTable.ajax.reload();
+                }
+            };
+            window.initPaAjaxTypeahead($('#filter-bill-number'), {
+                entity: 'bill',
+                pickValue: function (item) { return item.code || item.text; },
+                onSelect: reloadJournal
+            });
+            window.initPaAjaxTypeahead($('#filter-invoice-number'), {
+                entity: 'invoice',
+                pickValue: function (item) { return item.code || item.text; },
+                onSelect: reloadJournal
+            });
+            window.initPaAjaxTypeahead($('#filter-receipt-number'), {
+                entity: 'receipt',
+                pickValue: function (item) { return item.code || item.text; },
+                onSelect: reloadJournal
+            });
+        }
 
         $.getJSON('/api/company/current')
             .done(initDataTable)

@@ -33,6 +33,31 @@
         return body && (body.message || body.Message) ? (body.message || body.Message) : fallback;
     }
 
+    function cacheItem(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            itemCode: item.itemCode,
+            itemName: item.itemName,
+            currentStock: item.currentStock,
+            unitSymbol: item.unitSymbol
+        };
+        var index = items.findIndex(function (i) { return i.id === id; });
+        if (index >= 0) {
+            items[index] = mapped;
+        } else {
+            items.push(mapped);
+        }
+    }
+
     function updateItemStockHint() {
         var itemId = parseInt($('#txn-item-id').val(), 10) || 0;
         var item = items.find(function (i) { return i.id === itemId; });
@@ -56,6 +81,25 @@
     }
 
     function loadLookups() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#txn-item-id'), {
+                entity: 'item',
+                extraData: { itemType: 'goods' },
+                dropdownParent: '#stockTxnModal',
+                placeholder: 'Type to search item',
+                onSelect: function (item) {
+                    cacheItem(item);
+                    updateItemStockHint();
+                }
+            });
+            window.initPaAjaxSelect2($('#txn-warehouse-id'), {
+                entity: 'warehouse',
+                dropdownParent: '#stockTxnModal',
+                placeholder: 'Type to search warehouse'
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.when(
             $.getJSON('/api/inventory-transactions/items'),
             $.getJSON('/api/inventory-transactions/warehouses')

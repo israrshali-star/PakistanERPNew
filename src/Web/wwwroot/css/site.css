@@ -503,3 +503,43 @@ body.app-body {
         display: none !important;
     }
 }
+
+.pa-typeahead {
+    position: relative;
+}
+
+.pa-typeahead-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1080;
+    margin-top: 2px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--erp-border);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12);
+}
+
+.pa-typeahead-item {
+    display: block;
+    width: 100%;
+    padding: 0.45rem 0.75rem;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    color: var(--erp-text);
+}
+
+.pa-typeahead-item:hover,
+.pa-typeahead-item:focus {
+    background: var(--erp-primary-light);
+    color: var(--erp-primary-dark);
+}
+
+.pa-typeahead-empty {
+    padding: 0.45rem 0.75rem;
+    color: var(--erp-muted);
+}

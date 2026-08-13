@@ -56,6 +56,219 @@ window.formatCurrency = function (value) {
         });
     };
 
+    window.setPaSelect2Value = function ($select, id, text, options) {
+        options = options || {};
+        if (!$select || !$select.length) {
+            return $select;
+        }
+
+        if (id == null || id === '') {
+            $select.val(null);
+            if (options.trigger !== false) {
+                $select.trigger('change');
+            }
+            return $select;
+        }
+
+        var value = String(id);
+        var hasOption = $select.find('option').filter(function () {
+            return String(this.value) === value;
+        }).length > 0;
+
+        if (!hasOption) {
+            $select.append(new Option(text || value, value, true, true));
+        }
+
+        $select.val(value);
+        if (options.trigger !== false) {
+            $select.trigger('change');
+        }
+        return $select;
+    };
+
+    window.initPaAjaxSelect2 = function ($elements, options) {
+        options = options || {};
+        if (!$.fn.select2) {
+            return $elements;
+        }
+
+        return $elements.each(function () {
+            var $el = $(this);
+            if ($el.data('select2')) {
+                $el.select2('destroy');
+            }
+
+            var entity = options.entity || $el.data('search-entity');
+            var config = $.extend({}, baseOptions, {
+                minimumInputLength: options.minimumInputLength != null ? options.minimumInputLength : 0,
+                placeholder: options.placeholder || $el.data('placeholder') || 'Type to search',
+                allowClear: options.allowClear !== false,
+                ajax: {
+                    url: options.url || '/api/lookup/search',
+                    dataType: 'json',
+                    delay: options.delay || 250,
+                    data: function (params) {
+                        var data = {
+                            entity: entity,
+                            q: params.term || '',
+                            limit: options.limit || 20
+                        };
+                        if (typeof options.extraData === 'function') {
+                            $.extend(data, options.extraData());
+                        } else if (options.extraData) {
+                            $.extend(data, options.extraData);
+                        }
+                        return data;
+                    },
+                    processResults: function (data) {
+                        var items = data && data.results ? data.results : (data || []);
+                        if (typeof options.mapResults === 'function') {
+                            return { results: options.mapResults(items) };
+                        }
+
+                        var hasGroups = items.some(function (item) { return item.group; });
+                        if (!hasGroups) {
+                            return { results: items };
+                        }
+
+                        var groups = {};
+                        var order = [];
+                        items.forEach(function (item) {
+                            var group = item.group || 'Other';
+                            if (!groups[group]) {
+                                groups[group] = [];
+                                order.push(group);
+                            }
+                            groups[group].push(item);
+                        });
+
+                        return {
+                            results: order.map(function (group) {
+                                return { text: group, children: groups[group] };
+                            })
+                        };
+                    },
+                    cache: true
+                }
+            }, options.select2 || {});
+
+            if (options.dropdownParent) {
+                config.dropdownParent = $(options.dropdownParent);
+            } else if ($el.data('dropdown-parent')) {
+                config.dropdownParent = $($el.data('dropdown-parent'));
+            }
+
+            if (options.tags) {
+                config.tags = true;
+            }
+            if (options.width) {
+                config.width = options.width;
+            }
+
+            $el.select2(config);
+
+            if (typeof options.onSelect === 'function') {
+                $el.off('select2:select.paAjax').on('select2:select.paAjax', function (e) {
+                    options.onSelect(e.params.data, $el);
+                });
+            }
+        });
+    };
+
+    window.initPaAjaxTypeahead = function ($inputs, options) {
+        options = options || {};
+        return $inputs.each(function () {
+            var $input = $(this);
+            if ($input.data('pa-typeahead')) {
+                return;
+            }
+
+            $input.data('pa-typeahead', true);
+            if (!$input.parent().hasClass('pa-typeahead')) {
+                $input.wrap('<div class="pa-typeahead"></div>');
+            }
+
+            var $wrap = $input.parent();
+            var $menu = $('<div class="pa-typeahead-menu d-none" role="listbox"></div>');
+            $wrap.append($menu);
+
+            var timer = null;
+
+            function hideMenu() {
+                $menu.addClass('d-none').empty();
+            }
+
+            function renderItems(items) {
+                $menu.empty();
+                if (!items.length) {
+                    $menu.append('<div class="pa-typeahead-empty">No matches</div>').removeClass('d-none');
+                    return;
+                }
+
+                items.forEach(function (item) {
+                    $menu.append(
+                        $('<button type="button" class="pa-typeahead-item"></button>')
+                            .text(item.text)
+                            .data('item', item)
+                    );
+                });
+                $menu.removeClass('d-none');
+            }
+
+            function search(term) {
+                $.getJSON(options.url || '/api/lookup/search', {
+                    entity: options.entity,
+                    q: term,
+                    limit: options.limit || 15
+                }).done(function (data) {
+                    renderItems((data && data.results) || []);
+                });
+            }
+
+            $input.on('input', function () {
+                var term = String($input.val() || '').trim();
+                window.clearTimeout(timer);
+                if (term.length < (options.minChars || 1)) {
+                    hideMenu();
+                    return;
+                }
+
+                timer = window.setTimeout(function () {
+                    search(term);
+                }, options.delay || 250);
+            });
+
+            $input.on('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    hideMenu();
+                    return;
+                }
+
+                if (e.key === 'Enter' && !$menu.hasClass('d-none') && options.selectOnEnter) {
+                    var $first = $menu.find('.pa-typeahead-item').first();
+                    if ($first.length) {
+                        e.preventDefault();
+                        $first.trigger('mousedown');
+                    }
+                }
+            });
+
+            $menu.on('mousedown', '.pa-typeahead-item', function (e) {
+                e.preventDefault();
+                var item = $(this).data('item');
+                $input.val(typeof options.pickValue === 'function' ? options.pickValue(item) : item.text);
+                hideMenu();
+                if (typeof options.onSelect === 'function') {
+                    options.onSelect(item, $input);
+                }
+            });
+
+            $input.on('blur', function () {
+                window.setTimeout(hideMenu, 150);
+            });
+        });
+    };
+
     function openAndTypeSearch($select, character) {
         var instance = $select.data('select2');
         if (!instance) {

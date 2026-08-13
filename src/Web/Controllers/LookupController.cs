@@ -11,11 +11,40 @@ public class LookupController : Controller
 {
     private readonly ILookupService _lookupService;
     private readonly IStackLotInventoryService _stackLotInventory;
+    private readonly IEntitySearchService _entitySearch;
 
-    public LookupController(ILookupService lookupService, IStackLotInventoryService stackLotInventory)
+    public LookupController(
+        ILookupService lookupService,
+        IStackLotInventoryService stackLotInventory,
+        IEntitySearchService entitySearch)
     {
         _lookupService = lookupService;
         _stackLotInventory = stackLotInventory;
+        _entitySearch = entitySearch;
+    }
+
+    [HttpGet("search")]
+    public async Task<IActionResult> Search(
+        [FromQuery] string entity,
+        [FromQuery] string? q,
+        [FromQuery] string? id,
+        [FromQuery] int limit = 20,
+        [FromQuery] string? itemType = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(entity))
+            {
+                return BadRequest(new { message = "Search entity is required." });
+            }
+
+            return Ok(await _entitySearch.SearchAsync(entity, q, id, limit, itemType, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpGet("amount-in-words")]

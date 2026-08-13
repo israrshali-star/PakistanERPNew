@@ -29,6 +29,15 @@
     }
 
     function loadChartOfAccounts() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#chart-of-account-id'), {
+                entity: 'account',
+                dropdownParent: '#bankModal',
+                placeholder: 'Type to search account'
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/banks/chart-of-accounts').done(function (accounts) {
             var $select = $('#chart-of-account-id');
             $select.find('option:not(:first)').remove();
@@ -110,7 +119,11 @@
                 $('#iban').val(b.iban || '');
                 $('#opening-balance').val(b.openingBalance);
                 $('#opening-balance').prop('readonly', b.transactionCount > 0);
-                $('#chart-of-account-id').val(b.chartOfAccountId || '').trigger('change');
+                if (window.setPaSelect2Value) {
+                    window.setPaSelect2Value($('#chart-of-account-id'), b.chartOfAccountId || '', b.chartOfAccountLabel || '');
+                } else {
+                    $('#chart-of-account-id').val(b.chartOfAccountId || '').trigger('change');
+                }
                 $('#bank-active').prop('checked', b.isActive);
                 bankModal.show();
             })

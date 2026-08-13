@@ -9,6 +9,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<ILookupService, LookupService>();
+        services.AddScoped<IEntitySearchService, EntitySearchService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<ICompanySettingsService, CompanySettingsService>();
         services.AddScoped<ICompanyMessagingSettingsService, CompanyMessagingSettingsService>();

@@ -398,6 +398,36 @@
         $('#buyer-cnic').val(pickCustomerField(customer, 'cnic', 'CNIC'));
     }
 
+    function cacheCustomer(item) {
+        if (!item || item.id == null || item.id === '') {
+            return;
+        }
+
+        var id = parseInt(item.id, 10);
+        if (!id) {
+            return;
+        }
+
+        var mapped = {
+            id: id,
+            buyerId: item.buyerId,
+            buyerName: item.buyerName,
+            scenarioId: item.scenarioId,
+            provinceId: item.provinceId,
+            address: item.address,
+            ntn: item.ntn,
+            cnic: item.cnic,
+            invoiceType: item.invoiceType,
+            furtherTaxRate: item.furtherTaxRate
+        };
+        var index = customers.findIndex(function (c) { return c.id === id; });
+        if (index >= 0) {
+            customers[index] = mapped;
+        } else {
+            customers.push(mapped);
+        }
+    }
+
     function onCustomerChange() {
         var customerId = parseInt($('#customer-id').val(), 10);
         var customer = customers.find(function (c) { return c.id === customerId; });
@@ -466,8 +496,20 @@
             $('#invoice-number').val(invoice.invoiceNumber || invoice.InvoiceNumber);
         }
         $('#invoice-date').val(formatIsoDateForPicker(invoice.invoiceDate || invoice.InvoiceDate));
-        $('#customer-id').val(String(invoice.customerId || invoice.CustomerId)).trigger('change');
-        // Customer change applies customer defaults; restore this invoice's type/scenario.
+        var customerId = invoice.customerId || invoice.CustomerId;
+        var customerLabel = [invoice.customerCode || invoice.CustomerCode, invoice.customerName || invoice.CustomerName]
+            .filter(Boolean).join(' — ');
+        if (window.setPaSelect2Value) {
+            window.setPaSelect2Value($('#customer-id'), customerId, customerLabel, { trigger: false });
+        } else {
+            $('#customer-id').val(String(customerId));
+        }
+        $.getJSON('/api/lookup/search', { entity: 'customer', id: customerId }).done(function (data) {
+            if (data.results && data.results[0]) {
+                cacheCustomer(data.results[0]);
+            }
+        });
+        // Restore this invoice's type/scenario instead of applying customer defaults.
         $('#invoice-type').val(String(normalizeInvoiceTypeValue(
             invoice.invoiceType != null ? invoice.invoiceType : invoice.InvoiceType
         )));
@@ -556,17 +598,12 @@
 
         return $.when(
             numberRequest,
-            $.getJSON('/api/sales-invoices/customers'),
-            $.getJSON('/api/sales-invoices/items'),
             $.getJSON('/api/sales-invoices/tax-rates'),
-            $.getJSON('/api/lookup/scenario-types'),
-            window.LotStackLine.loadLotNumbers()
-        ).then(function (numberRes, customersRes, itemsRes, taxRatesRes, scenariosRes) {
+            $.getJSON('/api/lookup/scenario-types')
+        ).then(function (numberRes, taxRatesRes, scenariosRes) {
             if (!editId) {
                 $('#invoice-number').val(numberRes[0].invoiceNumber || numberRes[0].InvoiceNumber);
             }
-            customers = customersRes[0] || [];
-            items = itemsRes[0] || [];
             scenarios = scenariosRes[0] || [];
             if (taxRatesRes[0]) {
                 taxRates.registered = taxRatesRes[0].registeredSalesTaxRate != null
@@ -584,12 +621,6 @@
                     || taxRatesRes[0].SupportsBillLevelTaxSplit === true;
             }
 
-            var $customer = $('#customer-id');
-            $customer.find('option:not(:first)').remove();
-            customers.forEach(function (c) {
-                $customer.append($('<option></option>').val(c.id).text(c.buyerId + ' — ' + c.buyerName));
-            });
-
             var $scenario = $('#scenario-id');
             $scenario.empty();
             scenarios.forEach(function (s) {
@@ -598,18 +629,28 @@
                     .text((s.code || s.Code) + ' — ' + (s.description || s.Description || '')));
             });
 
+            if (window.initPaAjaxSelect2) {
+                window.initPaAjaxSelect2($('#customer-id'), {
+                    entity: 'customer',
+                    placeholder: 'Type to search customer',
+                    onSelect: cacheCustomer
+                });
+            }
+
+            $.getJSON('/api/lookup/search', { entity: 'item', q: '', limit: 1 }).done(function (data) {
+                if (!data.results || data.results.length === 0) {
+                    $('#no-items-hint').removeClass('d-none');
+                } else {
+                    $('#no-items-hint').addClass('d-none');
+                }
+            });
+
             if ($.fn.select2) {
-                $('#customer-id, #scenario-id').select2({
+                $('#scenario-id').select2({
                     theme: 'bootstrap-5',
                     width: '100%',
                     minimumResultsForSearch: 0
                 });
-            }
-
-            if (items.length === 0) {
-                $('#no-items-hint').removeClass('d-none');
-            } else {
-                $('#no-items-hint').addClass('d-none');
             }
 
             if (editId) {
@@ -617,26 +658,11 @@
             } else if (isCopyMode()) {
                 loadInvoiceData();
             } else if ($('#invoice-lines-body tr').length === 0) {
-                var firstOption = window.LotStackLine.lotNumbers[0];
-                var firstLot = firstOption
-                    ? (typeof firstOption === 'string'
-                        ? firstOption
-                        : window.LotStackLine.buildLotSelectValue(
-                            firstOption.itemCode || firstOption.ItemCode,
-                            firstOption.lotNo || firstOption.LotNo))
-                    : null;
-                var firstItem = items[0];
                 addLine({
-                    lotNo: firstLot || (firstItem && firstItem.lotNo),
                     qty: 1,
                     cartons: 0,
-                    price: firstItem && firstItem.saleRate,
                     tax: getScenarioTaxRate()
                 });
-            }
-
-            if (customers.length === 0) {
-                showError('No active customers found. Add a customer under Sales → Customers first.');
             }
 
             updateTaxSummaryVisibility();

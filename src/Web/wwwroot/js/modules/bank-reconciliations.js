@@ -34,6 +34,15 @@
     }
 
     function loadBanks() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#recon-bank-id'), {
+                entity: 'bank',
+                placeholder: 'Type to search bank',
+                allowClear: true
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/bank-reconciliations/banks').done(function (banks) {
             var $select = $('#recon-bank-id');
             $select.find('option:not(:first)').remove();

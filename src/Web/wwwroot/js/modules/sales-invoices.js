@@ -314,6 +314,26 @@
                 reloadDataTable();
             }
         });
+        if (window.initPaAjaxTypeahead) {
+            window.initPaAjaxTypeahead($('#filter-customer-name'), {
+                entity: 'customer',
+                pickValue: function (item) { return item.buyerName || item.text; },
+                onSelect: reloadDataTable
+            });
+            window.initPaAjaxTypeahead($('#filter-invoice-number'), {
+                entity: 'invoice',
+                pickValue: function (item) { return item.code || item.text; },
+                onSelect: reloadDataTable
+            });
+            window.initPaAjaxTypeahead($('#bulk-buyer-name'), {
+                entity: 'customer',
+                pickValue: function (item) { return item.buyerName || item.text; }
+            });
+            window.initPaAjaxTypeahead($('#bulk-invoice-number'), {
+                entity: 'invoice',
+                pickValue: function (item) { return item.code || item.text; }
+            });
+        }
 
         $('#btn-bulk-search').on('click', loadBulkPrintInvoices);
         $('#bulk-buyer-name, #bulk-invoice-number').on('keydown', function (e) {

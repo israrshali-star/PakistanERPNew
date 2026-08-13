@@ -67,6 +67,15 @@
     }
 
     function loadVendors() {
+        if (window.initPaAjaxSelect2) {
+            window.initPaAjaxSelect2($('#filter-vendor'), {
+                entity: 'vendor',
+                placeholder: 'Type to search vendor',
+                allowClear: true
+            });
+            return $.Deferred().resolve().promise();
+        }
+
         return $.getJSON('/api/purchase-reports/vendors').done(function (vendors) {
             var $select = $('#filter-vendor');
             (vendors || []).forEach(function (v) {

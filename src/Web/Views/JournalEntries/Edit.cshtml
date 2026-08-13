@@ -177,7 +177,7 @@
 
                 <tbody id="je-lines-body"
 
-                       data-lines='@System.Text.Json.JsonSerializer.Serialize(Model.Lines.Select(l => new { accountId = l.ChartOfAccountId, debit = l.Debit, credit = l.Credit, memo = l.Memo }))'></tbody>
+                       data-lines='@System.Text.Json.JsonSerializer.Serialize(Model.Lines.Select(l => new { accountId = l.ChartOfAccountId, accountNumber = l.AccountNumber, accountName = l.AccountName, debit = l.Debit, credit = l.Credit, memo = l.Memo }))'></tbody>
 
                 <tfoot>
 

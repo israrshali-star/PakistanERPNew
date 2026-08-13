@@ -152,27 +152,14 @@
 
     function buildLotOptions(selectedValue) {
         var parsedSelected = parseLotSelectValue(selectedValue);
-        var html = '<option value="">— Select item + lot —</option>';
-        lotNumbers.forEach(function (option) {
-            var value = typeof option === 'string'
-                ? option
-                : buildLotSelectValue(option.itemCode || option.ItemCode, option.lotNo || option.LotNo);
-            var label = formatLotOptionLabel(option);
-            var selected = '';
-
-            if (parsedSelected.selectValue
-                && value.toLowerCase() === parsedSelected.selectValue.toLowerCase()) {
-                selected = ' selected';
-            } else if (!parsedSelected.itemCode && parsedSelected.lotNo && typeof option !== 'string') {
-                var lot = option.lotNo || option.LotNo || '';
-                if (String(lot).toLowerCase() === parsedSelected.lotNo.toLowerCase()) {
-                    selected = ' selected';
-                }
-            }
-
-            html += '<option value="' + escapeHtml(value) + '"' + selected + '>' +
-                escapeHtml(label) + '</option>';
-        });
+        var html = '<option value="">— Type item or lot —</option>';
+        if (parsedSelected.selectValue) {
+            html += '<option value="' + escapeHtml(parsedSelected.selectValue) + '" selected>' +
+                escapeHtml(formatLotOptionLabel({
+                    itemCode: parsedSelected.itemCode,
+                    lotNo: parsedSelected.lotNo
+                })) + '</option>';
+        }
         return html;
     }
 
@@ -246,16 +233,25 @@
         stockHintTimers: {},
 
         loadLotNumbers: function () {
-            return $.getJSON('/api/lookup/lot-numbers')
-                .then(function (data) {
-                    lotNumbers = data || [];
-                    window.LotStackLine.lotNumbers = lotNumbers;
-                    return lotNumbers;
-                });
+            lotNumbers = [];
+            window.LotStackLine.lotNumbers = lotNumbers;
+            return $.Deferred().resolve(lotNumbers).promise();
         },
 
         initLotSelect: function ($select, dropdownParent) {
             if (!$.fn.select2) {
+                return;
+            }
+
+            if (window.initPaAjaxSelect2) {
+                window.initPaAjaxSelect2($select, {
+                    entity: 'lot',
+                    width: 'resolve',
+                    dropdownParent: dropdownParent,
+                    tags: true,
+                    allowClear: true,
+                    placeholder: 'Type item or lot'
+                });
                 return;
             }
 
@@ -264,7 +260,7 @@
                     width: 'resolve',
                     dropdownParent: dropdownParent,
                     tags: true,
-                    placeholder: 'Item + lot'
+                    placeholder: 'Type item or lot'
                 });
                 return;
             }
@@ -274,7 +270,7 @@
                 width: 'resolve',
                 dropdownParent: dropdownParent,
                 tags: true,
-                placeholder: 'Item + lot',
+                placeholder: 'Type item or lot',
                 minimumResultsForSearch: 0
             });
         },
