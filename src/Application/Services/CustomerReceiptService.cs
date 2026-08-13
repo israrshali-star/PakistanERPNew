@@ -700,6 +700,11 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             }
         }
 
+        if (request.PaymentMethod == PaymentMethod.Cash && !request.BankId.HasValue)
+        {
+            return new CustomerReceiptSaveResult(false, "Bank account is required for cash deposits.", null);
+        }
+
         if (request.PaymentMethod == PaymentMethod.BankTransfer && !request.BankId.HasValue)
         {
             return new CustomerReceiptSaveResult(false, "Bank account is required for bank transfer payments.", null);
@@ -719,9 +724,7 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             return new CustomerReceiptSaveResult(false, "Selected customer is not valid.", null);
         }
 
-        if ((request.PaymentMethod == PaymentMethod.BankTransfer
-             || (request.PaymentMethod == PaymentMethod.Cheque && request.ChequeBankType == ChequeBankType.SameBank))
-            && request.BankId.HasValue)
+        if (RequiresDepositBank(request) && request.BankId.HasValue)
         {
             var bankExists = await _unitOfWork.Repository<Bank>()
                 .Query()
@@ -789,10 +792,13 @@ public partial class CustomerReceiptService : ICustomerReceiptService
     }
 
     private static int? NormalizeBankId(CustomerReceiptSaveRequest request) =>
-        request.PaymentMethod == PaymentMethod.BankTransfer
-        || (request.PaymentMethod == PaymentMethod.Cheque && request.ChequeBankType == ChequeBankType.SameBank)
+        RequiresDepositBank(request)
             ? request.BankId
             : null;
+
+    private static bool RequiresDepositBank(CustomerReceiptSaveRequest request) =>
+        request.PaymentMethod is PaymentMethod.Cash or PaymentMethod.BankTransfer
+        || (request.PaymentMethod == PaymentMethod.Cheque && request.ChequeBankType == ChequeBankType.SameBank);
 
     /// <summary>
     /// For bank transfers, Notes (e.g. transfer ref.no) is also stored in ChequeNumber

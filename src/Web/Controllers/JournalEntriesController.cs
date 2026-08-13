@@ -101,7 +101,16 @@ public class JournalEntriesApiController : ControllerBase
                 OrderColumn: int.TryParse(Request.Query["order[0][column]"], out var col) ? col : 1,
                 OrderDirection: Request.Query["order[0][dir]"].ToString());
 
-            var result = await _journalEntryService.GetDataTableAsync(request, cancellationToken);
+            var billNumber = Request.Query["billNumber"].ToString();
+            var invoiceNumber = Request.Query["invoiceNumber"].ToString();
+            var receiptNumber = Request.Query["receiptNumber"].ToString();
+
+            var result = await _journalEntryService.GetDataTableAsync(
+                request,
+                billNumber,
+                invoiceNumber,
+                receiptNumber,
+                cancellationToken);
             return Ok(new
             {
                 draw = result.Draw,

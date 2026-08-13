@@ -221,13 +221,15 @@
 
     function togglePaymentFields() {
         var method = parseInt($('#payment-method').val(), 10) || 1;
+        var isCash = method === 1;
         var isCheque = method === 2;
         var isBankTransfer = method === 3;
+        var showDepositBank = isCash || isBankTransfer;
 
         $('.cheque-panel').toggleClass('d-none', !isCheque);
-        $('.bank-transfer-fields').toggleClass('d-none', !isBankTransfer);
+        $('.bank-transfer-fields').toggleClass('d-none', !showDepositBank);
 
-        $('#receipt-bank-id').prop('required', isBankTransfer);
+        $('#receipt-bank-id').prop('required', showDepositBank);
 
         if (!isCheque) {
             setChequeBankType(null);
@@ -237,16 +239,28 @@
             toggleChequeTypeFields();
         }
 
-        if (!isBankTransfer) {
+        if (isCheque) {
             $('#receipt-bank-id').val('').trigger('change');
         }
 
         var $notesLabel = $('label[for="receipt-notes"]');
         var $notesHint = $('#receipt-notes-hint');
+        var $bankHint = $('#receipt-bank-hint');
         if (isBankTransfer) {
             $notesLabel.text('Ref No / Notes');
             if ($notesHint.length) {
                 $notesHint.removeClass('d-none').text('Shown as Check/Ref No on the payment receipt.');
+            }
+            if ($bankHint.length) {
+                $bankHint.text('Direct bank transfer posts immediately to this bank account.');
+            }
+        } else if (isCash) {
+            $notesLabel.text('Notes');
+            if ($notesHint.length) {
+                $notesHint.addClass('d-none').text('');
+            }
+            if ($bankHint.length) {
+                $bankHint.text('Select the bank where the customer deposited this cash. Posts immediately to that bank account.');
             }
         } else {
             $notesLabel.text('Notes');
@@ -578,7 +592,13 @@
                     className: 'text-end text-currency',
                     render: function (data) { return formatMoney(data); }
                 },
-                { data: 'paymentMethod' },
+                { data: 'paymentMethod', render: function (d, type, row) {
+                    var label = escapeHtml(d);
+                    if (row.bankName) {
+                        label += ' <span class="text-muted">(' + escapeHtml(row.bankName) + ')</span>';
+                    }
+                    return label;
+                } },
                 {
                     data: 'chequeNumber',
                     render: function (data) { return data ? escapeHtml(data) : '—'; }
@@ -756,8 +776,10 @@
             }
         }
 
-        if (method === 3 && !$('#receipt-bank-id').val()) {
-            showFormError('Select the bank account for bank transfer.');
+        if ((method === 1 || method === 3) && !$('#receipt-bank-id').val()) {
+            showFormError(method === 1
+                ? 'Select the bank where the customer deposited this cash.'
+                : 'Select the bank account for bank transfer.');
             return false;
         }
 
@@ -793,7 +815,7 @@
             amount: parseFloat($('#receipt-amount').val()) || 0,
             paymentMethod: method,
             chequeBankType: method === 2 ? chequeType : null,
-            bankId: method === 3 && bankId > 0
+            bankId: ((method === 1 || method === 3) && bankId > 0)
                 ? bankId
                 : (method === 2 && chequeType === 1 && sameBankId > 0 ? sameBankId : null),
             chequeNumber: (method === 2 || method === 3) ? chequeNumber : null,

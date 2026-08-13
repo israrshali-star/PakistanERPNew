@@ -1165,6 +1165,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             cogsAmount,
             netTotal);
 
+        foreach (var line in journalLines)
+        {
+            line.Memo = JournalDocumentMemo.WithDocumentNumber(invoice.InvoiceNumber, line.Memo);
+        }
+
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
         var now = DateTime.UtcNow;
         var userName = _currentUser.UserName ?? "system";

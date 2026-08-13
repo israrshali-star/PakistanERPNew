@@ -117,11 +117,11 @@
                             </select>
                         </div>
                         <div class="col-md-8 bank-transfer-fields d-none">
-                            <label class="form-label" for="receipt-bank-id">Deposit To Bank Account</label>
+                            <label class="form-label" for="receipt-bank-id">Deposit To Bank Account <span class="text-danger">*</span></label>
                             <select class="form-select select2" id="receipt-bank-id">
                                 <option value="">— Select bank —</option>
                             </select>
-                            <div class="form-text">Direct bank transfer posts immediately to this bank account.</div>
+                            <div class="form-text" id="receipt-bank-hint">Select the bank where the customer deposited this cash. Posts immediately to that bank account.</div>
                         </div>
                         <div class="col-12 cheque-panel d-none">
                             <div class="border rounded p-3 bg-light">

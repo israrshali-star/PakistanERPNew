@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using static PakistanAccountingERP.Application.Common.Constants.GlAccountNumbers;
 using PakistanAccountingERP.Application.DTOs;
@@ -133,8 +134,8 @@ public partial class VendorGlPostingService : IVendorGlPostingService
         var amount = Math.Round(payment.Amount, 2);
         var lines = new List<JournalEntryLine>
         {
-            CreateLine(accounts.ApAccountId, amount, 0m, partyName),
-            CreateLine(accounts.CreditAccountId, 0m, amount, creditMemo)
+            CreateLine(accounts.ApAccountId, amount, 0m, JournalDocumentMemo.WithDocumentNumber(paymentRef, partyName)),
+            CreateLine(accounts.CreditAccountId, 0m, amount, JournalDocumentMemo.WithDocumentNumber(paymentRef, creditMemo))
         };
 
         var postResult = await CreatePostedJournalAsync(

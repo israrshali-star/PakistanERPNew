@@ -43,6 +43,9 @@ public partial class JournalEntryService : IJournalEntryService
 
     public async Task<DataTableResponse<JournalEntryListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        string? billNumber = null,
+        string? invoiceNumber = null,
+        string? receiptNumber = null,
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
@@ -53,13 +56,77 @@ public partial class JournalEntryService : IJournalEntryService
 
         var recordsTotal = await query.CountAsync(cancellationToken);
 
+        if (!string.IsNullOrWhiteSpace(billNumber))
+        {
+            var billTerm = billNumber.Trim();
+            var matchingBillIds = _unitOfWork.Repository<VendorBill>()
+                .Query()
+                .Where(b => b.CompanyId == companyId && b.BillNumber.Contains(billTerm))
+                .Select(b => b.Id);
+            query = query.Where(j =>
+                (j.ReferenceType == ReferenceTypes.VendorBill
+                    && j.ReferenceId.HasValue
+                    && matchingBillIds.Contains(j.ReferenceId.Value))
+                || (j.Description != null && j.Description.Contains(billTerm)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(invoiceNumber))
+        {
+            var invoiceTerm = invoiceNumber.Trim();
+            var matchingInvoiceIds = _unitOfWork.Repository<SalesInvoice>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && i.InvoiceNumber.Contains(invoiceTerm))
+                .Select(i => i.Id);
+            query = query.Where(j =>
+                (j.ReferenceType == ReferenceTypes.SalesInvoice
+                    && j.ReferenceId.HasValue
+                    && matchingInvoiceIds.Contains(j.ReferenceId.Value))
+                || (j.Description != null && j.Description.Contains(invoiceTerm)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(receiptNumber))
+        {
+            var receiptTerm = receiptNumber.Trim();
+            var matchingReceiptIds = _unitOfWork.Repository<CustomerReceipt>()
+                .Query()
+                .Where(r => r.CompanyId == companyId && r.ReceiptNumber.Contains(receiptTerm))
+                .Select(r => r.Id);
+            query = query.Where(j =>
+                (j.ReferenceType == ReferenceTypes.CustomerReceipt
+                    && j.ReferenceId.HasValue
+                    && matchingReceiptIds.Contains(j.ReferenceId.Value))
+                || (j.Description != null && j.Description.Contains(receiptTerm)));
+        }
+
         if (!string.IsNullOrWhiteSpace(request.SearchValue))
         {
             var term = request.SearchValue.Trim();
+            var matchingBillIds = _unitOfWork.Repository<VendorBill>()
+                .Query()
+                .Where(b => b.CompanyId == companyId && b.BillNumber.Contains(term))
+                .Select(b => b.Id);
+            var matchingInvoiceIds = _unitOfWork.Repository<SalesInvoice>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && i.InvoiceNumber.Contains(term))
+                .Select(i => i.Id);
+            var matchingReceiptIds = _unitOfWork.Repository<CustomerReceipt>()
+                .Query()
+                .Where(r => r.CompanyId == companyId && r.ReceiptNumber.Contains(term))
+                .Select(r => r.Id);
+
             query = query.Where(j =>
                 j.EntryNumber.Contains(term)
                 || (j.Description != null && j.Description.Contains(term))
-                || (j.ReferenceType != null && j.ReferenceType.Contains(term)));
+                || (j.ReferenceType != null && j.ReferenceType.Contains(term))
+                || (j.ReferenceType == ReferenceTypes.VendorBill
+                    && j.ReferenceId.HasValue
+                    && matchingBillIds.Contains(j.ReferenceId.Value))
+                || (j.ReferenceType == ReferenceTypes.SalesInvoice
+                    && j.ReferenceId.HasValue
+                    && matchingInvoiceIds.Contains(j.ReferenceId.Value))
+                || (j.ReferenceType == ReferenceTypes.CustomerReceipt
+                    && j.ReferenceId.HasValue
+                    && matchingReceiptIds.Contains(j.ReferenceId.Value)));
         }
 
         var recordsFiltered = await query.CountAsync(cancellationToken);
@@ -92,6 +159,7 @@ public partial class JournalEntryService : IJournalEntryService
                 entry.ReferenceType,
                 entry.ReferenceId,
                 cancellationToken);
+            var sourceUrl = ResolveSourceUrl(entry.ReferenceType, entry.ReferenceId);
 
             var isManual = IsManualEntry(entry.ReferenceType);
             var canEdit = CanEditEntry(entry.Status, isManual);
@@ -103,6 +171,7 @@ public partial class JournalEntryService : IJournalEntryService
                 entry.EntryDate,
                 entry.Description,
                 sourceLabel,
+                sourceUrl,
                 entry.TotalDebit,
                 entry.Status.ToString(),
                 entry.Status == JournalStatus.Draft && isManual,
@@ -766,6 +835,17 @@ public partial class JournalEntryService : IJournalEntryService
                 .FirstOrDefaultAsync(cancellationToken);
 
             return number is null ? "Customer Receipt" : $"Customer Receipt {number}";
+        }
+
+        if (referenceType == ReferenceTypes.VendorPayment)
+        {
+            var number = await _unitOfWork.Repository<VendorPayment>()
+                .Query()
+                .Where(p => p.Id == referenceId.Value && p.CompanyId == companyId)
+                .Select(p => p.PaymentNumber)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return number is null ? "Vendor Payment" : $"Vendor Payment {number}";
         }
 
         return referenceType;

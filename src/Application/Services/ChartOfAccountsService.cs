@@ -2,6 +2,7 @@ using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PakistanAccountingERP.Application.Common;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -699,11 +700,18 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 l.JournalEntry.EntryDate,
                 l.JournalEntry.EntryNumber,
                 l.JournalEntry.Description,
+                l.JournalEntry.ReferenceType,
+                l.JournalEntry.ReferenceId,
                 l.Debit,
                 l.Credit,
                 l.Memo
             })
             .ToListAsync(cancellationToken);
+
+        var sourceNumbers = await ResolveSourceDocumentNumbersAsync(
+            companyId,
+            lines.Select(l => (l.ReferenceType, l.ReferenceId)),
+            cancellationToken);
 
         decimal periodDebitTotal = 0m;
         decimal periodCreditTotal = 0m;
@@ -716,13 +724,21 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 ? BankLedgerBalance.Accumulate(balance, line.Debit, line.Credit)
                 : balance + (invertedLineAccumulation ? line.Credit - line.Debit : line.Debit - line.Credit);
 
+            var sourceNumber = line.ReferenceId.HasValue
+                && !string.IsNullOrWhiteSpace(line.ReferenceType)
+                && sourceNumbers.TryGetValue((line.ReferenceType, line.ReferenceId.Value), out var number)
+                    ? number
+                    : null;
+            var reference = !string.IsNullOrWhiteSpace(sourceNumber)
+                ? sourceNumber
+                : line.EntryNumber;
             var description = !string.IsNullOrWhiteSpace(line.Memo)
                 ? line.Memo
                 : line.Description ?? "Journal Entry";
 
             entries.Add(new ChartOfAccountLedgerEntryDto(
                 line.EntryDate,
-                line.EntryNumber,
+                reference,
                 description,
                 line.Debit,
                 line.Credit,
@@ -1578,4 +1594,96 @@ public class ChartOfAccountsService : IChartOfAccountsService
         fromDate.HasValue && toDate.HasValue
             ? $"Period: {fromDate.Value:dd/MM/yyyy} to {toDate.Value:dd/MM/yyyy}"
             : $"Full ledger as of {DateTime.Today:dd/MM/yyyy}";
+
+    private async Task<Dictionary<(string ReferenceType, int ReferenceId), string>> ResolveSourceDocumentNumbersAsync(
+        int companyId,
+        IEnumerable<(string? ReferenceType, int? ReferenceId)> references,
+        CancellationToken cancellationToken)
+    {
+        var pairs = references
+            .Where(r => !string.IsNullOrWhiteSpace(r.ReferenceType) && r.ReferenceId.HasValue)
+            .Select(r => (ReferenceType: r.ReferenceType!, ReferenceId: r.ReferenceId!.Value))
+            .Distinct()
+            .ToList();
+
+        var result = new Dictionary<(string, int), string>();
+        if (pairs.Count == 0)
+        {
+            return result;
+        }
+
+        var invoiceIds = pairs
+            .Where(p => p.ReferenceType == ReferenceTypes.SalesInvoice)
+            .Select(p => p.ReferenceId)
+            .Distinct()
+            .ToList();
+        if (invoiceIds.Count > 0)
+        {
+            var invoices = await _unitOfWork.Repository<SalesInvoice>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && invoiceIds.Contains(i.Id))
+                .Select(i => new { i.Id, i.InvoiceNumber })
+                .ToListAsync(cancellationToken);
+            foreach (var invoice in invoices)
+            {
+                result[(ReferenceTypes.SalesInvoice, invoice.Id)] = invoice.InvoiceNumber;
+            }
+        }
+
+        var billIds = pairs
+            .Where(p => p.ReferenceType == ReferenceTypes.VendorBill)
+            .Select(p => p.ReferenceId)
+            .Distinct()
+            .ToList();
+        if (billIds.Count > 0)
+        {
+            var bills = await _unitOfWork.Repository<VendorBill>()
+                .Query()
+                .Where(b => b.CompanyId == companyId && billIds.Contains(b.Id))
+                .Select(b => new { b.Id, b.BillNumber })
+                .ToListAsync(cancellationToken);
+            foreach (var bill in bills)
+            {
+                result[(ReferenceTypes.VendorBill, bill.Id)] = bill.BillNumber;
+            }
+        }
+
+        var receiptIds = pairs
+            .Where(p => p.ReferenceType == ReferenceTypes.CustomerReceipt)
+            .Select(p => p.ReferenceId)
+            .Distinct()
+            .ToList();
+        if (receiptIds.Count > 0)
+        {
+            var receipts = await _unitOfWork.Repository<CustomerReceipt>()
+                .Query()
+                .Where(r => r.CompanyId == companyId && receiptIds.Contains(r.Id))
+                .Select(r => new { r.Id, r.ReceiptNumber })
+                .ToListAsync(cancellationToken);
+            foreach (var receipt in receipts)
+            {
+                result[(ReferenceTypes.CustomerReceipt, receipt.Id)] = receipt.ReceiptNumber;
+            }
+        }
+
+        var paymentIds = pairs
+            .Where(p => p.ReferenceType == ReferenceTypes.VendorPayment)
+            .Select(p => p.ReferenceId)
+            .Distinct()
+            .ToList();
+        if (paymentIds.Count > 0)
+        {
+            var payments = await _unitOfWork.Repository<VendorPayment>()
+                .Query()
+                .Where(p => p.CompanyId == companyId && paymentIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.PaymentNumber })
+                .ToListAsync(cancellationToken);
+            foreach (var payment in payments)
+            {
+                result[(ReferenceTypes.VendorPayment, payment.Id)] = payment.PaymentNumber;
+            }
+        }
+
+        return result;
+    }
 }

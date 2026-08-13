@@ -242,8 +242,8 @@ internal static partial class QuickBooksIifImportSupport
 
         await unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(
         [
-            CreateJournalLine(arAccountId.Value, netTotal, 0m, "Accounts Receivable", journalEntry.Id),
-            CreateJournalLine(revenueAccountId.Value, 0m, netTotal, "Sales Revenue", journalEntry.Id)
+            CreateJournalLine(arAccountId.Value, netTotal, 0m, JournalDocumentMemo.WithDocumentNumber(invoiceNumber, "Accounts Receivable"), journalEntry.Id),
+            CreateJournalLine(revenueAccountId.Value, 0m, netTotal, JournalDocumentMemo.WithDocumentNumber(invoiceNumber, "Sales Revenue"), journalEntry.Id)
         ], cancellationToken);
 
         invoice.JournalEntryId = journalEntry.Id;
@@ -331,8 +331,8 @@ internal static partial class QuickBooksIifImportSupport
 
         await unitOfWork.Repository<JournalEntryLine>().AddRangeAsync(
         [
-            CreateJournalLine(expenseAccountId.Value, netAmount, 0m, "Purchases", journalEntry.Id),
-            CreateJournalLine(payableAccountId.Value, 0m, netAmount, "Accounts Payable", journalEntry.Id)
+            CreateJournalLine(expenseAccountId.Value, netAmount, 0m, JournalDocumentMemo.WithDocumentNumber(billNumber, "Purchases"), journalEntry.Id),
+            CreateJournalLine(payableAccountId.Value, 0m, netAmount, JournalDocumentMemo.WithDocumentNumber(billNumber, "Accounts Payable"), journalEntry.Id)
         ], cancellationToken);
 
         bill.JournalEntryId = journalEntry.Id;

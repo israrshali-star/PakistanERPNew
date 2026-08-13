@@ -219,7 +219,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         var lines = new List<JournalEntryLine>
         {
             CreateLine(bankChartOfAccountId, amount, 0m, $"Cheque cleared — {chequeRef}"),
-            CreateLine(ar.Value, 0m, amount, partyName)
+            CreateLine(ar.Value, 0m, amount, JournalDocumentMemo.WithDocumentNumber(receipt.ReceiptNumber, partyName))
         };
 
         var postResult = await CreatePostedJournalAsync(
@@ -548,7 +548,7 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
             return (false, $"Chart of account {AccountsReceivable} (Accounts Receivable) not found.", 0, 0);
         }
 
-        if (receipt.PaymentMethod == PaymentMethod.Cash)
+        if (receipt.PaymentMethod == PaymentMethod.Cash && !receipt.BankId.HasValue)
         {
             var cash = await GetAccountIdAsync(companyId, CashInHand, cancellationToken);
             if (cash is null)
@@ -658,16 +658,19 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
     private static string BuildReceiptCreditMemo(CustomerReceipt receipt, string partyName)
     {
+        var receiptRef = receipt.ReceiptNumber.Trim();
         if (!string.IsNullOrWhiteSpace(receipt.Notes))
         {
-            return $"{partyName} — {receipt.Notes.Trim()}";
+            return JournalDocumentMemo.WithDocumentNumber(
+                receiptRef,
+                $"{partyName} — {receipt.Notes.Trim()}");
         }
 
-        return partyName;
+        return JournalDocumentMemo.WithDocumentNumber(receiptRef, partyName);
     }
 
     private static bool UsesBankLedger(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>
-        paymentMethod == PaymentMethod.BankTransfer
+        paymentMethod is PaymentMethod.Cash or PaymentMethod.BankTransfer
         || (paymentMethod == PaymentMethod.Cheque && chequeBankType == ChequeBankType.SameBank);
 
     private static bool ShouldDeferOtherBankChequeGl(CustomerReceipt receipt) =>

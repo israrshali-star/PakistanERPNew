@@ -47,6 +47,11 @@
             ajax: {
                 url: '/api/journal-entries/datatable',
                 type: 'GET',
+                data: function (d) {
+                    d.billNumber = $('#filter-bill-number').val();
+                    d.invoiceNumber = $('#filter-invoice-number').val();
+                    d.receiptNumber = $('#filter-receipt-number').val();
+                },
                 error: function (xhr) {
                     alert(getApiErrorMessage(xhr, 'Failed to load journal entries. Select a company from the top navbar.'));
                 }
@@ -76,7 +81,14 @@
                         return d ? escapeHtml(d) : '<span class="text-muted">—</span>';
                     }
                 },
-                { data: 'sourceLabel', render: function (d) { return escapeHtml(d); } },
+                { data: 'sourceLabel', render: function (d, type, row) {
+                    var label = escapeHtml(d);
+                    var url = row.sourceUrl || row.SourceUrl;
+                    if (!url) {
+                        return label;
+                    }
+                    return '<a href="' + url + '" class="text-decoration-none">' + label + '</a>';
+                } },
                 {
                     data: 'totalDebit',
                     className: 'text-end text-currency',
@@ -129,6 +141,20 @@
 
     $(function () {
         detectPermissions();
+
+        $('#btn-apply-filter').on('click', function () {
+            if (dataTable) {
+                dataTable.ajax.reload();
+            }
+        });
+        $('#filter-bill-number, #filter-invoice-number, #filter-receipt-number').on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (dataTable) {
+                    dataTable.ajax.reload();
+                }
+            }
+        });
 
         $.getJSON('/api/company/current')
             .done(initDataTable)

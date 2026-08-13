@@ -8,6 +8,7 @@ public record JournalEntryListItemDto(
     DateTime EntryDate,
     string? Description,
     string SourceLabel,
+    string? SourceUrl,
     decimal TotalDebit,
     string Status,
     bool CanPost,

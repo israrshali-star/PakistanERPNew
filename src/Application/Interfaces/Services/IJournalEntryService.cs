@@ -6,6 +6,9 @@ public interface IJournalEntryService
 {
     Task<DataTableResponse<JournalEntryListItemDto>> GetDataTableAsync(
         DataTableRequest request,
+        string? billNumber = null,
+        string? invoiceNumber = null,
+        string? receiptNumber = null,
         CancellationToken cancellationToken = default);
 
     Task<JournalEntryDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default);

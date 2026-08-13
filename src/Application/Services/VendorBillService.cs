@@ -863,6 +863,11 @@ public partial class VendorBillService : IVendorBillService
 
         AddJournalLine(journalLines, accounts.PayableAccountId, 0m, netAmount, "Account Payable");
 
+        foreach (var line in journalLines)
+        {
+            line.Memo = JournalDocumentMemo.WithDocumentNumber(bill.BillNumber, line.Memo);
+        }
+
         var entryNumber = await GenerateNextJournalEntryNumberAsync(companyId, cancellationToken);
         var now = DateTime.UtcNow;
         var userName = _currentUser.UserName ?? "system";

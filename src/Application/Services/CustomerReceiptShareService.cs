@@ -136,7 +136,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             row.CustomerCode,
             row.ReceiptDate,
             row.Amount,
-            GetPaymentMethodLabel(row.PaymentMethod, row.ChequeBankType),
+            GetPaymentMethodLabel(row.PaymentMethod, row.ChequeBankType, row.BankName),
             row.BankName,
             row.ChequeNumber,
             row.ChequeDate,
@@ -212,8 +212,12 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
                $"{labels.Regards},\n{model.CompanyName}";
     }
 
-    private static string GetPaymentMethodLabel(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>
-        paymentMethod switch
+    private static string GetPaymentMethodLabel(
+        PaymentMethod paymentMethod,
+        ChequeBankType? chequeBankType,
+        string? bankName)
+    {
+        var label = paymentMethod switch
         {
             PaymentMethod.Cheque when chequeBankType == ChequeBankType.SameBank => "Cheque (Same Bank)",
             PaymentMethod.Cheque when chequeBankType == ChequeBankType.OtherBank => "Cheque (Other Bank)",
@@ -221,6 +225,15 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             PaymentMethod.BankTransfer => "Bank Transfer",
             _ => "Cash"
         };
+
+        if (!string.IsNullOrWhiteSpace(bankName)
+            && paymentMethod is PaymentMethod.Cash or PaymentMethod.BankTransfer)
+        {
+            return $"{label} — {bankName.Trim()}";
+        }
+
+        return label;
+    }
 
     private static string GetStatusLabel(
         PaymentMethod paymentMethod,
