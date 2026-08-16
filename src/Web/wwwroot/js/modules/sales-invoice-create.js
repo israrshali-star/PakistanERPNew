@@ -19,6 +19,8 @@
     var MAX_ATTACHMENT_COUNT = 10;
     var ALLOWED_ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.pdf'];
     var CREDIT_NOTE_TYPE = 3;
+    var suppressCustomerDefaults = false;
+    var lastAppliedCustomerId = null;
 
     function lineOptions() {
         return {
@@ -390,7 +392,7 @@
         }
 
         $('#buyer-address').val(pickCustomerField(customer, 'address', 'Address'));
-        if (!$('#shipping-address').val().trim() && !$('#shipping-address').data('userEdited')) {
+        if (!$('#shipping-address').data('userEdited')) {
             $('#shipping-address').val(pickCustomerField(customer, 'address', 'Address'));
         }
         $('#province-id').val(pickCustomerField(customer, 'provinceId', 'ProvinceId'));
@@ -408,17 +410,21 @@
             return;
         }
 
+        var existing = customers.find(function (c) { return c.id === id; }) || {};
         var mapped = {
             id: id,
-            buyerId: item.buyerId,
-            buyerName: item.buyerName,
-            scenarioId: item.scenarioId,
-            provinceId: item.provinceId,
-            address: item.address,
-            ntn: item.ntn,
-            cnic: item.cnic,
-            invoiceType: item.invoiceType,
-            furtherTaxRate: item.furtherTaxRate
+            buyerId: pickCustomerField(item, 'buyerId', 'BuyerId') || existing.buyerId,
+            buyerName: pickCustomerField(item, 'buyerName', 'BuyerName') || existing.buyerName,
+            scenarioId: pickCustomerField(item, 'scenarioId', 'ScenarioId') || existing.scenarioId,
+            provinceId: pickCustomerField(item, 'provinceId', 'ProvinceId') || existing.provinceId,
+            address: pickCustomerField(item, 'address', 'Address') || existing.address,
+            ntn: pickCustomerField(item, 'ntn', 'NTN') || existing.ntn,
+            cnic: pickCustomerField(item, 'cnic', 'CNIC') || existing.cnic,
+            invoiceType: pickCustomerField(item, 'invoiceType', 'InvoiceType') || existing.invoiceType,
+            furtherTaxRate: (function () {
+                var rate = pickCustomerField(item, 'furtherTaxRate', 'FurtherTaxRate');
+                return rate !== '' && rate != null ? rate : existing.furtherTaxRate;
+            })()
         };
         var index = customers.findIndex(function (c) { return c.id === id; });
         if (index >= 0) {
@@ -428,10 +434,31 @@
         }
     }
 
-    function onCustomerChange() {
-        var customerId = parseInt($('#customer-id').val(), 10);
-        var customer = customers.find(function (c) { return c.id === customerId; });
+    function customerHasSavedDetails(customer) {
+        if (!customer) {
+            return false;
+        }
 
+        return (customer.scenarioId != null && customer.scenarioId !== '')
+            || !!customer.address
+            || !!customer.ntn
+            || !!customer.cnic
+            || (customer.invoiceType != null && customer.invoiceType !== '')
+            || customer.furtherTaxRate != null
+            || (customer.provinceId != null && customer.provinceId !== '');
+    }
+
+    function resolveSelectedCustomerItem() {
+        var $el = $('#customer-id');
+        if (!$el.data('select2')) {
+            return null;
+        }
+
+        var selected = $el.select2('data');
+        return selected && selected[0] ? selected[0] : null;
+    }
+
+    function applyCustomerDefaults(customer) {
         if (!customer) {
             updateBuyerDetails(null);
             return;
@@ -455,6 +482,55 @@
         $('#invoice-type').val(String(normalizeInvoiceTypeValue(
             pickCustomerField(customer, 'invoiceType', 'InvoiceType')
         )));
+    }
+
+    function fetchAndApplyCustomer(customerId) {
+        $.getJSON('/api/lookup/search', { entity: 'customer', id: customerId }).done(function (data) {
+            if (parseInt($('#customer-id').val(), 10) !== customerId) {
+                return;
+            }
+            if (data.results && data.results[0]) {
+                cacheCustomer(data.results[0]);
+                if (!suppressCustomerDefaults) {
+                    applyCustomerDefaults(customers.find(function (c) { return c.id === customerId; }));
+                }
+            }
+        });
+    }
+
+    function onCustomerChange() {
+        var customerId = parseInt($('#customer-id').val(), 10);
+        if (!customerId) {
+            lastAppliedCustomerId = null;
+            updateBuyerDetails(null);
+            return;
+        }
+
+        if (suppressCustomerDefaults) {
+            lastAppliedCustomerId = customerId;
+            return;
+        }
+
+        if (customerId !== lastAppliedCustomerId) {
+            $('#shipping-address').data('userEdited', false);
+            lastAppliedCustomerId = customerId;
+        }
+
+        var customer = customers.find(function (c) { return c.id === customerId; });
+        if (!customerHasSavedDetails(customer)) {
+            var selected = resolveSelectedCustomerItem();
+            if (selected) {
+                cacheCustomer(selected);
+                customer = customers.find(function (c) { return c.id === customerId; });
+            }
+        }
+
+        if (customerHasSavedDetails(customer)) {
+            applyCustomerDefaults(customer);
+            return;
+        }
+
+        fetchAndApplyCustomer(customerId);
     }
 
     function getEditId() {
@@ -492,6 +568,7 @@
 
         var invoice = JSON.parse($data.text());
         suppressScenarioTaxReset = true;
+        suppressCustomerDefaults = true;
         if (!isCopyMode()) {
             $('#invoice-number').val(invoice.invoiceNumber || invoice.InvoiceNumber);
         }
@@ -582,6 +659,8 @@
             window.LotStackLine.onLotChange($row, $.extend({}, lineOptions(), { preserveLineFields: true }));
         });
         suppressScenarioTaxReset = false;
+        suppressCustomerDefaults = false;
+        lastAppliedCustomerId = parseInt($('#customer-id').val(), 10) || null;
         updateTaxSummaryVisibility();
         recalcTotals();
     }
@@ -633,7 +712,10 @@
                 window.initPaAjaxSelect2($('#customer-id'), {
                     entity: 'customer',
                     placeholder: 'Type to search customer',
-                    onSelect: cacheCustomer
+                    onSelect: function (item) {
+                        cacheCustomer(item);
+                        onCustomerChange();
+                    }
                 });
             }
 
