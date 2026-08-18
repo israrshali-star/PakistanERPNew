@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -560,6 +561,9 @@ public class EntitySearchService : IEntitySearchService
                             .Where(r => r.PaymentMethod != PaymentMethod.Cheque
                                         || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null))
                             .Sum(r => r.Amount)
+                        + c.WriteChequePayments
+                            .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                            .Sum(bt => bt.CustomerBalanceEffect)
                 })
                 .ToListAsync(cancellationToken);
 
@@ -609,6 +613,9 @@ public class EntitySearchService : IEntitySearchService
                     Balance = v.OpeningBalance
                         + v.VendorBills.Where(b => b.Status == BillStatus.Approved).Sum(b => b.NetAmount)
                         - v.VendorPayments.Sum(p => p.Amount)
+                        - v.WriteChequePayments
+                            .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
+                            .Sum(bt => bt.Amount)
                 })
                 .ToListAsync(cancellationToken);
 
@@ -635,7 +642,8 @@ public class EntitySearchService : IEntitySearchService
         {
             var accountQuery = _unitOfWork.Repository<ChartOfAccount>()
                 .Query()
-                .Where(a => a.CompanyId == companyId && a.IsActive && !a.IsDeleted);
+                .Where(a => a.CompanyId == companyId && a.IsActive && !a.IsDeleted
+                            && !a.ChildAccounts.Any());
 
             if (parsedCoaId.HasValue)
             {
@@ -650,26 +658,79 @@ public class EntitySearchService : IEntitySearchService
             var accounts = await accountQuery
                 .OrderBy(a => a.AccountNumber)
                 .Take(take)
-                .Select(a => new { a.Id, a.AccountNumber, a.AccountName })
+                .Select(a => new
+                {
+                    a.Id,
+                    a.AccountNumber,
+                    a.AccountName,
+                    a.OpeningBalance,
+                    a.TypeId
+                })
                 .ToListAsync(cancellationToken);
+
+            var balances = await GetGlBalancesAsync(
+                companyId,
+                accounts.Select(a => a.Id).ToList(),
+                cancellationToken);
 
             foreach (var account in accounts)
             {
                 var isCash = account.AccountNumber == GlAccountNumbers.CashInHand;
+                balances.TryGetValue(account.Id, out var totals);
+                var rawBalance = GlAccountBalance.ComputeNet(
+                    account.OpeningBalance,
+                    totals.Debits,
+                    totals.Credits,
+                    account.TypeId,
+                    account.AccountNumber,
+                    companyId);
+                var balance = account.TypeId == 2
+                    ? SalesTaxPaymentGlHelper.LiabilityOutstanding(rawBalance)
+                    : rawBalance;
                 results.Add(new EntitySearchItemDto
                 {
                     Id = "0:0:" + account.Id,
-                    Text = (isCash ? "[CASH] " : "[COA] ") + account.AccountName + " — " + account.AccountNumber,
+                    Text = (isCash ? "[CASH] " : "[COA] ") + account.AccountName + " — " + account.AccountNumber
+                           + " (PKR " + balance.ToString("N2") + ")",
                     Group = isCash ? "Cash in Hand" : "Other Chart of Accounts",
                     ChartOfAccountId = account.Id,
                     PartyType = isCash ? "CASH" : "COA",
                     PartyName = account.AccountName,
                     AccountNumber = account.AccountNumber,
-                    AccountName = account.AccountName
+                    AccountName = account.AccountName,
+                    Balance = balance
                 });
             }
         }
 
-        return results.Take(take).ToList();
+        return results;
+    }
+
+    private async Task<Dictionary<int, (decimal Debits, decimal Credits)>> GetGlBalancesAsync(
+        int companyId,
+        IReadOnlyList<int> accountIds,
+        CancellationToken cancellationToken)
+    {
+        if (accountIds.Count == 0)
+        {
+            return new Dictionary<int, (decimal Debits, decimal Credits)>();
+        }
+
+        var rows = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => accountIds.Contains(l.ChartOfAccountId)
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted)
+            .GroupBy(l => l.ChartOfAccountId)
+            .Select(g => new
+            {
+                Id = g.Key,
+                Debits = g.Sum(x => x.Debit),
+                Credits = g.Sum(x => x.Credit)
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(x => x.Id, x => (x.Debits, x.Credits));
     }
 }

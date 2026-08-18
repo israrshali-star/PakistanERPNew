@@ -9,6 +9,7 @@
     var counterAccounts = [];
     var cashAccount = null;
     var undepositedCheques = [];
+    var selectedPartyCache = null;
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -88,16 +89,55 @@
         }, 250);
     }
 
+    function readMoney(value) {
+        if (value == null || value === '') return null;
+        var parsed = parseFloat(value);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    function normalizeAccount(a) {
+        if (!a) return null;
+        var id = parseInt(a.id != null ? a.id : a.Id, 10) || 0;
+        if (!id) return null;
+        var balance = readMoney(a.balance != null ? a.balance : a.Balance);
+        return {
+            id: id,
+            accountNumber: a.accountNumber || a.AccountNumber || '',
+            accountName: a.accountName || a.AccountName || '',
+            label: a.label || a.Label,
+            balance: balance == null ? 0 : balance
+        };
+    }
+
+    function normalizeAccountList(list) {
+        return (list || []).map(normalizeAccount).filter(Boolean);
+    }
+
     function findAccount(list, id) {
-        return list.find(function (a) { return a.id === id; });
+        var target = parseInt(id, 10) || 0;
+        if (!target) return null;
+        return (list || []).find(function (a) {
+            return parseInt(a.id != null ? a.id : a.Id, 10) === target;
+        }) || null;
     }
 
     function buildOptions($select, list, excludeId) {
+        var exclude = parseInt(excludeId, 10) || 0;
         $select.find('option:not(:first)').remove();
-        list.forEach(function (a) {
-            if (excludeId && a.id === excludeId) return;
-            $select.append($('<option></option>').val(a.id).text(a.label || (a.accountNumber + ' — ' + a.accountName)));
+        (list || []).forEach(function (a) {
+            var id = parseInt(a.id != null ? a.id : a.Id, 10) || 0;
+            if (!id || (exclude && id === exclude)) return;
+            var balance = readMoney(a.balance != null ? a.balance : a.Balance);
+            $select.append(
+                $('<option></option>')
+                    .val(String(id))
+                    .text(a.label || a.Label || ((a.accountNumber || a.AccountNumber) + ' — ' + (a.accountName || a.AccountName)))
+                    .attr('data-balance', balance == null ? 0 : balance)
+            );
         });
+        if ($select.data('select2') && window.initPaSelect2) {
+            window.initPaSelect2($select, {});
+        }
     }
 
     function partyOptionValue(party) {
@@ -198,7 +238,7 @@
                         .attr('data-vendor-id', p.vendorId || '')
                         .attr('data-coa-id', p.chartOfAccountId)
                         .attr('data-party-name', p.partyName || '')
-                        .attr('data-balance', p.balance || 0)
+                        .attr('data-balance', p.balance != null ? p.balance : 0)
                 );
             });
             $select.append($group);
@@ -217,30 +257,117 @@
         }));
     }
 
+    function pickPartyField(source, camel, pascal) {
+        if (!source) return null;
+        if (source[camel] != null && source[camel] !== '') return source[camel];
+        if (source[pascal] != null && source[pascal] !== '') return source[pascal];
+        return null;
+    }
+
+    function parsePartyValue(value) {
+        var parts = String(value || '').split(':');
+        if (parts.length < 3) return null;
+        return {
+            customerId: parseInt(parts[0], 10) || null,
+            vendorId: parseInt(parts[1], 10) || null,
+            chartOfAccountId: parseInt(parts[2], 10) || null
+        };
+    }
+
+    function partyFromSource(source, fallbackValue, fallbackText) {
+        var parsed = parsePartyValue(fallbackValue || pickPartyField(source, 'id', 'Id'));
+        var customerId = parseInt(pickPartyField(source, 'customerId', 'CustomerId'), 10)
+            || (parsed && parsed.customerId)
+            || null;
+        var vendorId = parseInt(pickPartyField(source, 'vendorId', 'VendorId'), 10)
+            || (parsed && parsed.vendorId)
+            || null;
+        var chartOfAccountId = parseInt(pickPartyField(source, 'chartOfAccountId', 'ChartOfAccountId'), 10)
+            || parseInt(pickPartyField(source, 'coaId', 'CoaId'), 10)
+            || (parsed && parsed.chartOfAccountId)
+            || null;
+        var balance = readMoney(pickPartyField(source, 'balance', 'Balance'));
+        if (balance == null && source && source.element) {
+            balance = readMoney($(source.element).data('balance'));
+        }
+        if (balance == null) {
+            var text = fallbackText || pickPartyField(source, 'text', 'Text') || '';
+            var match = String(text).match(/PKR\s+([\d,.-]+)/i);
+            if (match) {
+                balance = readMoney(match[1].replace(/,/g, ''));
+            }
+        }
+
+        if (!customerId && !vendorId && !chartOfAccountId) return null;
+
+        return {
+            customerId: customerId,
+            vendorId: vendorId,
+            chartOfAccountId: chartOfAccountId,
+            partyName: pickPartyField(source, 'partyName', 'PartyName') || fallbackText || '',
+            balance: balance == null ? 0 : balance
+        };
+    }
+
+    function copyPartyToOption($select, party) {
+        var $opt = $select.find('option:selected');
+        if (!$opt.length || !$opt.val() || !party) return;
+        $opt.attr('data-customer-id', party.customerId || '')
+            .attr('data-vendor-id', party.vendorId || '')
+            .attr('data-coa-id', party.chartOfAccountId || '')
+            .attr('data-party-name', party.partyName || '')
+            .attr('data-balance', party.balance != null ? party.balance : 0);
+    }
+
+    function updatePartyBalanceHint(party) {
+        var selected = party || getSelectedParty();
+        $('#op-party-balance').text(
+            selected ? 'Outstanding balance: PKR ' + formatMoney(selected.balance) : ''
+        );
+    }
+
+    function cacheSelectedParty(item, $select) {
+        selectedPartyCache = partyFromSource(item, item && (item.id || item.Id), item && (item.text || item.Text));
+        if ($select && $select.length) {
+            copyPartyToOption($select, selectedPartyCache);
+        }
+        updatePartyBalanceHint(selectedPartyCache);
+    }
+
     function getSelectedParty() {
         var $select = $('#op-counter-account-id');
+        var value = $select.val();
+        if (!value) {
+            selectedPartyCache = null;
+            return null;
+        }
+
+        if (selectedPartyCache && partyOptionValue(selectedPartyCache) === String(value)) {
+            return selectedPartyCache;
+        }
+
         var selected = $select.data('select2') ? ($select.select2('data')[0] || null) : null;
-        if (selected && (selected.customerId || selected.vendorId || selected.chartOfAccountId)) {
-            return {
-                customerId: selected.customerId || null,
-                vendorId: selected.vendorId || null,
-                chartOfAccountId: selected.chartOfAccountId || null,
-                partyName: selected.partyName || selected.text,
-                balance: parseFloat(selected.balance) || 0
-            };
+        var fromSelect2 = partyFromSource(selected, value, selected && selected.text);
+        if (fromSelect2) {
+            selectedPartyCache = fromSelect2;
+            copyPartyToOption($select, fromSelect2);
+            return fromSelect2;
         }
 
         var $opt = $select.find('option:selected');
         if (!$opt.length || !$opt.val()) return null;
 
-        var parts = String($opt.val()).split(':');
-        return {
-            customerId: parseInt($opt.data('customerId') || parts[0], 10) || null,
-            vendorId: parseInt($opt.data('vendorId') || parts[1], 10) || null,
-            chartOfAccountId: parseInt($opt.data('coaId') || parts[2], 10) || null,
-            partyName: $opt.data('partyName') || $opt.text(),
-            balance: parseFloat($opt.data('balance')) || 0
-        };
+        var fromOption = partyFromSource({
+            customerId: $opt.data('customerId'),
+            vendorId: $opt.data('vendorId'),
+            chartOfAccountId: $opt.data('coaId'),
+            partyName: $opt.data('partyName'),
+            balance: $opt.data('balance'),
+            id: $opt.val()
+        }, $opt.val(), $opt.text());
+
+        selectedPartyCache = fromOption;
+        return fromOption;
     }
 
     function getPaymentMethod() {
@@ -249,8 +376,21 @@
 
     function updateBalanceHint($select, $hint, list) {
         var id = parseInt($select.val(), 10) || 0;
+        if (!id) {
+            $hint.text('');
+            return;
+        }
+
         var account = findAccount(list, id);
-        $hint.text(account ? 'GL balance: PKR ' + formatMoney(account.balance) : '');
+        var balance = account
+            ? account.balance
+            : readMoney($select.find('option:selected').data('balance'));
+        if (account || balance != null) {
+            $hint.text('GL balance: PKR ' + formatMoney(balance == null ? 0 : balance));
+            return;
+        }
+
+        $hint.text('');
     }
 
     function applyNextChequeNumber(res) {
@@ -349,10 +489,19 @@
         var currentVal = parseInt($select.val(), 10) || 0;
 
         buildOptions($select, list);
+        var restoreId = 0;
         if (currentVal && findAccount(list, currentVal)) {
-            $select.val(String(currentVal));
+            restoreId = currentVal;
         } else if (method === 1 && cashAccount) {
-            $select.val(String(cashAccount.id));
+            restoreId = cashAccount.id;
+        }
+
+        if (restoreId) {
+            if (window.setPaSelect2Value) {
+                window.setPaSelect2Value($select, String(restoreId));
+            } else {
+                $select.val(String(restoreId)).trigger('change');
+            }
         }
 
         updateBalanceHint($select, $('#op-bank-balance'), list);
@@ -540,16 +689,16 @@
         var requests = [];
         if (transactionType === 3) {
             requests.push($.getJSON('/api/bank-transactions/coa-transfer').done(function (res) {
-                transferAccounts = res || [];
+                transferAccounts = normalizeAccountList(res);
                 buildOptions($('#op-from-account-id'), transferAccounts);
                 buildOptions($('#op-to-account-id'), transferAccounts);
             }));
         } else if (transactionType === 2) {
             requests.push($.getJSON('/api/bank-transactions/coa-banks').done(function (res) {
-                bankAccounts = res || [];
+                bankAccounts = normalizeAccountList(res);
             }));
             requests.push($.getJSON('/api/bank-transactions/coa-transfer').done(function (res) {
-                transferAccounts = res || [];
+                transferAccounts = normalizeAccountList(res);
                 resolveCashAccount();
                 buildOptions($('#op-bank-account-id'), bankAccounts);
             }));
@@ -557,7 +706,11 @@
                 window.initPaAjaxSelect2($('#op-counter-account-id'), {
                     entity: 'party',
                     placeholder: 'Type to search customer, vendor, or account',
-                    allowClear: true
+                    allowClear: true,
+                    limit: 50,
+                    onSelect: function (item, $el) {
+                        cacheSelectedParty(item, $el);
+                    }
                 });
             } else {
                 requests.push($.getJSON('/api/bank-transactions/coa-counter').done(function (res) {
@@ -568,7 +721,7 @@
             }
         } else {
             requests.push($.getJSON('/api/bank-transactions/coa-deposit').done(function (res) {
-                bankAccounts = res || [];
+                bankAccounts = normalizeAccountList(res);
                 buildOptions($('#op-bank-account-id'), bankAccounts);
             }));
         }
@@ -724,6 +877,7 @@
                 $('#bank-op-form')[0].reset();
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
                 $('#op-party-balance').text('');
+                selectedPartyCache = null;
                 $('#op-amount-words').text('');
                 loadLookups().always(function () {
                     if (transactionType === 2) {
@@ -774,25 +928,26 @@
 
         $('#op-payment-method').on('change', syncPaymentMethodUi);
 
-        $('#op-bank-account-id').on('change', function () {
+        $('#op-bank-account-id').on('change select2:select', function () {
             var method = getPaymentMethod();
             var list = method === 1 ? transferAccounts : bankAccounts;
             updateBalanceHint($(this), $('#op-bank-balance'), list);
             loadNextChequeNumber(parseInt($(this).val(), 10) || 0);
         });
-        $('#op-from-account-id').on('change', function () {
+        $('#op-from-account-id').on('change select2:select', function () {
             var fromId = parseInt($(this).val(), 10) || 0;
             buildOptions($('#op-to-account-id'), transferAccounts, fromId);
             updateBalanceHint($(this), $('#op-from-balance'), transferAccounts);
         });
-        $('#op-to-account-id').on('change', function () {
+        $('#op-to-account-id').on('change select2:select', function () {
             updateBalanceHint($(this), $('#op-to-balance'), transferAccounts);
         });
-        $('#op-counter-account-id').on('change', function () {
-            var party = getSelectedParty();
-            $('#op-party-balance').text(
-                party ? 'Outstanding balance: PKR ' + formatMoney(party.balance) : ''
-            );
+        $('#op-counter-account-id').on('change select2:select', function () {
+            updatePartyBalanceHint();
+        });
+        $('#op-counter-account-id').on('select2:clear', function () {
+            selectedPartyCache = null;
+            $('#op-party-balance').text('');
         });
 
         $('#bank-op-form').on('submit', saveOperation);
