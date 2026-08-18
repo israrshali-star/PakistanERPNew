@@ -700,12 +700,23 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillActionResult(false, "Bill has no line items.", null);
         }
 
-        // Qty-only opening stock: inventory value already sits in COA opening — approve without GL.
-        if (string.Equals(bill.BillNumber, AppConstants.OpeningStockBillNumber, StringComparison.OrdinalIgnoreCase)
-            && Math.Round(bill.NetAmount, 2) == 0m)
+        // Opening stock: inventory value already sits in COA opening — never post inventory/AP/tax GL.
+        if (AppConstants.IsOpeningStockBill(bill.BillNumber, bill.RefNo))
         {
             var nowQtyOnly = DateTime.UtcNow;
             var userQtyOnly = _currentUser.UserName ?? "system";
+
+            foreach (var line in bill.Lines)
+            {
+                if (line.Amount != 0m)
+                {
+                    line.Amount = 0m;
+                    _unitOfWork.Repository<VendorBillLine>().Update(line);
+                }
+            }
+
+            bill.TaxAmount = 0m;
+            bill.NetAmount = 0m;
             bill.Status = BillStatus.Approved;
             bill.JournalEntryId = null;
             bill.UpdatedAt = nowQtyOnly;
@@ -1014,6 +1025,14 @@ public partial class VendorBillService : IVendorBillService
         if (bill.Status != BillStatus.Approved)
         {
             return new VendorBillActionResult(false, "Only approved bills can be reopened for editing.", null);
+        }
+
+        if (AppConstants.IsOpeningStockBill(bill.BillNumber, bill.RefNo))
+        {
+            return new VendorBillActionResult(
+                false,
+                "Opening stock cannot be reopened. Quantity stays on inventory transactions; value stays in the chart opening balance.",
+                null);
         }
 
         var inventoryTransactions = await _unitOfWork.Repository<InventoryTransaction>()

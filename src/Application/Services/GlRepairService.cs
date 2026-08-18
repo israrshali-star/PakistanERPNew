@@ -1578,6 +1578,7 @@ public class GlRepairService : IGlRepairService
             .ToListAsync(cancellationToken);
 
         var duplicateGroups = approvedBills
+            .Where(b => !AppConstants.IsOpeningStockBill(b.BillNumber, b.RefNo))
             .GroupBy(b => (b.VendorId, RefNo: b.RefNo!.Trim(), b.NetAmount, b.BillDate.Date))
             .Where(g => g.Count() > 1);
 
@@ -4280,7 +4281,10 @@ public class GlRepairService : IGlRepairService
                              && !b.IsDeleted,
                         cancellationToken);
 
-                if (bill is null || bill.Status != BillStatus.Draft || bill.JournalEntryId.HasValue)
+                if (bill is null
+                    || bill.Status != BillStatus.Draft
+                    || bill.JournalEntryId.HasValue
+                    || AppConstants.IsOpeningStockBill(bill.BillNumber, bill.RefNo))
                 {
                     return false;
                 }

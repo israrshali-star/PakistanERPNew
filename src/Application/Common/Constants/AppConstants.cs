@@ -15,6 +15,11 @@ public static class AppConstants
     public const string VendorBillNumberPrefix = "BILL-";
     public const string VendorPaymentNumberPrefix = "VPAY-";
     public const string OpeningStockBillNumber = "OPEN-STOCK-31052026";
+    public const string OpeningStockRefNo = "OPENING-31MAY2026";
+
+    public static bool IsOpeningStockBill(string? billNumber, string? refNo = null) =>
+        string.Equals(billNumber, OpeningStockBillNumber, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(refNo, OpeningStockRefNo, StringComparison.OrdinalIgnoreCase);
 }
 
 public static class SessionKeys

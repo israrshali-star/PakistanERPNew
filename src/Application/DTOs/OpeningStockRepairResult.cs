@@ -6,5 +6,6 @@ public sealed class OpeningStockRepairResult
     public string Message { get; init; } = string.Empty;
     public int BillLinesUpdated { get; init; }
     public int TransactionsUpdated { get; init; }
+    public int JournalsDeleted { get; init; }
     public int ItemsRecalculated { get; init; }
 }

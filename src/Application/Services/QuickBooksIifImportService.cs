@@ -1496,15 +1496,14 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
 
         try
         {
-            var bill = await _unitOfWork.Repository<VendorBill>()
+            var bills = await _unitOfWork.Repository<VendorBill>()
                 .Query(asNoTracking: false)
                 .Include(b => b.Lines)
-                .FirstOrDefaultAsync(
-                    b => b.CompanyId == companyId
-                         && (b.RefNo == OpeningStockRefNo || b.BillNumber == OpeningStockBillNumber),
-                    cancellationToken);
+                .Where(b => b.CompanyId == companyId
+                            && (b.RefNo == OpeningStockRefNo || b.BillNumber == OpeningStockBillNumber))
+                .ToListAsync(cancellationToken);
 
-            if (bill is null)
+            if (bills.Count == 0)
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return new OpeningStockRepairResult
@@ -1515,51 +1514,57 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             }
 
             var billLinesUpdated = 0;
+            var journalsDeleted = 0;
             var affectedItemIds = new HashSet<int>();
+            var billIds = bills.Select(b => b.Id).ToList();
 
-            foreach (var line in bill.Lines)
+            foreach (var bill in bills)
             {
-                // Keep Rate for stock-report valuation; only clear Amount so no inventory/AP GL is implied.
-                if (line.Amount != 0m)
+                foreach (var line in bill.Lines)
                 {
-                    line.Amount = 0m;
-                    _unitOfWork.Repository<VendorBillLine>().Update(line);
-                    billLinesUpdated++;
+                    // Keep Rate for stock-report valuation; only clear Amount so no inventory/AP GL is implied.
+                    if (line.Amount != 0m)
+                    {
+                        line.Amount = 0m;
+                        _unitOfWork.Repository<VendorBillLine>().Update(line);
+                        billLinesUpdated++;
+                    }
+
+                    if (line.ItemId.HasValue)
+                    {
+                        affectedItemIds.Add(line.ItemId.Value);
+                    }
                 }
 
-                if (line.ItemId.HasValue)
-                {
-                    affectedItemIds.Add(line.ItemId.Value);
-                }
+                bill.NetAmount = 0m;
+                bill.TaxAmount = 0m;
+                // Keep Approved so stack/lot availability and bill lists treat opening stock as posted qty.
+                // Amounts stay zero — inventory value remains in COA opening (no AP/inventory JE).
+                bill.Status = BillStatus.Approved;
+                bill.JournalEntryId = null;
+                bill.UpdatedAt = now;
+                bill.UpdatedBy = ImportUser;
+                _unitOfWork.Repository<VendorBill>().Update(bill);
             }
 
-            bill.NetAmount = 0m;
-            bill.TaxAmount = 0m;
-            // Keep Approved so stack/lot availability and bill lists treat opening stock as posted qty.
-            // Amounts stay zero — inventory value remains in COA opening (no AP/inventory JE).
-            bill.Status = BillStatus.Approved;
-            var openingJournalId = bill.JournalEntryId;
-            bill.JournalEntryId = null;
-            bill.UpdatedAt = now;
-            bill.UpdatedBy = ImportUser;
-            _unitOfWork.Repository<VendorBill>().Update(bill);
+            var relatedJournals = await _unitOfWork.Repository<JournalEntry>()
+                .Query(asNoTracking: false)
+                .Where(j => j.CompanyId == companyId
+                            && !j.IsDeleted
+                            && j.ReferenceType == ReferenceTypes.VendorBill
+                            && j.ReferenceId != null
+                            && billIds.Contains(j.ReferenceId.Value))
+                .ToListAsync(cancellationToken);
 
-            if (openingJournalId.HasValue)
+            foreach (var openingJournal in relatedJournals)
             {
-                var openingJournal = await _unitOfWork.Repository<JournalEntry>()
-                    .Query(asNoTracking: false)
-                    .FirstOrDefaultAsync(
-                        j => j.Id == openingJournalId.Value && j.CompanyId == companyId,
-                        cancellationToken);
-                if (openingJournal is not null && !openingJournal.IsDeleted)
-                {
-                    openingJournal.IsDeleted = true;
-                    openingJournal.DeletedAt = now;
-                    openingJournal.DeletedBy = ImportUser;
-                    openingJournal.UpdatedAt = now;
-                    openingJournal.UpdatedBy = ImportUser;
-                    _unitOfWork.Repository<JournalEntry>().Update(openingJournal);
-                }
+                openingJournal.IsDeleted = true;
+                openingJournal.DeletedAt = now;
+                openingJournal.DeletedBy = ImportUser;
+                openingJournal.UpdatedAt = now;
+                openingJournal.UpdatedBy = ImportUser;
+                _unitOfWork.Repository<JournalEntry>().Update(openingJournal);
+                journalsDeleted++;
             }
 
             var openingTransactions = await _unitOfWork.Repository<InventoryTransaction>()
@@ -1574,10 +1579,14 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             {
                 affectedItemIds.Add(transaction.ItemId);
 
-                if (transaction.UnitCost != 0m || transaction.TotalCost != 0m)
+                // Keep unit cost for stock reports. Fill TotalCost when it was left at zero.
+                if (transaction.TotalCost == 0m
+                    && transaction.UnitCost > 0m
+                    && transaction.Quantity > 0m)
                 {
-                    transaction.UnitCost = 0m;
-                    transaction.TotalCost = 0m;
+                    transaction.TotalCost = Math.Round(transaction.Quantity * transaction.UnitCost, 2);
+                    transaction.UpdatedAt = now;
+                    transaction.UpdatedBy = ImportUser;
                     _unitOfWork.Repository<InventoryTransaction>().Update(transaction);
                     transactionsUpdated++;
                 }
@@ -1603,7 +1612,8 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
                 }
 
                 // Sum cartons across all opening stacks for the item (do not filter by item master LotNo).
-                var cartons = bill.Lines
+                var cartons = bills
+                    .SelectMany(b => b.Lines)
                     .Where(l => l.ItemId == itemId)
                     .Sum(l => Math.Round(l.Cartons, 2));
 
@@ -1619,11 +1629,13 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
+            var billNumbers = string.Join(", ", bills.Select(b => b.BillNumber).Distinct());
             _logger.LogInformation(
-                "Reapplied opening stock quantity-only for company {CompanyId}: bill {BillId}, {LineCount} lines, {TxnCount} transactions, {ItemCount} items recalculated.",
+                "Reapplied opening stock quantity-only for company {CompanyId}: bills {BillIds}, {LineCount} lines, {JournalCount} journals removed, {TxnCount} transactions, {ItemCount} items recalculated.",
                 companyId,
-                bill.Id,
+                string.Join(",", billIds),
                 billLinesUpdated,
+                journalsDeleted,
                 transactionsUpdated,
                 itemsRecalculated);
 
@@ -1631,9 +1643,10 @@ public class QuickBooksIifImportService : IQuickBooksIifImportService
             {
                 Success = true,
                 Message =
-                    $"Opening stock bill {bill.BillNumber} set to Approved with zero amounts; {itemsRecalculated} items recalculated from inventory transactions.",
+                    $"Opening stock {billNumbers} set to quantity-only (no GL); removed {journalsDeleted} journal(s); {itemsRecalculated} items recalculated from inventory transactions.",
                 BillLinesUpdated = billLinesUpdated,
                 TransactionsUpdated = transactionsUpdated,
+                JournalsDeleted = journalsDeleted,
                 ItemsRecalculated = itemsRecalculated
             };
         }

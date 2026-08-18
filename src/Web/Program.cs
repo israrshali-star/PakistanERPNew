@@ -523,7 +523,8 @@ static bool TryRunReapplyOpeningStockQuantityOnly(string[] args, out int exitCod
 
         Console.WriteLine(result.Message);
         Console.WriteLine($"Bill lines zeroed: {result.BillLinesUpdated}");
-        Console.WriteLine($"Inventory transactions zeroed: {result.TransactionsUpdated}");
+        Console.WriteLine($"Opening journals removed: {result.JournalsDeleted}");
+        Console.WriteLine($"Inventory transactions updated: {result.TransactionsUpdated}");
         Console.WriteLine($"Items recalculated: {result.ItemsRecalculated}");
         exitCode = result.Success ? 0 : 1;
     }
