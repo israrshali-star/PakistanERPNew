@@ -175,9 +175,25 @@ public class InventoryReportService : IInventoryReportService
                 value));
         }
 
-        // Items with on-hand qty but no stack movements (e.g. services / unsynced) — keep one master row.
+        var itemsWithAnyTransactions = (await _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId
+                        && itemIds.Contains(t.ItemId)
+                        && !t.IsDeleted)
+            .Select(t => t.ItemId)
+            .Distinct()
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        // Items with on-hand qty but no inventory transactions at all (legacy / unsynced).
+        // Do not use CurrentStock for items that only moved after the as-of date.
         foreach (var item in items.Where(i => !itemsWithStackRows.Contains(i.Id)))
         {
+            if (itemsWithAnyTransactions.Contains(item.Id))
+            {
+                continue;
+            }
+
             if (Math.Abs(item.CurrentStock) <= 0.01m && Math.Abs(item.Cartons) <= 0.01m)
             {
                 continue;

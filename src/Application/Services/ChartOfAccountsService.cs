@@ -616,13 +616,16 @@ public class ChartOfAccountsService : IChartOfAccountsService
             ledgerContext.ParentSubTypeId,
             ledgerContext.AccountNumber,
             ledgerContext.ParentAccountNumber);
+        var usesInventoryLedgerFormula = InventoryAssetLedger.UsesOpeningPlusBillsMinusInvoices(
+            ledgerContext.AccountNumber);
+        var usesDebitMinusCreditLedger = usesBankLedgerFormula || usesInventoryLedgerFormula;
 
         var rawOpening = ledgerContext.OpeningBalance;
 
         var from = fromDate?.Date;
         var to = toDate?.Date;
         var entries = new List<ChartOfAccountLedgerEntryDto>();
-        var invertedLineAccumulation = !usesBankLedgerFormula
+        var invertedLineAccumulation = !usesDebitMinusCreditLedger
             && (PurchaseApBalance.UsesInvertedLineAccumulation(
                     companyId,
                     account.AccountNumber)
@@ -642,7 +645,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 id,
                 companyId,
                 from.Value,
-                usesBankLedgerFormula,
+                usesDebitMinusCreditLedger,
                 cancellationToken);
         }
         else
@@ -720,7 +723,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         {
             periodDebitTotal += line.Debit;
             periodCreditTotal += line.Credit;
-            balance = usesBankLedgerFormula
+            balance = usesDebitMinusCreditLedger
                 ? BankLedgerBalance.Accumulate(balance, line.Debit, line.Credit)
                 : balance + (invertedLineAccumulation ? line.Credit - line.Debit : line.Debit - line.Credit);
 
@@ -746,7 +749,15 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         decimal closingBalance;
-        if (usesBankLedgerFormula)
+        if (usesInventoryLedgerFormula)
+        {
+            closingBalance = InventoryAssetLedger.ComputeClosing(
+                periodOpening,
+                periodDebitTotal,
+                periodCreditTotal);
+            ApplyDebitMinusCreditRunningBalances(entries);
+        }
+        else if (usesBankLedgerFormula)
         {
             closingBalance = BankLedgerBalance.ComputeClosing(
                 periodOpening,
@@ -769,7 +780,15 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 rawOpening);
 
             periodOpening = chartOpening;
-            if (usesBankLedgerFormula)
+            if (usesInventoryLedgerFormula)
+            {
+                closingBalance = InventoryAssetLedger.ComputeClosing(
+                    periodOpening,
+                    periodDebitTotal,
+                    periodCreditTotal);
+                ApplyDebitMinusCreditRunningBalances(entries, chartOpening);
+            }
+            else if (usesBankLedgerFormula)
             {
                 closingBalance = BankLedgerBalance.ComputeClosing(
                     periodOpening,
@@ -805,7 +824,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
             closingBalance,
             periodDebitTotal,
             periodCreditTotal,
-            usesBankLedgerFormula);
+            usesBankLedgerFormula,
+            usesInventoryLedgerFormula);
     }
 
     public async Task<byte[]?> ExportLedgerToExcelAsync(
@@ -846,6 +866,18 @@ public class ChartOfAccountsService : IChartOfAccountsService
             sheet.Cell(7, 2).Value = ledger.ClosingBalance;
             sheet.Cell(7, 2).Style.NumberFormat.Format = "#,##0.00";
         }
+        else if (ledger.UsesInventoryLedgerFormula)
+        {
+            sheet.Cell(6, 1).Value = "Bills (Dr):";
+            sheet.Cell(6, 2).Value = ledger.PeriodDebitTotal;
+            sheet.Cell(6, 2).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(6, 4).Value = "Invoices (Cr):";
+            sheet.Cell(6, 5).Value = ledger.PeriodCreditTotal;
+            sheet.Cell(6, 5).Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell(7, 1).Value = "Closing (Opening + Bills − Invoices):";
+            sheet.Cell(7, 2).Value = ledger.ClosingBalance;
+            sheet.Cell(7, 2).Style.NumberFormat.Format = "#,##0.00";
+        }
         else
         {
             sheet.Cell(5, 4).Value = "Closing Balance:";
@@ -854,7 +886,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         }
 
         var headers = new[] { "Date", "Reference", "Description", "Debit", "Credit", "Balance" };
-        var headerRow = ledger.UsesBankLedgerFormula ? 9 : 7;
+        var headerRow = ledger.UsesBankLedgerFormula || ledger.UsesInventoryLedgerFormula ? 9 : 7;
         for (var col = 0; col < headers.Length; col++)
         {
             sheet.Cell(headerRow, col + 1).Value = headers[col];
@@ -1018,7 +1050,8 @@ public class ChartOfAccountsService : IChartOfAccountsService
                 var journal = journalLookup.GetValueOrDefault(x.Id);
                 var debit = journal?.Debit ?? 0m;
                 var credit = journal?.Credit ?? 0m;
-                if (BankLedgerBalance.UsesDebitMinusCreditLedger(
+                if (InventoryAssetLedger.UsesOpeningPlusBillsMinusInvoices(x.AccountNumber)
+                    || BankLedgerBalance.UsesDebitMinusCreditLedger(
                         x.TypeId,
                         x.SubTypeId,
                         x.IsLinkedToBank,
@@ -1027,7 +1060,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
                         x.AccountNumber,
                         x.ParentAccountNumber))
                 {
-                    return BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
+                    return InventoryAssetLedger.UsesOpeningPlusBillsMinusInvoices(x.AccountNumber)
+                        ? InventoryAssetLedger.ComputeClosing(x.OpeningBalance, debit, credit)
+                        : BankLedgerBalance.ComputeClosing(x.OpeningBalance, debit, credit);
                 }
 
                 return GlAccountBalance.ComputeNet(
@@ -1072,9 +1107,11 @@ public class ChartOfAccountsService : IChartOfAccountsService
         var debit = journalTotals?.Debit ?? 0m;
         var credit = journalTotals?.Credit ?? 0m;
 
-        if (usesBankLedgerFormula)
+        if (usesBankLedgerFormula || InventoryAssetLedger.UsesOpeningPlusBillsMinusInvoices(account.AccountNumber))
         {
-            return BankLedgerBalance.ComputeClosing(account.OpeningBalance, debit, credit);
+            return InventoryAssetLedger.UsesOpeningPlusBillsMinusInvoices(account.AccountNumber)
+                ? InventoryAssetLedger.ComputeClosing(account.OpeningBalance, debit, credit)
+                : BankLedgerBalance.ComputeClosing(account.OpeningBalance, debit, credit);
         }
 
         return Math.Round(

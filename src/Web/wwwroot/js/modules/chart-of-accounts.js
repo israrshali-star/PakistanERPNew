@@ -329,6 +329,7 @@
 
         var isFullLedger = !ledger.fromDate && !ledger.toDate;
         var isBankLedger = !!ledger.usesBankLedgerFormula;
+        var isInventoryLedger = !!ledger.usesInventoryLedgerFormula;
 
         $('#accountLedgerModalLabel').text('Account Ledger');
 
@@ -343,6 +344,9 @@
         if (isBankLedger) {
             $('#account-ledger-kpi-debit-label').text('Received (Dr)');
             $('#account-ledger-kpi-credit-label').text('Paid (Cr)');
+        } else if (isInventoryLedger) {
+            $('#account-ledger-kpi-debit-label').text('Bills (Dr)');
+            $('#account-ledger-kpi-credit-label').text('Invoices (Cr)');
         } else {
             $('#account-ledger-kpi-debit-label').text('Period Debits');
             $('#account-ledger-kpi-credit-label').text('Period Credits');
@@ -361,6 +365,8 @@
             periodNote = ' <span class="text-muted">(filtered period)</span>';
         } else if (isBankLedger) {
             periodNote = ' <span class="text-muted">(Opening Dr + Received − Paid)</span>';
+        } else if (isInventoryLedger) {
+            periodNote = ' <span class="text-muted">(Opening + Bills − Invoices)</span>';
         } else {
             periodNote = ' <span class="text-muted">(full ledger)</span>';
         }

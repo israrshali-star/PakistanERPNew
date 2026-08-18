@@ -82,4 +82,5 @@ public record ChartOfAccountLedgerDto(
     decimal ClosingBalance,
     decimal PeriodDebitTotal,
     decimal PeriodCreditTotal,
-    bool UsesBankLedgerFormula);
+    bool UsesBankLedgerFormula,
+    bool UsesInventoryLedgerFormula = false);
