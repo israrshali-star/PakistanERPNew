@@ -108,6 +108,31 @@
                             <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
                             <div class="form-text text-success" id="receipt-amount-words"></div>
                         </div>
+                        <div class="col-12 d-none" id="receipt-allocation-panel">
+                            <div class="border rounded p-3 bg-light">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <span class="fw-semibold">Remaining balance after this payment</span>
+                                    <strong id="receipt-remaining-balance">PKR 0.00</strong>
+                                </div>
+                                <div class="small text-muted mt-3 mb-1">Invoices adjusted against this payment</div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered mb-0 bg-white">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice #</th>
+                                                <th>Date</th>
+                                                <th class="text-end">Adjusted</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="receipt-allocation-invoices">
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted">Enter amount to see invoices.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                         <div class="col-md-4">
                             <label class="form-label" for="payment-method">Payment Mode</label>
                             <select class="form-select" id="payment-method" required>

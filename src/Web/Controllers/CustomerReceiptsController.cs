@@ -27,15 +27,18 @@ public class CustomerReceiptsApiController : ControllerBase
     private readonly ICustomerReceiptService _customerReceiptService;
     private readonly ICustomerReceiptShareService _customerReceiptShareService;
     private readonly ICustomerReceiptAttachmentService _attachmentService;
+    private readonly ICustomerReceiptInvoiceAllocationService _allocationService;
 
     public CustomerReceiptsApiController(
         ICustomerReceiptService customerReceiptService,
         ICustomerReceiptShareService customerReceiptShareService,
-        ICustomerReceiptAttachmentService attachmentService)
+        ICustomerReceiptAttachmentService attachmentService,
+        ICustomerReceiptInvoiceAllocationService allocationService)
     {
         _customerReceiptService = customerReceiptService;
         _customerReceiptShareService = customerReceiptShareService;
         _attachmentService = attachmentService;
+        _allocationService = allocationService;
     }
 
     [HttpGet("datatable")]
@@ -124,6 +127,31 @@ public class CustomerReceiptsApiController : ControllerBase
         try
         {
             return Ok(await _customerReceiptService.GetBankLookupsAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("invoice-allocation")]
+    [RequirePermission("Sales.View")]
+    public async Task<IActionResult> InvoiceAllocation(
+        [FromQuery] int customerId,
+        [FromQuery] DateTime receiptDate,
+        [FromQuery] decimal amount,
+        [FromQuery] int? receiptId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var allocation = await _allocationService.GetAllocationAsync(
+                customerId,
+                receiptDate,
+                amount,
+                receiptId,
+                cancellationToken);
+            return allocation is null ? NotFound() : Ok(allocation);
         }
         catch (InvalidOperationException ex)
         {

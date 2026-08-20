@@ -442,6 +442,120 @@
         }
     }
 
+    var allocationTimer = null;
+    var allocationRequest = 0;
+
+    function showsInvoiceAllocation() {
+        return currentCompanyId === TRADE_INVOICE_COMPANY_ID;
+    }
+
+    function clearAllocationPanel() {
+        $('#receipt-remaining-balance').text('PKR 0.00');
+        $('#receipt-allocation-invoices').html(
+            '<tr><td colspan="3" class="text-center text-muted">Enter amount to see invoices.</td></tr>'
+        );
+    }
+
+    function hideAllocationPanel() {
+        $('#receipt-allocation-panel').addClass('d-none');
+        clearAllocationPanel();
+    }
+
+    function renderAllocation(allocation) {
+        var remaining = Math.max(0, parseFloat(allocation.remainingBalance) || 0);
+        $('#receipt-remaining-balance').text('PKR ' + formatMoney(remaining));
+
+        var invoices = allocation.invoices || [];
+        var unallocated = parseFloat(allocation.unallocatedAmount) || 0;
+        var rows = invoices.map(function (invoice) {
+            var date = invoice.invoiceDate ? formatDate(invoice.invoiceDate) : '—';
+            return '<tr>' +
+                '<td>' + escapeHtml(invoice.invoiceNumber || '') + '</td>' +
+                '<td>' + escapeHtml(date) + '</td>' +
+                '<td class="text-end">PKR ' + formatMoney(invoice.appliedAmount) + '</td>' +
+                '</tr>';
+        });
+
+        if (unallocated > 0.004) {
+            rows.push(
+                '<tr>' +
+                '<td>Advance (unallocated)</td>' +
+                '<td>—</td>' +
+                '<td class="text-end">PKR ' + formatMoney(unallocated) + '</td>' +
+                '</tr>'
+            );
+        }
+
+        if (!rows.length) {
+            $('#receipt-allocation-invoices').html(
+                '<tr><td colspan="3" class="text-center text-muted">No open invoices to adjust.</td></tr>'
+            );
+            return;
+        }
+
+        $('#receipt-allocation-invoices').html(rows.join(''));
+    }
+
+    function refreshInvoiceAllocation() {
+        if (!showsInvoiceAllocation()) {
+            hideAllocationPanel();
+            return;
+        }
+
+        var customerId = parseInt($('#receipt-customer-id').val(), 10) || 0;
+        var receiptDate = $('#receipt-date').val();
+        var amount = parseFloat($('#receipt-amount').val()) || 0;
+        var receiptId = parseInt($('#receipt-id').val(), 10) || 0;
+
+        if (!customerId) {
+            $('#receipt-allocation-panel').addClass('d-none');
+            clearAllocationPanel();
+            return;
+        }
+
+        $('#receipt-allocation-panel').removeClass('d-none');
+        if (!receiptDate || amount <= 0) {
+            $('#receipt-remaining-balance').text('PKR ' + formatMoney(0));
+            $('#receipt-allocation-invoices').html(
+                '<tr><td colspan="3" class="text-center text-muted">Enter amount to see invoices.</td></tr>'
+            );
+            return;
+        }
+
+        var requestId = ++allocationRequest;
+        var query = {
+            customerId: customerId,
+            receiptDate: receiptDate,
+            amount: amount
+        };
+        if (receiptId) {
+            query.receiptId = receiptId;
+        }
+
+        $.getJSON('/api/customer-receipts/invoice-allocation', query)
+            .done(function (allocation) {
+                if (requestId !== allocationRequest) {
+                    return;
+                }
+                renderAllocation(allocation);
+            })
+            .fail(function () {
+                if (requestId !== allocationRequest) {
+                    return;
+                }
+                $('#receipt-allocation-invoices').html(
+                    '<tr><td colspan="3" class="text-center text-muted">Could not load invoice allocation.</td></tr>'
+                );
+            });
+    }
+
+    function scheduleInvoiceAllocation() {
+        if (allocationTimer) {
+            clearTimeout(allocationTimer);
+        }
+        allocationTimer = setTimeout(refreshInvoiceAllocation, 250);
+    }
+
     function updateCustomerBalanceHint() {
         var customerId = parseInt($('#receipt-customer-id').val(), 10) || 0;
         var customer = customers.find(function (c) { return c.id === customerId; });
@@ -451,6 +565,7 @@
         } else {
             $('#receipt-customer-balance').text('');
         }
+        scheduleInvoiceAllocation();
     }
 
     function resetReceiptForm() {
@@ -467,6 +582,7 @@
         clearAttachmentUi();
         setFormReadOnly(false);
         togglePaymentFields();
+        hideAllocationPanel();
         updateCustomerBalanceHint();
     }
 
@@ -963,6 +1079,9 @@
                 maxReceiptAttachments = currentCompanyId === TRADE_INVOICE_COMPANY_ID ? 2 : 10;
                 updateAttachmentHint();
                 hideCompanyWarning();
+                if (!showsInvoiceAllocation()) {
+                    hideAllocationPanel();
+                }
                 loadLookups().always(initDataTable);
             })
             .fail(function () {
@@ -981,7 +1100,11 @@
         });
 
         $('#payment-method').on('change', togglePaymentFields);
-        $('#receipt-amount').on('input change', updateAmountInWords);
+        $('#receipt-amount').on('input change', function () {
+            updateAmountInWords();
+            scheduleInvoiceAllocation();
+        });
+        $('#receipt-date').on('change', scheduleInvoiceAllocation);
         $('.cheque-type-option').on('change', function () {
             var $target = $(this);
             if ($target.is(':checked')) {

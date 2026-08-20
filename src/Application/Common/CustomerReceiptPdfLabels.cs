@@ -11,9 +11,11 @@ public sealed class CustomerReceiptPdfLabels
     public required string AmountInWords { get; init; }
     public required string PaymentAmount { get; init; }
     public required string TotalAmountDue { get; init; }
+    public required string RemainingBalance { get; init; }
     public required string InvoicesPaid { get; init; }
     public required string InvoiceNumber { get; init; }
     public required string Amount { get; init; }
+    public required string Unallocated { get; init; }
     public required string ReceiptNumber { get; init; }
     public required string Printed { get; init; }
     public required string Dear { get; init; }
@@ -35,7 +37,9 @@ public sealed class CustomerReceiptPdfLabels
         AmountInWords = "Amount in words",
         PaymentAmount = "Payment Amount",
         TotalAmountDue = "Total Amount Due",
+        RemainingBalance = "Remaining Balance",
         InvoicesPaid = "Invoices Paid",
+        Unallocated = "Advance (unallocated)",
         InvoiceNumber = "Invoice #",
         Amount = "Amount",
         ReceiptNumber = "Receipt #",
@@ -60,7 +64,9 @@ public sealed class CustomerReceiptPdfLabels
         AmountInWords = "رقم الفاظ میں",
         PaymentAmount = "ادائیگی کی رقم",
         TotalAmountDue = "کل واجب الادا رقم",
+        RemainingBalance = "بقایا رقم",
         InvoicesPaid = "ادا شدہ انوائسز",
+        Unallocated = "ایڈوانس (غیر ایڈجسٹ)",
         InvoiceNumber = "انوائس #",
         Amount = "رقم",
         ReceiptNumber = "رسید #",

@@ -14,15 +14,18 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICustomerReceiptPdfService _receiptPdfService;
+    private readonly ICustomerReceiptInvoiceAllocationService _allocationService;
 
     public CustomerReceiptShareService(
         IUnitOfWork unitOfWork,
         ICurrentCompanyService currentCompany,
-        ICustomerReceiptPdfService receiptPdfService)
+        ICustomerReceiptPdfService receiptPdfService,
+        ICustomerReceiptInvoiceAllocationService allocationService)
     {
         _unitOfWork = unitOfWork;
         _currentCompany = currentCompany;
         _receiptPdfService = receiptPdfService;
+        _allocationService = allocationService;
     }
 
     public async Task<CustomerReceiptShareInfoDto?> GetShareInfoAsync(
@@ -79,7 +82,18 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
         }
 
         useUrdu = useUrdu && TradeInvoiceLayout.SupportsUrduLedger(model.CompanyId);
-        return _receiptPdfService.GeneratePdf(MapPdfDto(model, useUrdu));
+        CustomerReceiptInvoiceAllocationDto? allocation = null;
+        if (TradeInvoiceLayout.ShowsCustomerReceiptInvoiceAllocation(model.CompanyId))
+        {
+            allocation = await _allocationService.GetAllocationAsync(
+                model.CustomerId,
+                model.ReceiptDate,
+                model.Amount,
+                model.ReceiptId,
+                cancellationToken);
+        }
+
+        return _receiptPdfService.GeneratePdf(MapPdfDto(model, useUrdu, allocation));
     }
 
     private async Task<ReceiptShareModel?> LoadReceiptShareModelAsync(
@@ -101,6 +115,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
                 r.Id,
                 r.CompanyId,
                 r.ReceiptNumber,
+                r.CustomerId,
                 r.ReceiptDate,
                 r.Amount,
                 r.PaymentMethod,
@@ -131,6 +146,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             row.Id,
             row.CompanyId,
             row.ReceiptNumber,
+            row.CustomerId,
             row.CustomerName,
             row.CustomerNameUrdu,
             row.CustomerCode,
@@ -155,12 +171,19 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             row.CompanyName);
     }
 
-    private static CustomerReceiptPdfDto MapPdfDto(ReceiptShareModel model, bool useUrdu)
+    private static CustomerReceiptPdfDto MapPdfDto(
+        ReceiptShareModel model,
+        bool useUrdu,
+        CustomerReceiptInvoiceAllocationDto? allocation)
     {
         var customerName = RomanUrduTransliterator.ResolveDisplayName(
             model.CustomerName,
             model.CustomerNameUrdu,
             useUrdu);
+
+        var remaining = allocation is null
+            ? (decimal?)null
+            : Math.Max(0m, allocation.RemainingBalance);
 
         return new CustomerReceiptPdfDto(
             model.CompanyName,
@@ -169,14 +192,16 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             model.CustomerCode,
             model.ReceiptDate,
             model.Amount,
-            model.Amount,
+            allocation?.OutstandingBefore ?? model.Amount,
             model.PaymentMethodLabel,
             model.BankName,
             model.ChequeNumber,
             model.ChequeDate,
             model.Notes,
             model.StatusLabel,
-            useUrdu);
+            useUrdu,
+            remaining,
+            allocation?.Invoices);
     }
 
     private static string BuildWhatsAppMessage(ReceiptShareModel model, bool useUrdu)
@@ -276,6 +301,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
         int ReceiptId,
         int CompanyId,
         string ReceiptNumber,
+        int CustomerId,
         string CustomerName,
         string? CustomerNameUrdu,
         string CustomerCode,

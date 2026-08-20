@@ -49,7 +49,7 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
                     });
 
                     column.Item().PaddingTop(16).Text(labels.InvoicesPaid).Bold().FontSize(11);
-                    column.Item().PaddingTop(6).Element(c => ComposeInvoicesPaidTable(c, labels));
+                    column.Item().PaddingTop(6).Element(c => ComposeInvoicesPaidTable(c, model, labels));
 
                     column.Item().PaddingTop(10).AlignRight()
                         .Text($"{labels.ReceiptNumber}: {model.ReceiptNumber}  ·  {labels.Printed} {DateTime.Now:dd/MM/yyyy HH:mm}")
@@ -109,11 +109,25 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
             });
 
             AddDetailRow(table, labels.PaymentAmount, $"PKR {FormatAmount(model.Amount)}", valueBold: true);
-            AddDetailRow(table, labels.TotalAmountDue, $"PKR {FormatAmount(model.TotalAmountDue)}", valueBold: true);
+            if (model.RemainingBalance.HasValue)
+            {
+                AddDetailRow(
+                    table,
+                    labels.RemainingBalance,
+                    $"PKR {FormatAmount(model.RemainingBalance.Value)}",
+                    valueBold: true);
+            }
+            else
+            {
+                AddDetailRow(table, labels.TotalAmountDue, $"PKR {FormatAmount(model.TotalAmountDue)}", valueBold: true);
+            }
         });
     }
 
-    private static void ComposeInvoicesPaidTable(IContainer container, CustomerReceiptPdfLabels labels)
+    private static void ComposeInvoicesPaidTable(
+        IContainer container,
+        CustomerReceiptPdfDto model,
+        CustomerReceiptPdfLabels labels)
     {
         container.Table(table =>
         {
@@ -131,8 +145,34 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
                 header.Cell().Element(HeaderCell).AlignRight().Text(labels.Amount);
             });
 
-            table.Cell().ColumnSpan(3).Element(BodyCell).AlignCenter()
-                .Text("—").FontColor(Colors.Grey.Darken1);
+            var invoices = model.InvoicesPaid;
+            if (invoices is null || invoices.Count == 0)
+            {
+                table.Cell().ColumnSpan(3).Element(BodyCell).AlignCenter()
+                    .Text("—").FontColor(Colors.Grey.Darken1);
+                return;
+            }
+
+            foreach (var invoice in invoices)
+            {
+                table.Cell().Element(BodyCell).Text(invoice.InvoiceNumber);
+                table.Cell().Element(BodyCell)
+                    .Text(invoice.InvoiceDate.HasValue ? invoice.InvoiceDate.Value.ToString("dd/MM/yyyy") : "—");
+                table.Cell().Element(BodyCell).AlignRight()
+                    .Text($"PKR {FormatAmount(invoice.AppliedAmount)}");
+            }
+
+            if (model.RemainingBalance.HasValue && model.Amount > invoices.Sum(i => i.AppliedAmount))
+            {
+                var unallocated = model.Amount - invoices.Sum(i => i.AppliedAmount);
+                if (unallocated > 0m)
+                {
+                    table.Cell().Element(BodyCell).Text(labels.Unallocated);
+                    table.Cell().Element(BodyCell).Text("—");
+                    table.Cell().Element(BodyCell).AlignRight()
+                        .Text($"PKR {FormatAmount(unallocated)}");
+                }
+            }
         });
     }
 
