@@ -49,6 +49,7 @@ public class EntitySearchService : IEntitySearchService
             "bank" or "banks" => await SearchBanksAsync(term, id, take, cancellationToken),
             "warehouse" or "warehouses" => await SearchWarehousesAsync(term, id, take, cancellationToken),
             "lot" or "lots" => await SearchLotsAsync(term, id, take, cancellationToken),
+            "stack" or "stacks" => await SearchStacksAsync(term, id, take, cancellationToken),
             "invoice" or "invoices" => await SearchInvoicesAsync(term, id, take, cancellationToken),
             "bill" or "bills" => await SearchBillsAsync(term, id, take, cancellationToken),
             "receipt" or "receipts" => await SearchReceiptsAsync(term, id, take, cancellationToken),
@@ -341,6 +342,40 @@ public class EntitySearchService : IEntitySearchService
                 Text = string.IsNullOrWhiteSpace(x.LotNo) ? x.ItemCode + " + —" : x.ItemCode + " + " + x.LotNo,
                 ItemCode = x.ItemCode,
                 LotNo = x.LotNo
+            })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<EntitySearchItemDto>> SearchStacksAsync(
+        string term,
+        string? id,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<StackItemOptionDto> stacks;
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            stacks = await _stackLotInventory.SearchStackNumbersAsync(id, take, cancellationToken);
+            stacks = stacks
+                .Where(x => string.Equals(x.StackNo, id, StringComparison.OrdinalIgnoreCase))
+                .Take(1)
+                .ToList();
+        }
+        else
+        {
+            stacks = await _stackLotInventory.SearchStackNumbersAsync(term, take, cancellationToken);
+        }
+
+        return stacks
+            .Select(x => new EntitySearchItemDto
+            {
+                Id = x.StackNo,
+                Text = string.IsNullOrWhiteSpace(x.ItemCode)
+                    ? x.StackNo
+                    : x.StackNo + " — " + x.ItemCode + " " + x.ItemName,
+                ItemCode = x.ItemCode,
+                ItemName = x.ItemName,
+                StackNo = x.StackNo
             })
             .ToList();
     }

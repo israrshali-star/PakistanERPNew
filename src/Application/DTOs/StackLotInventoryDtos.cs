@@ -25,6 +25,8 @@ public record StackLotSaleValidationLine(
 
 public record LotItemOptionDto(string ItemCode, string LotNo);
 
+public record StackItemOptionDto(string StackNo, string ItemCode, string ItemName);
+
 public record LotDetailLookupDto(
     string LotNo,
     int ItemId,

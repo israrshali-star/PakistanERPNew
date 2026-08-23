@@ -5,6 +5,7 @@ public record StockSummaryLineDto(
     string ItemCode,
     string ItemName,
     string? LotNo,
+    string? VendorRefNo,
     string? CategoryName,
     string UnitSymbol,
     decimal CurrentStock,
@@ -28,6 +29,7 @@ public record StackWiseStockLineDto(
     string? CategoryName,
     string? LotNo,
     string? StackNo,
+    string? VendorRefNo,
     decimal Cartons,
     decimal Quantity,
     decimal PurchaseRate,
@@ -74,7 +76,8 @@ public record StockMovementLineDto(
     decimal TotalCost,
     string? StackNo,
     string? LotNo,
-    string? Notes);
+    string? Notes,
+    string? VendorRefNo);
 
 public record StockMovementReportDto(
     DateTime FromDate,
@@ -89,6 +92,44 @@ public record StockMovementReportDto(
     decimal TotalCartonsIn,
     decimal TotalCartonsOut,
     IReadOnlyList<StockMovementLineDto> Lines);
+
+public record StackMovementLineDto(
+    int ItemId,
+    string ItemCode,
+    string ItemName,
+    string? StackNo,
+    string? LotNo,
+    string? VendorRefNo,
+    string? WarehouseName,
+    decimal OpeningQty,
+    decimal OpeningCartons,
+    decimal QtyIn,
+    decimal QtyOut,
+    decimal CartonsIn,
+    decimal CartonsOut,
+    decimal AdjustmentQty,
+    decimal ClosingQty,
+    decimal ClosingCartons,
+    IReadOnlyList<StockMovementLineDto> Movements);
+
+public record StackMovementReportDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    int? ItemId,
+    string? ItemLabel,
+    string? StackNo,
+    int? WarehouseId,
+    string? WarehouseLabel,
+    int StackCount,
+    decimal TotalOpeningQty,
+    decimal TotalOpeningCartons,
+    decimal TotalQtyIn,
+    decimal TotalQtyOut,
+    decimal TotalCartonsIn,
+    decimal TotalCartonsOut,
+    decimal TotalClosingQty,
+    decimal TotalClosingCartons,
+    IReadOnlyList<StackMovementLineDto> Lines);
 
 public record InventoryReportItemLookupDto(int Id, string ItemCode, string ItemName);
 
@@ -109,5 +150,14 @@ public class StockMovementReportRequest
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
     public int? ItemId { get; set; }
+    public int? WarehouseId { get; set; }
+}
+
+public class StackMovementReportRequest
+{
+    public DateTime FromDate { get; set; }
+    public DateTime ToDate { get; set; }
+    public int? ItemId { get; set; }
+    public string? StackNo { get; set; }
     public int? WarehouseId { get; set; }
 }

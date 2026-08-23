@@ -168,6 +168,71 @@ public class StackLotInventoryService : IStackLotInventoryService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<StackItemOptionDto>> SearchStackNumbersAsync(
+        string? query,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var take = limit <= 0 ? 20 : Math.Min(limit, 50);
+        var term = string.IsNullOrWhiteSpace(query) ? string.Empty : query.Trim();
+        var companyId = _currentCompany.GetRequiredCompanyId();
+
+        var fromItems = await _unitOfWork.Repository<Domain.Entities.Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId
+                        && i.IsActive
+                        && i.StackNo != ""
+                        && i.ItemType != ItemType.Service
+                        && (term == ""
+                            || i.StackNo.Contains(term)
+                            || i.ItemCode.Contains(term)
+                            || i.ItemName.Contains(term)))
+            .Select(i => new { i.StackNo, i.ItemCode, i.ItemName })
+            .Take(take * 2)
+            .ToListAsync(cancellationToken);
+
+        var fromPurchases = await _unitOfWork.Repository<Domain.Entities.VendorBillLine>()
+            .Query()
+            .Where(l => l.VendorBill.CompanyId == companyId
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber)
+                        && l.ItemId != null
+                        && l.StackNo != null
+                        && l.StackNo != ""
+                        && (term == ""
+                            || l.StackNo.Contains(term)
+                            || l.Item!.ItemCode.Contains(term)
+                            || l.Item.ItemName.Contains(term)))
+            .Select(l => new { StackNo = l.StackNo!, ItemCode = l.Item!.ItemCode, ItemName = l.Item.ItemName })
+            .Take(take * 2)
+            .ToListAsync(cancellationToken);
+
+        var fromTransactions = await _unitOfWork.Repository<Domain.Entities.InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId
+                        && !t.IsDeleted
+                        && t.StackNo != null
+                        && t.StackNo != ""
+                        && (term == ""
+                            || t.StackNo.Contains(term)
+                            || t.Item.ItemCode.Contains(term)
+                            || t.Item.ItemName.Contains(term)))
+            .Select(t => new { StackNo = t.StackNo!, ItemCode = t.Item.ItemCode, ItemName = t.Item.ItemName })
+            .Take(take * 2)
+            .ToListAsync(cancellationToken);
+
+        return fromItems
+            .Concat(fromPurchases)
+            .Concat(fromTransactions)
+            .Select(x => new StackItemOptionDto(x.StackNo.Trim(), x.ItemCode.Trim(), x.ItemName.Trim()))
+            .Where(x => !string.IsNullOrWhiteSpace(x.StackNo))
+            .GroupBy(x => x.StackNo, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .OrderBy(x => x.StackNo, StringComparer.OrdinalIgnoreCase)
+            .Take(take)
+            .ToList();
+    }
+
     public async Task<LotDetailLookupDto?> GetLotDetailAsync(
         string lotNo,
         string? itemCode = null,

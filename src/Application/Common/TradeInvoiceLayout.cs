@@ -43,6 +43,10 @@ public static class TradeInvoiceLayout
     public static bool AllowsInsufficientBankBalanceForCheques(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) has a stock movement report grouped by stack number.</summary>
+    public static bool SupportsStackMovementReport(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     /// <summary>
     /// Companies that must submit FBR seller/buyer NTN without the check digit after '-'.
     /// Example: 1234567-8 → 1234567.

@@ -109,6 +109,11 @@ public class InventoryReportService : IInventoryReportService
             })
             .ToListAsync(cancellationToken);
 
+        var vendorRefs = await BuildVendorRefLookupsAsync(
+            companyId,
+            itemIds,
+            asOfEnd,
+            cancellationToken);
         var purchaseCartonsByLot = await BuildLotPurchaseCartonsAsync(
             companyId,
             itemIds,
@@ -261,6 +266,7 @@ public class InventoryReportService : IInventoryReportService
                     first.ItemCode,
                     first.ItemName,
                     lotNo,
+                    vendorRefs.ForLot(first.ItemId, lotNo),
                     first.CategoryName,
                     first.UnitSymbol,
                     stock,
@@ -350,6 +356,11 @@ public class InventoryReportService : IInventoryReportService
                         : t.Quantity)
             })
             .ToListAsync(cancellationToken);
+        var vendorRefs = await BuildVendorRefLookupsAsync(
+            companyId,
+            itemIds,
+            asOfEnd,
+            cancellationToken);
         var purchaseCartonsByStack = await BuildStackPurchaseCartonsAsync(
             companyId,
             itemIds,
@@ -403,6 +414,7 @@ public class InventoryReportService : IInventoryReportService
                     item.CategoryName,
                     string.IsNullOrWhiteSpace(s.LotNo) ? null : s.LotNo,
                     string.IsNullOrWhiteSpace(s.StackNo) ? null : s.StackNo,
+                    vendorRefs.ForStack(s.ItemId, s.StackNo, s.LotNo),
                     cartons,
                     quantity,
                     rate,
@@ -539,6 +551,16 @@ public class InventoryReportService : IInventoryReportService
                 .Distinct()
                 .ToList(),
             cancellationToken);
+        var movementItemIds = transactions.Select(t => t.ItemId).Distinct().ToList();
+        if (request.ItemId.HasValue && !movementItemIds.Contains(request.ItemId.Value))
+        {
+            movementItemIds.Add(request.ItemId.Value);
+        }
+        var vendorRefs = await BuildVendorRefLookupsAsync(
+            companyId,
+            movementItemIds,
+            to,
+            cancellationToken);
         var lines = transactions
             .Select(t =>
             {
@@ -568,7 +590,8 @@ public class InventoryReportService : IInventoryReportService
                     t.TotalCost,
                     t.StackNo,
                     t.LotNo,
-                    t.Notes);
+                    t.Notes,
+                    vendorRefs.Resolve(t.ReferenceNo, t.ItemId, t.StackNo, t.LotNo));
             })
             .ToList();
         var missingOpeningLines = await BuildMissingOpeningStockMovementLinesAsync(
@@ -578,6 +601,7 @@ public class InventoryReportService : IInventoryReportService
             request.ItemId,
             request.WarehouseId,
             warehouseLabel,
+            vendorRefs,
             cancellationToken);
         if (missingOpeningLines.Count > 0)
         {
@@ -624,6 +648,7 @@ public class InventoryReportService : IInventoryReportService
             warehouseLabel,
             transactions.Select(t => (t.ItemId, t.StackNo, t.LotNo)),
             coveredOpeningKeys,
+            vendorRefs,
             cancellationToken);
         if (contextualOpeningLines.Count > 0)
         {
@@ -660,6 +685,333 @@ public class InventoryReportService : IInventoryReportService
             lines.Sum(l => l.QtyOut),
             lines.Sum(l => l.CartonsIn),
             lines.Sum(l => l.CartonsOut),
+            lines);
+    }
+
+    public async Task<StackMovementReportDto> GetStackMovementReportAsync(
+        StackMovementReportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.FromDate == default || request.ToDate == default)
+        {
+            throw new InvalidOperationException("From and to dates are required.");
+        }
+        if (request.FromDate.Date > request.ToDate.Date)
+        {
+            throw new InvalidOperationException("From date cannot be after to date.");
+        }
+
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var from = request.FromDate.Date;
+        var to = request.ToDate.Date.AddDays(1).AddTicks(-1);
+        var stackFilter = string.IsNullOrWhiteSpace(request.StackNo) ? null : request.StackNo.Trim();
+
+        string? itemLabel = null;
+        if (request.ItemId.HasValue)
+        {
+            itemLabel = await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.Id == request.ItemId.Value && i.CompanyId == companyId)
+                .Select(i => i.ItemCode + " — " + i.ItemName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        string? warehouseLabel = null;
+        if (request.WarehouseId.HasValue)
+        {
+            warehouseLabel = await _unitOfWork.Repository<Warehouse>()
+                .Query()
+                .Where(w => w.Id == request.WarehouseId.Value && w.CompanyId == companyId)
+                .Select(w => w.Code + " — " + w.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var periodQuery = BuildStackMovementTransactionQuery(
+            companyId,
+            request.ItemId,
+            request.WarehouseId,
+            stackFilter);
+        var periodTransactions = await periodQuery
+            .Where(t => t.TransactionDate >= from && t.TransactionDate <= to)
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.Id)
+            .Select(t => new StackMovementTxn(
+                t.ItemId,
+                t.TransactionDate,
+                t.ReferenceNo,
+                t.TransactionType,
+                t.Item.ItemCode,
+                t.Item.ItemName,
+                t.Warehouse.Name,
+                t.Quantity,
+                t.UnitCost,
+                t.TotalCost,
+                t.StackNo,
+                t.Item.StackNo,
+                t.LotNo,
+                t.Item.LotNo,
+                t.Notes))
+            .ToListAsync(cancellationToken);
+
+        var keys = periodTransactions
+            .Select(t => StackMovementKey.From(t.ItemId, t.StackNo, t.ItemStackNo))
+            .ToHashSet();
+
+        if (keys.Count == 0 && stackFilter is not null)
+        {
+            var openingOnlyKeys = await BuildStackMovementTransactionQuery(
+                    companyId,
+                    request.ItemId,
+                    request.WarehouseId,
+                    stackFilter)
+                .Where(t => t.TransactionDate < from)
+                .Select(t => new { t.ItemId, t.StackNo, ItemStackNo = t.Item.StackNo })
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            foreach (var row in openingOnlyKeys)
+            {
+                keys.Add(StackMovementKey.From(row.ItemId, row.StackNo, row.ItemStackNo));
+            }
+        }
+
+        if (keys.Count == 0)
+        {
+            return new StackMovementReportDto(
+                request.FromDate.Date,
+                request.ToDate.Date,
+                request.ItemId,
+                itemLabel,
+                stackFilter,
+                request.WarehouseId,
+                warehouseLabel,
+                0,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                []);
+        }
+
+        var itemIds = keys.Select(k => k.ItemId).Distinct().ToList();
+        var vendorRefs = await BuildVendorRefLookupsAsync(
+            companyId,
+            itemIds,
+            to,
+            cancellationToken);
+        var openingRows = await BuildStackMovementTransactionQuery(
+                companyId,
+                request.ItemId,
+                request.WarehouseId,
+                stackFilter)
+            .Where(t => t.TransactionDate < from && itemIds.Contains(t.ItemId))
+            .Select(t => new
+            {
+                t.ItemId,
+                t.StackNo,
+                ItemStackNo = t.Item.StackNo,
+                t.LotNo,
+                ItemLotNo = t.Item.LotNo,
+                t.Item.ItemCode,
+                t.Item.ItemName,
+                t.Warehouse.Name,
+                SignedQty = t.TransactionType == InventoryTransactionType.StockOut
+                    ? -t.Quantity
+                    : t.Quantity
+            })
+            .ToListAsync(cancellationToken);
+
+        var openingByKey = openingRows
+            .GroupBy(t => StackMovementKey.From(t.ItemId, t.StackNo, t.ItemStackNo))
+            .ToDictionary(
+                g => g.Key,
+                g => (
+                    Qty: Math.Round(g.Sum(x => x.SignedQty), 2),
+                    ItemCode: g.Select(x => x.ItemCode).First(),
+                    ItemName: g.Select(x => x.ItemName).First(),
+                    LotNo: FirstNonEmpty(g.Select(x => x.LotNo).Concat(g.Select(x => x.ItemLotNo))),
+                    WarehouseName: g.Select(x => x.Name).First()));
+
+        var cartonResolver = await BuildMovementCartonResolverAsync(
+            companyId,
+            periodTransactions
+                .Where(t => !string.IsNullOrWhiteSpace(t.ReferenceNo))
+                .Select(t => t.ReferenceNo!)
+                .Distinct()
+                .ToList(),
+            cancellationToken);
+
+        var openingCartonsByKey = await BuildStackCartonsAsOfAsync(
+            companyId,
+            itemIds,
+            from.AddTicks(-1),
+            stackFilter,
+            cancellationToken);
+        var periodPurchaseCartons = await BuildStackPurchaseCartonsInRangeAsync(
+            companyId,
+            itemIds,
+            from,
+            to,
+            stackFilter,
+            cancellationToken);
+        var periodSalesCartons = await BuildStackSalesCartonsInRangeAsync(
+            companyId,
+            itemIds,
+            from,
+            to,
+            stackFilter,
+            cancellationToken);
+
+        var movementsByKey = periodTransactions
+            .GroupBy(t => StackMovementKey.From(t.ItemId, t.StackNo, t.ItemStackNo))
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(t =>
+                {
+                    var stackNo = ResolveStackLotValue(t.StackNo, t.ItemStackNo);
+                    var lotNo = ResolveStackLotValue(t.LotNo, t.ItemLotNo);
+                    var isIn = t.TransactionType is InventoryTransactionType.StockIn
+                        or InventoryTransactionType.Opening;
+                    var isOut = t.TransactionType == InventoryTransactionType.StockOut;
+                    var movementQty = isIn || isOut ? t.Quantity : 0m;
+                    var cartons = cartonResolver.Resolve(
+                        t.ReferenceNo,
+                        t.ItemId,
+                        stackNo,
+                        lotNo,
+                        movementQty);
+                    return new StockMovementLineDto(
+                        t.TransactionDate,
+                        t.ReferenceNo,
+                        t.TransactionType.ToString(),
+                        t.ItemCode,
+                        t.ItemName,
+                        t.WarehouseName,
+                        isIn ? t.Quantity : 0m,
+                        isOut ? t.Quantity : 0m,
+                        isIn ? cartons : 0m,
+                        isOut ? cartons : 0m,
+                        t.TransactionType == InventoryTransactionType.Adjustment ? t.Quantity : 0m,
+                        t.UnitCost,
+                        t.TotalCost,
+                        stackNo,
+                        lotNo,
+                        t.Notes,
+                        vendorRefs.Resolve(t.ReferenceNo, t.ItemId, stackNo, lotNo));
+                }).ToList());
+
+        var lines = new List<StackMovementLineDto>();
+        foreach (var key in keys)
+        {
+            movementsByKey.TryGetValue(key, out var movements);
+            movements ??= [];
+            openingByKey.TryGetValue(key, out var opening);
+            var cartonKey = StackCartonKey(key.ItemId, key.StackNo);
+            var openingQty = opening.Qty;
+            var openingCartons = openingCartonsByKey.GetValueOrDefault(cartonKey);
+            var qtyIn = movements.Sum(m => m.QtyIn);
+            var qtyOut = movements.Sum(m => m.QtyOut);
+            var cartonsIn = periodPurchaseCartons.GetValueOrDefault(cartonKey);
+            if (cartonsIn == 0m)
+            {
+                cartonsIn = movements.Sum(m => m.CartonsIn);
+            }
+            var cartonsOut = periodSalesCartons.GetValueOrDefault(cartonKey);
+            if (cartonsOut == 0m)
+            {
+                cartonsOut = movements.Sum(m => m.CartonsOut);
+            }
+            var adjustmentQty = movements.Sum(m => m.AdjustmentQty);
+            var closingQty = Math.Round(openingQty + qtyIn - qtyOut + adjustmentQty, 2);
+            var closingCartons = Math.Round(openingCartons + cartonsIn - cartonsOut, 2);
+            if (stackFilter is null
+                && openingQty == 0m
+                && qtyIn == 0m
+                && qtyOut == 0m
+                && adjustmentQty == 0m
+                && openingCartons == 0m
+                && cartonsIn == 0m
+                && cartonsOut == 0m)
+            {
+                continue;
+            }
+
+            var sample = movements.FirstOrDefault();
+            lines.Add(new StackMovementLineDto(
+                key.ItemId,
+                sample?.ItemCode ?? opening.ItemCode ?? string.Empty,
+                sample?.ItemName ?? opening.ItemName ?? string.Empty,
+                key.StackNo,
+                sample?.LotNo ?? opening.LotNo,
+                vendorRefs.ForStack(key.ItemId, key.StackNo, sample?.LotNo ?? opening.LotNo),
+                sample?.WarehouseName ?? opening.WarehouseName ?? warehouseLabel,
+                openingQty,
+                openingCartons,
+                qtyIn,
+                qtyOut,
+                cartonsIn,
+                cartonsOut,
+                adjustmentQty,
+                closingQty,
+                closingCartons,
+                movements));
+        }
+
+        var missingItemIds = lines
+            .Where(l => string.IsNullOrWhiteSpace(l.ItemCode))
+            .Select(l => l.ItemId)
+            .Distinct()
+            .ToList();
+        if (missingItemIds.Count > 0)
+        {
+            var itemLookup = await _unitOfWork.Repository<Item>()
+                .Query()
+                .Where(i => i.CompanyId == companyId && missingItemIds.Contains(i.Id))
+                .Select(i => new { i.Id, i.ItemCode, i.ItemName, i.LotNo })
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+            lines = lines
+                .Select(l =>
+                {
+                    if (!string.IsNullOrWhiteSpace(l.ItemCode) || !itemLookup.TryGetValue(l.ItemId, out var item))
+                    {
+                        return l;
+                    }
+
+                    return l with
+                    {
+                        ItemCode = item.ItemCode,
+                        ItemName = item.ItemName,
+                        LotNo = l.LotNo ?? (string.IsNullOrWhiteSpace(item.LotNo) ? null : item.LotNo)
+                    };
+                })
+                .ToList();
+        }
+
+        lines = lines
+            .OrderBy(l => l.StackNo, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(l => l.ItemCode, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new StackMovementReportDto(
+            request.FromDate.Date,
+            request.ToDate.Date,
+            request.ItemId,
+            itemLabel,
+            stackFilter,
+            request.WarehouseId,
+            warehouseLabel,
+            lines.Count,
+            lines.Sum(l => l.OpeningQty),
+            lines.Sum(l => l.OpeningCartons),
+            lines.Sum(l => l.QtyIn),
+            lines.Sum(l => l.QtyOut),
+            lines.Sum(l => l.CartonsIn),
+            lines.Sum(l => l.CartonsOut),
+            lines.Sum(l => l.ClosingQty),
+            lines.Sum(l => l.ClosingCartons),
             lines);
     }
 
@@ -954,6 +1306,7 @@ public class InventoryReportService : IInventoryReportService
         int? itemId,
         int? warehouseId,
         string? warehouseLabel,
+        VendorRefLookups vendorRefs,
         CancellationToken cancellationToken)
     {
         int? defaultWarehouseId = warehouseId;
@@ -997,7 +1350,8 @@ public class InventoryReportService : IInventoryReportService
                 l.Rate,
                 l.Amount,
                 l.StackNo,
-                l.LotNo
+                l.LotNo,
+                l.VendorBill.RefNo
             })
             .ToListAsync(cancellationToken);
         if (openingLines.Count == 0)
@@ -1046,7 +1400,9 @@ public class InventoryReportService : IInventoryReportService
                 l.Amount,
                 l.StackNo,
                 l.LotNo,
-                $"Opening stock {l.BillNumber}"))
+                $"Opening stock {l.BillNumber}",
+                UsefulVendorRef(l.RefNo)
+                    ?? vendorRefs.Resolve(l.BillNumber, l.ItemId, l.StackNo, l.LotNo)))
             .ToList();
     }
 
@@ -1068,6 +1424,7 @@ public class InventoryReportService : IInventoryReportService
         string? warehouseLabel,
         IEnumerable<(int ItemId, string? StackNo, string? LotNo)> periodActivity,
         IReadOnlySet<string> coveredOpeningStackLotKeys,
+        VendorRefLookups vendorRefs,
         CancellationToken cancellationToken)
     {
         if (from <= OpeningStockBillDate.Date)
@@ -1150,7 +1507,8 @@ public class InventoryReportService : IInventoryReportService
                     t.TotalCost,
                     t.StackNo,
                     t.LotNo,
-                    t.Notes);
+                    t.Notes,
+                    vendorRefs.Resolve(t.ReferenceNo, t.ItemId, t.StackNo, t.LotNo));
             })
             .ToList();
     }
@@ -1263,9 +1621,350 @@ public class InventoryReportService : IInventoryReportService
                     x.InvoiceType == InvoiceType.CreditNote ? -x.Cartons : x.Cartons), 2));
     }
 
+    private IQueryable<InventoryTransaction> BuildStackMovementTransactionQuery(
+        int companyId,
+        int? itemId,
+        int? warehouseId,
+        string? stackNo)
+    {
+        var query = _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId && !t.IsDeleted);
+        if (itemId.HasValue)
+        {
+            query = query.Where(t => t.ItemId == itemId.Value);
+        }
+        if (warehouseId.HasValue)
+        {
+            query = query.Where(t => t.WarehouseId == warehouseId.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(stackNo))
+        {
+            query = query.Where(t =>
+                t.StackNo == stackNo
+                || ((t.StackNo == null || t.StackNo == "") && t.Item.StackNo == stackNo));
+        }
+
+        return query;
+    }
+
+    private async Task<Dictionary<string, decimal>> BuildStackCartonsAsOfAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime asOfEnd,
+        string? stackNo,
+        CancellationToken cancellationToken)
+    {
+        var purchases = await BuildStackPurchaseCartonsInRangeAsync(
+            companyId,
+            itemIds,
+            null,
+            asOfEnd,
+            stackNo,
+            cancellationToken);
+        var sales = await BuildStackSalesCartonsInRangeAsync(
+            companyId,
+            itemIds,
+            null,
+            asOfEnd,
+            stackNo,
+            cancellationToken);
+        var keys = purchases.Keys.Concat(sales.Keys).Distinct(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            result[key] = Math.Round(
+                purchases.GetValueOrDefault(key) - sales.GetValueOrDefault(key),
+                2);
+        }
+
+        return result;
+    }
+
+    private async Task<Dictionary<string, decimal>> BuildStackPurchaseCartonsInRangeAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime? fromInclusive,
+        DateTime toInclusive,
+        string? stackNo,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var query = _unitOfWork.Repository<VendorBillLine>()
+            .Query()
+            .Where(l => l.ItemId.HasValue
+                        && itemIds.Contains(l.ItemId.Value)
+                        && l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.BillDate <= toInclusive
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == OpeningStockBillNumber));
+        if (fromInclusive.HasValue)
+        {
+            query = query.Where(l => l.VendorBill.BillDate >= fromInclusive.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(stackNo))
+        {
+            query = query.Where(l =>
+                l.StackNo == stackNo
+                || ((l.StackNo == null || l.StackNo == "") && l.Item!.StackNo == stackNo));
+        }
+
+        var lines = await query
+            .Select(l => new
+            {
+                ItemId = l.ItemId!.Value,
+                l.StackNo,
+                ItemStackNo = l.Item!.StackNo,
+                l.Cartons
+            })
+            .ToListAsync(cancellationToken);
+        return lines
+            .GroupBy(l => StackCartonKey(l.ItemId, ResolveStackLotValue(l.StackNo, l.ItemStackNo)))
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(g.Sum(x => x.Cartons), 2),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<Dictionary<string, decimal>> BuildStackSalesCartonsInRangeAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime? fromInclusive,
+        DateTime toInclusive,
+        string? stackNo,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var query = _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query()
+            .Where(l => itemIds.Contains(l.ItemId)
+                        && l.SalesInvoice.CompanyId == companyId
+                        && l.SalesInvoice.Status == InvoiceStatus.Posted
+                        && l.SalesInvoice.InvoiceDate <= toInclusive);
+        if (fromInclusive.HasValue)
+        {
+            query = query.Where(l => l.SalesInvoice.InvoiceDate >= fromInclusive.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(stackNo))
+        {
+            query = query.Where(l =>
+                l.StackNo == stackNo
+                || ((l.StackNo == null || l.StackNo == "") && l.Item.StackNo == stackNo));
+        }
+
+        var lines = await query
+            .Select(l => new
+            {
+                l.ItemId,
+                l.StackNo,
+                ItemStackNo = l.Item.StackNo,
+                l.Cartons,
+                l.SalesInvoice.InvoiceType
+            })
+            .ToListAsync(cancellationToken);
+        return lines
+            .GroupBy(l => StackCartonKey(l.ItemId, ResolveStackLotValue(l.StackNo, l.ItemStackNo)))
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(g.Sum(x =>
+                    x.InvoiceType == InvoiceType.CreditNote ? -x.Cartons : x.Cartons), 2),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<VendorRefLookups> BuildVendorRefLookupsAsync(
+        int companyId,
+        IReadOnlyList<int> itemIds,
+        DateTime? asOfEnd,
+        CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0)
+        {
+            return VendorRefLookups.Empty;
+        }
+
+        var query = _unitOfWork.Repository<VendorBillLine>()
+            .Query()
+            .Where(l => l.ItemId.HasValue
+                        && itemIds.Contains(l.ItemId.Value)
+                        && l.VendorBill.CompanyId == companyId
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == OpeningStockBillNumber));
+        if (asOfEnd.HasValue)
+        {
+            query = query.Where(l => l.VendorBill.BillDate <= asOfEnd.Value);
+        }
+
+        var rows = await query
+            .Select(l => new
+            {
+                ItemId = l.ItemId!.Value,
+                l.StackNo,
+                ItemStackNo = l.Item!.StackNo,
+                l.LotNo,
+                ItemLotNo = l.Item.LotNo,
+                l.VendorBill.BillNumber,
+                l.VendorBill.RefNo,
+                l.VendorBill.BillDate
+            })
+            .ToListAsync(cancellationToken);
+
+        var byBill = rows
+            .GroupBy(r => (r.BillNumber ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, Ref: JoinVendorRefs(g.Select(x => (x.BillDate, x.RefNo)))))
+            .Where(x => x.Key.Length > 0 && x.Ref is not null)
+            .ToDictionary(x => x.Key, x => x.Ref!, StringComparer.OrdinalIgnoreCase);
+
+        var byStack = rows
+            .GroupBy(r => StackCartonKey(r.ItemId, ResolveStackLotValue(r.StackNo, r.ItemStackNo)))
+            .Select(g => (g.Key, Ref: JoinVendorRefs(g.Select(x => (x.BillDate, x.RefNo)))))
+            .Where(x => x.Ref is not null)
+            .ToDictionary(x => x.Key, x => x.Ref!, StringComparer.OrdinalIgnoreCase);
+
+        var byLot = rows
+            .GroupBy(r => LotCartonKey(r.ItemId, ResolveStackLotValue(r.LotNo, r.ItemLotNo)))
+            .Select(g => (g.Key, Ref: JoinVendorRefs(g.Select(x => (x.BillDate, x.RefNo)))))
+            .Where(x => x.Ref is not null)
+            .ToDictionary(x => x.Key, x => x.Ref!, StringComparer.OrdinalIgnoreCase);
+
+        return new VendorRefLookups(byBill, byStack, byLot);
+    }
+
+    private static string? UsefulVendorRef(string? refNo)
+    {
+        if (string.IsNullOrWhiteSpace(refNo))
+        {
+            return null;
+        }
+
+        var trimmed = refNo.Trim();
+        if (string.Equals(trimmed, OpeningStockRefNo, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, OpeningStockBillNumber, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return trimmed;
+    }
+
+    private static string? JoinVendorRefs(IEnumerable<(DateTime Date, string? RefNo)> rows)
+    {
+        var refs = rows
+            .Select(r => UsefulVendorRef(r.RefNo))
+            .Where(r => r is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return refs.Count == 0 ? null : string.Join(", ", refs);
+    }
+
+    private static string? ResolveStackLotValue(string? lineValue, string? itemValue)
+    {
+        if (!string.IsNullOrWhiteSpace(lineValue))
+        {
+            return lineValue.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(itemValue) ? null : itemValue.Trim();
+    }
+
+    private static string? FirstNonEmpty(IEnumerable<string?> values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();
+
     private static string StackCartonKey(int itemId, string? stackNo) =>
         $"{itemId}|{(stackNo ?? string.Empty).Trim()}";
 
     private static string LotCartonKey(int itemId, string? lotNo) =>
         $"{itemId}|{(lotNo ?? string.Empty).Trim().ToUpperInvariant()}";
+
+    private sealed class VendorRefLookups
+    {
+        public static VendorRefLookups Empty { get; } = new(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        private readonly Dictionary<string, string> _byBillNumber;
+        private readonly Dictionary<string, string> _byStack;
+        private readonly Dictionary<string, string> _byLot;
+
+        public VendorRefLookups(
+            Dictionary<string, string> byBillNumber,
+            Dictionary<string, string> byStack,
+            Dictionary<string, string> byLot)
+        {
+            _byBillNumber = byBillNumber;
+            _byStack = byStack;
+            _byLot = byLot;
+        }
+
+        public string? Resolve(string? billNumber, int itemId, string? stackNo, string? lotNo)
+        {
+            if (!string.IsNullOrWhiteSpace(billNumber)
+                && _byBillNumber.TryGetValue(billNumber.Trim(), out var byBill)
+                && !string.IsNullOrWhiteSpace(byBill))
+            {
+                return byBill;
+            }
+
+            return ForStack(itemId, stackNo, lotNo);
+        }
+
+        public string? ForStack(int itemId, string? stackNo, string? lotNo)
+        {
+            if (_byStack.TryGetValue(StackCartonKey(itemId, stackNo), out var byStack)
+                && !string.IsNullOrWhiteSpace(byStack))
+            {
+                return byStack;
+            }
+
+            if (string.IsNullOrWhiteSpace(stackNo))
+            {
+                return ForLot(itemId, lotNo);
+            }
+
+            return null;
+        }
+
+        public string? ForLot(int itemId, string? lotNo)
+        {
+            if (_byLot.TryGetValue(LotCartonKey(itemId, lotNo), out var byLot)
+                && !string.IsNullOrWhiteSpace(byLot))
+            {
+                return byLot;
+            }
+
+            return null;
+        }
+    }
+
+    private sealed record StackMovementKey(int ItemId, string? StackNo)
+    {
+        public static StackMovementKey From(int itemId, string? stackNo, string? itemStackNo) =>
+            new(itemId, ResolveStackLotValue(stackNo, itemStackNo));
+    }
+
+    private sealed record StackMovementTxn(
+        int ItemId,
+        DateTime TransactionDate,
+        string? ReferenceNo,
+        InventoryTransactionType TransactionType,
+        string ItemCode,
+        string ItemName,
+        string WarehouseName,
+        decimal Quantity,
+        decimal UnitCost,
+        decimal TotalCost,
+        string? StackNo,
+        string? ItemStackNo,
+        string? LotNo,
+        string? ItemLotNo,
+        string? Notes);
 }

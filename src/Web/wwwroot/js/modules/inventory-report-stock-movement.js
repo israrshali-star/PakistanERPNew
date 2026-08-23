@@ -62,7 +62,7 @@
         $tbody.empty();
 
         if (!data.lines || data.lines.length === 0) {
-            $tbody.append('<tr><td colspan="13" class="text-muted text-center">No transactions in this period.</td></tr>');
+            $tbody.append('<tr><td colspan="14" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
@@ -72,6 +72,7 @@
                 '<tr>' +
                 '<td>' + formatDate(line.transactionDate) + '</td>' +
                 '<td>' + (line.referenceNo ? '<code>' + escapeHtml(line.referenceNo) + '</code>' : '—') + '</td>' +
+                '<td>' + (line.vendorRefNo ? escapeHtml(line.vendorRefNo) : '—') + '</td>' +
                 '<td>' + escapeHtml(line.transactionType) + '</td>' +
                 '<td><code>' + escapeHtml(line.itemCode) + '</code> ' + escapeHtml(line.itemName) + '</td>' +
                 '<td>' + escapeHtml(line.stackNo || '—') + '</td>' +

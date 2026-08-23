@@ -43,6 +43,13 @@ public class InventoryReportsController : Controller
         ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
         return View();
     }
+
+    public IActionResult StackMovement()
+    {
+        ViewData["BreadcrumbParent"] = "Inventory Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
 }
 
 [Authorize]
@@ -144,6 +151,36 @@ public class InventoryReportsApiController : ControllerBase
                     FromDate = fromDate,
                     ToDate = toDate,
                     ItemId = itemId,
+                    WarehouseId = warehouseId
+                },
+                cancellationToken);
+            return Ok(report);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("stack-movement")]
+    [RequirePermission("Inventory.View")]
+    public async Task<IActionResult> StackMovement(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] int? itemId,
+        [FromQuery] string? stackNo,
+        [FromQuery] int? warehouseId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _inventoryReportService.GetStackMovementReportAsync(
+                new StackMovementReportRequest
+                {
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    ItemId = itemId,
+                    StackNo = stackNo,
                     WarehouseId = warehouseId
                 },
                 cancellationToken);

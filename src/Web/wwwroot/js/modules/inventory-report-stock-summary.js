@@ -183,7 +183,7 @@
 
 
         if (!data.lines || data.lines.length === 0) {
-            $tbody.append('<tr><td colspan="9" class="text-muted text-center">No items found.</td></tr>');
+            $tbody.append('<tr><td colspan="10" class="text-muted text-center">No items found.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
@@ -194,6 +194,7 @@
                 '<td><code>' + escapeHtml(line.itemCode) + '</code></td>' +
                 '<td>' + escapeHtml(line.itemName) + '</td>' +
                 '<td>' + (line.lotNo ? escapeHtml(line.lotNo) : '—') + '</td>' +
+                '<td>' + (line.vendorRefNo ? escapeHtml(line.vendorRefNo) : '—') + '</td>' +
                 '<td>' + (line.categoryName ? escapeHtml(line.categoryName) : '—') + '</td>' +
                 '<td>' + escapeHtml(line.unitSymbol) + '</td>' +
                 '<td class="text-end">' + formatQty(line.currentStock, line.unitSymbol) + '</td>' +

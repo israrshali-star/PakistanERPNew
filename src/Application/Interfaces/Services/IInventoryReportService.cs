@@ -19,6 +19,10 @@ public interface IInventoryReportService
         StockMovementReportRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<StackMovementReportDto> GetStackMovementReportAsync(
+        StackMovementReportRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<InventoryReportItemLookupDto>> GetItemLookupsAsync(
         CancellationToken cancellationToken = default);
 

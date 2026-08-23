@@ -68,16 +68,37 @@
             </div>
         </div>
     </div>
+    <div class="col-md-4 d-none" id="card-stack-movement">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-primary fs-3"><i class="fa-solid fa-barcode"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Stack Movement</h6>
+                    <p class="text-muted small mb-3">Opening, in, out, and closing by stack number</p>
+                    <a asp-action="StackMovement" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
     <script>
         (function () {
-            $.getJSON('/api/company/current').fail(function () {
-                $('#report-company-warning')
-                    .removeClass('d-none')
-                    .text('Select a company from the top navbar to run inventory reports.');
-            });
+            $.getJSON('/api/company/current')
+                .done(function (company) {
+                    var companyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                    if (companyId === 3) {
+                        $('#card-stack-movement').removeClass('d-none');
+                    }
+                })
+                .fail(function () {
+                    $('#report-company-warning')
+                        .removeClass('d-none')
+                        .text('Select a company from the top navbar to run inventory reports.');
+                });
         })();
     </script>
 }

@@ -23,6 +23,7 @@ public class EntitySearchItemDto
     public string? Ntn { get; init; }
     public string? Cnic { get; init; }
     public string? LotNo { get; init; }
+    public string? StackNo { get; init; }
     public string? UnitSymbol { get; init; }
     public string? PartyType { get; init; }
     public string? PartyName { get; init; }
