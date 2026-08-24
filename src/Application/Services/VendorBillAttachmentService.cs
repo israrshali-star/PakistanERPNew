@@ -62,7 +62,8 @@ public class VendorBillAttachmentService : IVendorBillAttachmentService
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
-        var validation = AttachmentFileRules.Validate(fileName, contentType, fileSizeBytes, _options);
+        var normalizedType = AttachmentFileRules.NormalizeContentType(fileName, contentType);
+        var validation = AttachmentFileRules.Validate(fileName, normalizedType, fileSizeBytes, _options);
         if (!validation.Success)
         {
             return validation;
@@ -100,16 +101,17 @@ public class VendorBillAttachmentService : IVendorBillAttachmentService
         var extension = Path.GetExtension(fileName);
         var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
         var relativeDirectory = Path.Combine("vendor-bills", companyId.ToString(), billId.ToString());
-        var absoluteDirectory = Path.Combine(AttachmentFileRules.GetStorageRoot(_options), relativeDirectory);
-        Directory.CreateDirectory(absoluteDirectory);
-
-        var absolutePath = Path.Combine(absoluteDirectory, storedFileName);
         var relativePath = Path.Combine(relativeDirectory, storedFileName).Replace('\\', '/');
         var now = DateTime.UtcNow;
         var userName = _currentUser.UserName ?? "system";
+        var absolutePath = string.Empty;
 
         try
         {
+            var absoluteDirectory = Path.Combine(AttachmentFileRules.GetStorageRoot(_options), relativeDirectory);
+            Directory.CreateDirectory(absoluteDirectory);
+            absolutePath = Path.Combine(absoluteDirectory, storedFileName);
+
             await using (var fileStream = new FileStream(absolutePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await content.CopyToAsync(fileStream, cancellationToken);
@@ -121,7 +123,7 @@ public class VendorBillAttachmentService : IVendorBillAttachmentService
                 VendorBillId = billId,
                 FileName = Path.GetFileName(fileName),
                 StoredFileName = storedFileName,
-                ContentType = contentType,
+                ContentType = normalizedType,
                 FileSizeBytes = fileSizeBytes,
                 RelativePath = relativePath,
                 CreatedAt = now,
@@ -144,13 +146,13 @@ public class VendorBillAttachmentService : IVendorBillAttachmentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to save attachment for vendor bill {BillId}", billId);
-            if (File.Exists(absolutePath))
+            _logger.LogError(ex, "Failed to save attachment for vendor bill {BillId} to {Path}", billId, absolutePath);
+            if (!string.IsNullOrEmpty(absolutePath) && File.Exists(absolutePath))
             {
                 File.Delete(absolutePath);
             }
 
-            return new DocumentAttachmentSaveResult(false, "Could not save attachment.", null);
+            return new DocumentAttachmentSaveResult(false, AttachmentFileRules.DescribeSaveFailure(ex), null);
         }
     }
 

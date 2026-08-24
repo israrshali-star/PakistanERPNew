@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Options;
 using PakistanAccountingERP.Infrastructure.Options;
 
@@ -29,7 +30,14 @@ public class StoragePathsHealthCheck : IHealthCheck
 
         CheckWritablePath("backup", _backupOptions.StoragePath, issues);
         CheckWritablePath("export", _exportOptions.StoragePath, issues);
-        CheckWritablePath("attachments", _attachmentOptions.StoragePath, issues);
+        try
+        {
+            CheckWritablePath("attachments", AttachmentFileRules.GetStorageRoot(_attachmentOptions), issues);
+        }
+        catch (Exception ex)
+        {
+            issues.Add($"attachments storage unavailable: {ex.Message}");
+        }
 
         if (issues.Count == 0)
         {

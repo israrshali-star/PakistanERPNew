@@ -198,6 +198,19 @@ try
             options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
             options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
         });
+    builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+    {
+        options.MultipartBodyLengthLimit = 15 * 1024 * 1024;
+        options.ValueLengthLimit = 15 * 1024 * 1024;
+    });
+    builder.Services.Configure<IISServerOptions>(options =>
+    {
+        options.MaxRequestBodySize = 15 * 1024 * 1024;
+    });
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.Limits.MaxRequestBodySize = 15 * 1024 * 1024;
+    });
     builder.Services.AddDistributedMemoryCache();
     builder.Services.AddSession(options =>
     {

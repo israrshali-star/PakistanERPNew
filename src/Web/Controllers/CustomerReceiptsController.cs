@@ -22,7 +22,7 @@ public class CustomerReceiptsController : Controller
 [Route("api/customer-receipts")]
 public class CustomerReceiptsApiController : ControllerBase
 {
-    private const long MaxAttachmentUploadBytes = 10 * 1024 * 1024;
+    private const long MaxAttachmentUploadBytes = 15 * 1024 * 1024;
 
     private readonly ICustomerReceiptService _customerReceiptService;
     private readonly ICustomerReceiptShareService _customerReceiptShareService;
@@ -322,10 +322,12 @@ public class CustomerReceiptsApiController : ControllerBase
     [HttpPost("{id:int}/attachments")]
     [RequirePermission("Sales.Create")]
     [IgnoreAntiforgeryToken]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxAttachmentUploadBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentUploadBytes)]
     public async Task<IActionResult> UploadAttachment(
         int id,
-        IFormFile? file,
+        [FromForm] IFormFile? file,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)

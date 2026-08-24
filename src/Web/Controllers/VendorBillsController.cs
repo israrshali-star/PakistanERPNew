@@ -88,7 +88,7 @@ public class VendorBillsController : Controller
 [Route("api/vendor-bills")]
 public class VendorBillsApiController : ControllerBase
 {
-    private const long MaxAttachmentUploadBytes = 10 * 1024 * 1024;
+    private const long MaxAttachmentUploadBytes = 15 * 1024 * 1024;
 
     private readonly IVendorBillService _vendorBillService;
     private readonly IVendorBillAttachmentService _attachmentService;
@@ -356,10 +356,12 @@ public class VendorBillsApiController : ControllerBase
     [HttpPost("{id:int}/attachments")]
     [RequirePermission("Purchase.Create")]
     [IgnoreAntiforgeryToken]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxAttachmentUploadBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentUploadBytes)]
     public async Task<IActionResult> UploadAttachment(
         int id,
-        IFormFile? file,
+        [FromForm] IFormFile? file,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)

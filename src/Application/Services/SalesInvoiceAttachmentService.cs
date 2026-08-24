@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -12,18 +13,6 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
 {
-    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".jpg", ".jpeg", ".png", ".pdf"
-    };
-
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/jpeg",
-        "image/png",
-        "application/pdf"
-    };
-
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly ICurrentUserService _currentUser;
@@ -73,10 +62,11 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
         CancellationToken cancellationToken = default)
     {
         var companyId = _currentCompany.GetRequiredCompanyId();
-        var validation = ValidateFile(fileName, contentType, fileSizeBytes);
+        var normalizedType = AttachmentFileRules.NormalizeContentType(fileName, contentType);
+        var validation = AttachmentFileRules.Validate(fileName, normalizedType, fileSizeBytes, _options);
         if (!validation.Success)
         {
-            return validation;
+            return new SalesInvoiceAttachmentSaveResult(false, validation.Message, null);
         }
 
         var invoice = await _unitOfWork.Repository<SalesInvoice>()
@@ -110,16 +100,17 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
         var extension = Path.GetExtension(fileName);
         var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
         var relativeDirectory = Path.Combine(companyId.ToString(), invoiceId.ToString());
-        var absoluteDirectory = Path.Combine(GetStorageRoot(), relativeDirectory);
-        Directory.CreateDirectory(absoluteDirectory);
-
-        var absolutePath = Path.Combine(absoluteDirectory, storedFileName);
         var relativePath = Path.Combine(relativeDirectory, storedFileName).Replace('\\', '/');
         var now = DateTime.UtcNow;
         var userName = _currentUser.UserName ?? "system";
+        var absolutePath = string.Empty;
 
         try
         {
+            var absoluteDirectory = Path.Combine(AttachmentFileRules.GetStorageRoot(_options), relativeDirectory);
+            Directory.CreateDirectory(absoluteDirectory);
+            absolutePath = Path.Combine(absoluteDirectory, storedFileName);
+
             await using (var fileStream = new FileStream(absolutePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await content.CopyToAsync(fileStream, cancellationToken);
@@ -131,7 +122,7 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
                 SalesInvoiceId = invoiceId,
                 FileName = Path.GetFileName(fileName),
                 StoredFileName = storedFileName,
-                ContentType = contentType,
+                ContentType = normalizedType,
                 FileSizeBytes = fileSizeBytes,
                 RelativePath = relativePath,
                 CreatedAt = now,
@@ -154,13 +145,13 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to save attachment for invoice {InvoiceId}", invoiceId);
-            if (File.Exists(absolutePath))
+            _logger.LogError(ex, "Failed to save attachment for invoice {InvoiceId} to {Path}", invoiceId, absolutePath);
+            if (!string.IsNullOrEmpty(absolutePath) && File.Exists(absolutePath))
             {
                 File.Delete(absolutePath);
             }
 
-            return new SalesInvoiceAttachmentSaveResult(false, "Could not save attachment.", null);
+            return new SalesInvoiceAttachmentSaveResult(false, AttachmentFileRules.DescribeSaveFailure(ex), null);
         }
     }
 
@@ -180,7 +171,9 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
             return null;
         }
 
-        var absolutePath = Path.Combine(GetStorageRoot(), attachment.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var absolutePath = Path.Combine(
+            AttachmentFileRules.GetStorageRoot(_options),
+            attachment.RelativePath.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(absolutePath))
         {
             return null;
@@ -211,7 +204,9 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
             return new SalesInvoiceAttachmentSaveResult(false, "Attachments can only be removed from draft invoices.", null);
         }
 
-        var absolutePath = Path.Combine(GetStorageRoot(), attachment.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var absolutePath = Path.Combine(
+            AttachmentFileRules.GetStorageRoot(_options),
+            attachment.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
         _unitOfWork.Repository<SalesInvoiceAttachment>().Remove(attachment);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -222,41 +217,5 @@ public class SalesInvoiceAttachmentService : ISalesInvoiceAttachmentService
         }
 
         return new SalesInvoiceAttachmentSaveResult(true, "Attachment deleted.", null);
-    }
-
-    private SalesInvoiceAttachmentSaveResult ValidateFile(string fileName, string contentType, long fileSizeBytes)
-    {
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            return new SalesInvoiceAttachmentSaveResult(false, "File name is required.", null);
-        }
-
-        var extension = Path.GetExtension(fileName);
-        if (string.IsNullOrWhiteSpace(extension) || !AllowedExtensions.Contains(extension))
-        {
-            return new SalesInvoiceAttachmentSaveResult(false, "Only JPG, PNG, and PDF files are allowed.", null);
-        }
-
-        if (string.IsNullOrWhiteSpace(contentType) || !AllowedContentTypes.Contains(contentType))
-        {
-            return new SalesInvoiceAttachmentSaveResult(false, "Invalid file type. Only JPG, PNG, and PDF are allowed.", null);
-        }
-
-        var maxBytes = _options.MaxFileSizeMb * 1024L * 1024L;
-        if (fileSizeBytes <= 0 || fileSizeBytes > maxBytes)
-        {
-            return new SalesInvoiceAttachmentSaveResult(
-                false,
-                $"File size must be between 1 byte and {_options.MaxFileSizeMb} MB.",
-                null);
-        }
-
-        return new SalesInvoiceAttachmentSaveResult(true, null, null);
-    }
-
-    private string GetStorageRoot()
-    {
-        var raw = string.IsNullOrWhiteSpace(_options.StoragePath) ? "App_Data/Attachments" : _options.StoragePath;
-        return Path.IsPathRooted(raw) ? raw : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, raw));
     }
 }
