@@ -47,6 +47,10 @@ public static class TradeInvoiceLayout
     public static bool SupportsStackMovementReport(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) omits vendor ref from Stock Summary because lots span many stacks.</summary>
+    public static bool ShowsStockSummaryVendorRef(int companyId) =>
+        companyId != TradeInvoiceCompanyId;
+
     /// <summary>
     /// Companies that must submit FBR seller/buyer NTN without the check digit after '-'.
     /// Example: 1234567-8 → 1234567.

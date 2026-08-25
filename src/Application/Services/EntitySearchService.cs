@@ -14,6 +14,13 @@ public class EntitySearchService : IEntitySearchService
     private const int MaxLimit = 50;
     private const int DefaultLimit = 20;
 
+    private static readonly string[] SplitTaxPayableAccountNumbers =
+    [
+        GlAccountNumbers.FurtherTaxPayable,
+        GlAccountNumbers.SalesTaxPayable18,
+        GlAccountNumbers.SalesTaxPayable
+    ];
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
     private readonly IStackLotInventoryService _stackLotInventory;
@@ -565,6 +572,22 @@ public class EntitySearchService : IEntitySearchService
             .Select(a => new { a.Id, a.AccountNumber })
             .FirstOrDefaultAsync(cancellationToken);
 
+        var splitTaxNumbers = parsedCustomerId is null && parsedVendorId is null
+            && TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId)
+            ? SplitTaxPayableAccountNumbers
+            : null;
+
+        if (splitTaxNumbers is not null)
+        {
+            await AppendSplitTaxPayablePartiesAsync(
+                companyId,
+                term,
+                parsedCoaId,
+                splitTaxNumbers,
+                results,
+                cancellationToken);
+        }
+
         var customerQuery = _unitOfWork.Repository<Customer>()
             .Query()
             .Where(c => c.CompanyId == companyId && c.IsActive && !c.IsDeleted);
@@ -680,6 +703,12 @@ public class EntitySearchService : IEntitySearchService
                 .Where(a => a.CompanyId == companyId && a.IsActive && !a.IsDeleted
                             && !a.ChildAccounts.Any());
 
+            if (splitTaxNumbers is not null)
+            {
+                accountQuery = accountQuery.Where(a =>
+                    !SplitTaxPayableAccountNumbers.Contains(a.AccountNumber));
+            }
+
             if (parsedCoaId.HasValue)
             {
                 accountQuery = accountQuery.Where(a => a.Id == parsedCoaId.Value);
@@ -739,6 +768,126 @@ public class EntitySearchService : IEntitySearchService
         }
 
         return results;
+    }
+
+    private async Task AppendSplitTaxPayablePartiesAsync(
+        int companyId,
+        string term,
+        int? parsedCoaId,
+        IReadOnlyCollection<string> splitTaxNumbers,
+        List<EntitySearchItemDto> results,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await _unitOfWork.Repository<ChartOfAccount>()
+            .Query()
+            .Where(a => a.CompanyId == companyId
+                        && a.IsActive
+                        && !a.IsDeleted
+                        && SplitTaxPayableAccountNumbers.Contains(a.AccountNumber))
+            .Select(a => new
+            {
+                a.Id,
+                a.AccountNumber,
+                a.AccountName,
+                a.OpeningBalance,
+                a.TypeId
+            })
+            .ToListAsync(cancellationToken);
+
+        if (accounts.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = splitTaxNumbers
+            .Select(number => accounts.FirstOrDefault(a =>
+                string.Equals(a.AccountNumber, number, StringComparison.OrdinalIgnoreCase)))
+            .Where(a => a is not null)
+            .Select(a => a!)
+            .Where(a => !parsedCoaId.HasValue || a.Id == parsedCoaId.Value)
+            .Where(a => MatchesSalesTaxPartyTerm(term, a.AccountNumber, a.AccountName))
+            .ToList();
+
+        if (ordered.Count == 0)
+        {
+            return;
+        }
+
+        var balances = await GetGlBalancesAsync(
+            companyId,
+            ordered.Select(a => a.Id).ToList(),
+            cancellationToken);
+
+        foreach (var account in ordered)
+        {
+            balances.TryGetValue(account.Id, out var totals);
+            var rawBalance = GlAccountBalance.ComputeNet(
+                account.OpeningBalance,
+                totals.Debits,
+                totals.Credits,
+                account.TypeId,
+                account.AccountNumber,
+                companyId);
+            var balance = account.TypeId == 2
+                ? SalesTaxPaymentGlHelper.LiabilityOutstanding(rawBalance)
+                : rawBalance;
+            var displayName = SalesTaxPayableDisplayName(account.AccountNumber, account.AccountName);
+
+            results.Add(new EntitySearchItemDto
+            {
+                Id = "0:0:" + account.Id,
+                Text = "[AP] " + displayName + " — " + account.AccountNumber
+                       + " (PKR " + balance.ToString("N2") + ")",
+                Group = "Accounts Payable (Vendors)",
+                ChartOfAccountId = account.Id,
+                PartyType = "COA",
+                PartyName = displayName,
+                AccountNumber = account.AccountNumber,
+                AccountName = account.AccountName,
+                Balance = balance
+            });
+        }
+    }
+
+    private static string SalesTaxPayableDisplayName(string accountNumber, string accountName)
+    {
+        if (string.Equals(accountNumber, GlAccountNumbers.FurtherTaxPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Further Tax @4%";
+        }
+
+        if (string.Equals(accountNumber, GlAccountNumbers.SalesTaxPayable18, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Sales Tax @18%";
+        }
+
+        if (string.Equals(accountNumber, GlAccountNumbers.SalesTaxPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Sales Tax Payable";
+        }
+
+        return accountName;
+    }
+
+    private static bool MatchesSalesTaxPartyTerm(string term, string accountNumber, string accountName)
+    {
+        if (string.IsNullOrWhiteSpace(term))
+        {
+            return true;
+        }
+
+        var haystack = string.Join(
+            ' ',
+            accountNumber,
+            accountName,
+            SalesTaxPayableDisplayName(accountNumber, accountName),
+            "sales tax",
+            "sales tax payable",
+            "further tax",
+            "further tax payable",
+            "payable");
+
+        return haystack.Contains(term.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<Dictionary<int, (decimal Debits, decimal Credits)>> GetGlBalancesAsync(

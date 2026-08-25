@@ -244,15 +244,19 @@
             $select.append($group);
         }
 
-        appendGroup('Accounts Receivable (Customers)', arParties);
-        appendGroup('Accounts Payable (Vendors)', apParties);
-        appendGroup('Cash in Hand', cashParties);
-        appendGroup('Sales Tax', coaParties.filter(function (p) {
-            return (p.partyName || '').toLowerCase().indexOf('sales tax') >= 0
+        var taxParties = coaParties.filter(function (p) {
+            var name = (p.partyName || '').toLowerCase();
+            return name.indexOf('sales tax') >= 0
+                || name.indexOf('further tax') >= 0
                 || (p.accountNumber || '').indexOf('255') === 0;
-        }));
+        });
+        appendGroup('Accounts Receivable (Customers)', arParties);
+        appendGroup('Accounts Payable (Vendors)', taxParties.concat(apParties));
+        appendGroup('Cash in Hand', cashParties);
         appendGroup('Other Chart of Accounts', coaParties.filter(function (p) {
-            return (p.partyName || '').toLowerCase().indexOf('sales tax') < 0
+            var name = (p.partyName || '').toLowerCase();
+            return name.indexOf('sales tax') < 0
+                && name.indexOf('further tax') < 0
                 && (p.accountNumber || '').indexOf('255') !== 0;
         }));
     }

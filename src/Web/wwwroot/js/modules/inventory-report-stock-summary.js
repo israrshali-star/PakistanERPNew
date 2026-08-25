@@ -150,6 +150,42 @@
 
 
 
+    var showVendorRef = true;
+
+
+
+    function columnCount() {
+
+        return showVendorRef ? 10 : 9;
+
+    }
+
+
+
+    function applyVendorRefVisibility() {
+
+        if (showVendorRef) {
+
+            $('#col-vendor-ref').removeClass('d-none');
+
+            $('#report-totals-label').attr('colspan', 6);
+
+            $('#report-empty').attr('colspan', 10);
+
+        } else {
+
+            $('#col-vendor-ref').addClass('d-none');
+
+            $('#report-totals-label').attr('colspan', 5);
+
+            $('#report-empty').attr('colspan', 9);
+
+        }
+
+    }
+
+
+
     function getApiErrorMessage(xhr, fallback) {
 
         var body = xhr && xhr.responseJSON;
@@ -183,18 +219,21 @@
 
 
         if (!data.lines || data.lines.length === 0) {
-            $tbody.append('<tr><td colspan="10" class="text-muted text-center">No items found.</td></tr>');
+            $tbody.append('<tr><td colspan="' + columnCount() + '" class="text-muted text-center">No items found.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
 
         data.lines.forEach(function (line) {
+            var vendorRefCell = showVendorRef
+                ? '<td>' + (line.vendorRefNo ? escapeHtml(line.vendorRefNo) : '—') + '</td>'
+                : '';
             $tbody.append(
                 '<tr>' +
                 '<td><code>' + escapeHtml(line.itemCode) + '</code></td>' +
                 '<td>' + escapeHtml(line.itemName) + '</td>' +
                 '<td>' + (line.lotNo ? escapeHtml(line.lotNo) : '—') + '</td>' +
-                '<td>' + (line.vendorRefNo ? escapeHtml(line.vendorRefNo) : '—') + '</td>' +
+                vendorRefCell +
                 '<td>' + (line.categoryName ? escapeHtml(line.categoryName) : '—') + '</td>' +
                 '<td>' + escapeHtml(line.unitSymbol) + '</td>' +
                 '<td class="text-end">' + formatQty(line.currentStock, line.unitSymbol) + '</td>' +
@@ -332,7 +371,13 @@
 
         $.getJSON('/api/company/current')
 
-            .done(function () {
+            .done(function (company) {
+
+                var companyId = parseInt(company && (company.id || company.Id), 10) || 0;
+
+                showVendorRef = companyId !== 3;
+
+                applyVendorRefVisibility();
 
                 loadCategories().always(loadReport);
 

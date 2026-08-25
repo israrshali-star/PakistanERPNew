@@ -13,6 +13,7 @@ public static class SalesTaxPaymentGlHelper
     public static bool IsSalesTaxPartyName(string? partyName) =>
         !string.IsNullOrWhiteSpace(partyName)
         && (partyName.Contains("Sales Tax", StringComparison.OrdinalIgnoreCase)
+            || partyName.Contains("Further Tax", StringComparison.OrdinalIgnoreCase)
             || partyName.Contains("Used Tax", StringComparison.OrdinalIgnoreCase));
 
     public static bool ShouldSplitPaymentToSubAccounts(int companyId, string? counterAccountNumber) =>

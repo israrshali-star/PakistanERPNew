@@ -109,11 +109,13 @@ public class InventoryReportService : IInventoryReportService
             })
             .ToListAsync(cancellationToken);
 
-        var vendorRefs = await BuildVendorRefLookupsAsync(
-            companyId,
-            itemIds,
-            asOfEnd,
-            cancellationToken);
+        var vendorRefs = TradeInvoiceLayout.ShowsStockSummaryVendorRef(companyId)
+            ? await BuildVendorRefLookupsAsync(
+                companyId,
+                itemIds,
+                asOfEnd,
+                cancellationToken)
+            : VendorRefLookups.Empty;
         var purchaseCartonsByLot = await BuildLotPurchaseCartonsAsync(
             companyId,
             itemIds,

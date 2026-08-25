@@ -372,7 +372,7 @@ public class BankTransactionService : IBankTransactionService
         {
             foreach (var (accountNumber, displayName) in new[]
                      {
-                         (FurtherTaxPayable, "Sales Tax @4%"),
+                         (FurtherTaxPayable, "Further Tax @4%"),
                          (SalesTaxPayable18, "Sales Tax @18%"),
                          (SalesTaxPayable, "Sales Tax Payable"),
                      })
@@ -972,9 +972,7 @@ public class BankTransactionService : IBankTransactionService
                     return new BankTransactionSaveResult(false, "Pay-from and pay-to accounts must be different.", null);
                 }
 
-                if (!string.IsNullOrWhiteSpace(request.PartyName)
-                    && (request.PartyName.Contains("Sales Tax", StringComparison.OrdinalIgnoreCase)
-                        || request.PartyName.Contains("Used Tax", StringComparison.OrdinalIgnoreCase)))
+                if (SalesTaxPaymentGlHelper.IsSalesTaxPartyName(request.PartyName))
                 {
                     var counterAccount = await _unitOfWork.Repository<ChartOfAccount>()
                         .Query()
