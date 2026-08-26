@@ -68,16 +68,37 @@
             </div>
         </div>
     </div>
+    <div class="col-md-4 d-none" id="card-vendor-payments-monthly">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-primary fs-3"><i class="fa-solid fa-money-bill-transfer"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Vendor Payments (Monthly)</h6>
+                    <p class="text-muted small mb-3">Monthly vendor payments with FIFO-applied bill Ref #</p>
+                    <a asp-action="VendorPaymentsMonthly" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
     <script>
         (function () {
-            $.getJSON('/api/company/current').fail(function () {
-                $('#report-company-warning')
-                    .removeClass('d-none')
-                    .text('Select a company from the top navbar to run purchase reports.');
-            });
+            $.getJSON('/api/company/current')
+                .done(function (company) {
+                    var companyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                    if (companyId === 3) {
+                        $('#card-vendor-payments-monthly').removeClass('d-none');
+                    }
+                })
+                .fail(function () {
+                    $('#report-company-warning')
+                        .removeClass('d-none')
+                        .text('Select a company from the top navbar to run purchase reports.');
+                });
         })();
     </script>
 }

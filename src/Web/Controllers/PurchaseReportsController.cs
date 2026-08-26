@@ -43,6 +43,13 @@ public class PurchaseReportsController : Controller
         ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
         return View();
     }
+
+    public IActionResult VendorPaymentsMonthly()
+    {
+        ViewData["BreadcrumbParent"] = "Purchase Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
 }
 
 [Authorize]
@@ -51,10 +58,17 @@ public class PurchaseReportsController : Controller
 public class PurchaseReportsApiController : ControllerBase
 {
     private readonly IPurchaseReportService _purchaseReportService;
+    private readonly IVendorPaymentMonthlyPdfService _vendorPaymentMonthlyPdfService;
+    private readonly ICompanyService _companyService;
 
-    public PurchaseReportsApiController(IPurchaseReportService purchaseReportService)
+    public PurchaseReportsApiController(
+        IPurchaseReportService purchaseReportService,
+        IVendorPaymentMonthlyPdfService vendorPaymentMonthlyPdfService,
+        ICompanyService companyService)
     {
         _purchaseReportService = purchaseReportService;
+        _vendorPaymentMonthlyPdfService = vendorPaymentMonthlyPdfService;
+        _companyService = companyService;
     }
 
     [HttpGet("register")]
@@ -204,6 +218,63 @@ public class PurchaseReportsApiController : ControllerBase
         try
         {
             return Ok(await _purchaseReportService.GetStackLotFilterLookupsAsync(itemId, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("vendor-payments-monthly")]
+    [RequirePermission("Reports.View")]
+    public async Task<IActionResult> VendorPaymentsMonthly(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] int? vendorId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _purchaseReportService.GetVendorPaymentMonthlyAsync(
+                new PurchaseReportRequest
+                {
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    VendorId = vendorId
+                },
+                cancellationToken);
+            return Ok(report);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("vendor-payments-monthly/pdf")]
+    [RequirePermission("Reports.View")]
+    public async Task<IActionResult> VendorPaymentsMonthlyPdf(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] int? vendorId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _purchaseReportService.GetVendorPaymentMonthlyAsync(
+                new PurchaseReportRequest
+                {
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    VendorId = vendorId
+                },
+                cancellationToken);
+            var company = await _companyService.GetCurrentCompanyAsync(cancellationToken);
+            var pdf = _vendorPaymentMonthlyPdfService.GeneratePdf(
+                report,
+                company?.CompanyName ?? "Pakistan Accounting ERP");
+            var fileName = $"vendor-payments-monthly-{fromDate:yyyyMMdd}-{toDate:yyyyMMdd}.pdf";
+            return File(pdf, "application/pdf", fileName);
         }
         catch (InvalidOperationException ex)
         {

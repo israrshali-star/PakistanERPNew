@@ -29,4 +29,8 @@ public interface IPurchaseReportService
     Task<StackLotFilterLookupDto> GetStackLotFilterLookupsAsync(
         int? itemId,
         CancellationToken cancellationToken = default);
+
+    Task<VendorPaymentMonthlyReportDto> GetVendorPaymentMonthlyAsync(
+        PurchaseReportRequest request,
+        CancellationToken cancellationToken = default);
 }

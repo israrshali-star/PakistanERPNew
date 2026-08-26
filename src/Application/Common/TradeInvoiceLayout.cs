@@ -47,6 +47,42 @@ public static class TradeInvoiceLayout
     public static bool SupportsStackMovementReport(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) has a monthly vendor payment report with FIFO bill Ref # allocation.</summary>
+    public static bool SupportsVendorPaymentRefReport(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
+    /// <summary>
+    /// Related-company / clearing vendors omitted from the company 3 vendor payment Ref # report.
+    /// </summary>
+    private static readonly string[] VendorPaymentReportExcludedNameFragments =
+    [
+        "Sales Tax & Used Tax",
+        "Yarn Merchants",
+        "Al-Aziz",
+        "Al Baasit",
+        "Al Wahhab",
+        "Kashaf Polyester",
+        "Arian Traders"
+    ];
+
+    public static bool IsExcludedFromVendorPaymentRefReport(string? vendorName)
+    {
+        if (string.IsNullOrWhiteSpace(vendorName))
+        {
+            return false;
+        }
+
+        foreach (var fragment in VendorPaymentReportExcludedNameFragments)
+        {
+            if (vendorName.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Company 3 (MIA) omits vendor ref from Stock Summary because lots span many stacks.</summary>
     public static bool ShowsStockSummaryVendorRef(int companyId) =>
         companyId != TradeInvoiceCompanyId;

@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -478,6 +480,298 @@ public class PurchaseReportService : IPurchaseReportService
         }
 
         return sale.Status == InvoiceStatus.Draft ? "Sale (Draft)" : "Sale";
+    }
+
+    public async Task<VendorPaymentMonthlyReportDto> GetVendorPaymentMonthlyAsync(
+        PurchaseReportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (companyId, from, to) = ValidateDateRange(request);
+        var fromDate = request.FromDate.Date;
+        var toDate = request.ToDate.Date;
+
+        string? vendorLabel = null;
+        if (request.VendorId.HasValue)
+        {
+            vendorLabel = await _unitOfWork.Repository<Vendor>()
+                .Query()
+                .Where(v => v.Id == request.VendorId.Value && v.CompanyId == companyId)
+                .Select(v => v.VendorCode + " — " + v.VendorName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var paymentVendorIds = await _unitOfWork.Repository<VendorPayment>()
+            .Query()
+            .Where(p => p.CompanyId == companyId
+                        && p.PaymentDate >= from
+                        && p.PaymentDate <= to
+                        && (!request.VendorId.HasValue || p.VendorId == request.VendorId.Value))
+            .Select(p => p.VendorId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var chequeVendorIds = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CompanyId == companyId
+                && bt.VendorId != null
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null
+                && bt.TransactionDate >= from
+                && bt.TransactionDate <= to
+                && (!request.VendorId.HasValue || bt.VendorId == request.VendorId.Value))
+            .Select(bt => bt.VendorId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var openings = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => v.CompanyId == companyId
+                        && (!request.VendorId.HasValue || v.Id == request.VendorId.Value))
+            .Select(v => new { v.Id, v.VendorName, v.OpeningBalance })
+            .ToListAsync(cancellationToken);
+
+        var billVendorIds = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .Where(b => b.CompanyId == companyId
+                        && b.Status == BillStatus.Approved
+                        && b.BillDate >= from
+                        && b.BillDate <= to
+                        && (!request.VendorId.HasValue || b.VendorId == request.VendorId.Value))
+            .Select(b => b.VendorId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var openingVendorIds = openings
+            .Where(v => v.OpeningBalance != 0m)
+            .Select(v => v.Id);
+
+        var vendorIds = paymentVendorIds
+            .Union(chequeVendorIds)
+            .Union(openingVendorIds)
+            .Union(billVendorIds)
+            .Distinct()
+            .ToList();
+
+        if (vendorIds.Count == 0)
+        {
+            return new VendorPaymentMonthlyReportDto(
+                fromDate,
+                toDate,
+                request.VendorId,
+                vendorLabel,
+                0,
+                0m,
+                []);
+        }
+
+        var openingLookup = openings
+            .Where(v => vendorIds.Contains(v.Id))
+            .ToDictionary(v => v.Id);
+
+        vendorIds = vendorIds
+            .Where(id =>
+                openingLookup.TryGetValue(id, out var vendor)
+                && !TradeInvoiceLayout.IsExcludedFromVendorPaymentRefReport(vendor.VendorName))
+            .ToList();
+
+        if (vendorIds.Count == 0)
+        {
+            return new VendorPaymentMonthlyReportDto(
+                fromDate,
+                toDate,
+                request.VendorId,
+                vendorLabel,
+                0,
+                0m,
+                []);
+        }
+
+        var bills = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .Where(b => b.CompanyId == companyId
+                        && vendorIds.Contains(b.VendorId)
+                        && b.Status == BillStatus.Approved)
+            .Select(b => new
+            {
+                b.Id,
+                b.VendorId,
+                b.BillDate,
+                b.BillNumber,
+                b.RefNo,
+                b.NetAmount
+            })
+            .ToListAsync(cancellationToken);
+
+        var payments = await _unitOfWork.Repository<VendorPayment>()
+            .Query()
+            .Where(p => p.CompanyId == companyId && vendorIds.Contains(p.VendorId))
+            .Select(p => new
+            {
+                p.Id,
+                p.VendorId,
+                p.PaymentDate,
+                p.PaymentNumber,
+                p.PaymentMethod,
+                p.Amount,
+                p.ChequeNumber,
+                BankName = p.Bank != null ? p.Bank.BankName : null
+            })
+            .ToListAsync(cancellationToken);
+
+        var cheques = await _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CompanyId == companyId
+                && bt.VendorId != null
+                && vendorIds.Contains(bt.VendorId.Value)
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && !bt.IsDeleted
+                && bt.JournalEntryId != null)
+            .Select(bt => new
+            {
+                bt.Id,
+                VendorId = bt.VendorId!.Value,
+                bt.TransactionDate,
+                bt.ChequeNumber,
+                bt.PaymentMethod,
+                bt.Amount,
+                BankName = bt.Bank.BankName
+            })
+            .ToListAsync(cancellationToken);
+
+        var lines = new List<VendorPaymentMonthlyLineDto>();
+
+        foreach (var vendorId in vendorIds)
+        {
+            openingLookup.TryGetValue(vendorId, out var vendor);
+            var vendorName = vendor?.VendorName ?? "—";
+            var openingBalance = vendor?.OpeningBalance ?? 0m;
+
+            var payables = bills
+                .Where(b => b.VendorId == vendorId)
+                .Select(b => new VendorPaymentBillAllocator.PayableMovement(
+                    b.BillDate,
+                    b.Id,
+                    VendorPaymentBillAllocator.ResolveBillRef(b.RefNo, b.BillNumber),
+                    b.BillNumber,
+                    b.BillDate.Date,
+                    b.NetAmount))
+                .ToList();
+
+            var paymentMovements = new List<VendorPaymentBillAllocator.PaymentMovement>();
+
+            foreach (var payment in payments.Where(p => p.VendorId == vendorId))
+            {
+                paymentMovements.Add(new VendorPaymentBillAllocator.PaymentMovement(
+                    payment.Id,
+                    payment.PaymentDate,
+                    VendorPaymentBillAllocator.PaymentSortOffset + payment.Id,
+                    payment.PaymentNumber,
+                    vendorId,
+                    vendorName,
+                    "Vendor Payment",
+                    payment.PaymentMethod.ToString(),
+                    payment.BankName,
+                    payment.ChequeNumber,
+                    payment.Amount));
+            }
+
+            foreach (var cheque in cheques.Where(c => c.VendorId == vendorId))
+            {
+                var method = cheque.PaymentMethod ?? PaymentMethod.Cheque;
+                var reference = method == PaymentMethod.Cheque
+                                && !string.IsNullOrWhiteSpace(cheque.ChequeNumber)
+                    ? cheque.ChequeNumber.Trim()
+                    : $"PAY-{cheque.Id:D4}";
+
+                var source = method switch
+                {
+                    PaymentMethod.Cheque => "Write Cheque",
+                    PaymentMethod.BankTransfer => "Bank Transfer",
+                    PaymentMethod.Cash => "Cash Payment",
+                    _ => "Payment"
+                };
+
+                paymentMovements.Add(new VendorPaymentBillAllocator.PaymentMovement(
+                    cheque.Id,
+                    cheque.TransactionDate,
+                    VendorPaymentBillAllocator.WriteChequeSortOffset + cheque.Id,
+                    reference,
+                    vendorId,
+                    vendorName,
+                    source,
+                    method.ToString(),
+                    cheque.BankName,
+                    cheque.ChequeNumber,
+                    cheque.Amount));
+            }
+
+            var allocation = VendorPaymentBillAllocator.Allocate(
+                openingBalance,
+                payables,
+                paymentMovements,
+                fromDate,
+                toDate);
+
+            var excluded = TradeInvoiceLayout.IsExcludedFromVendorPaymentRefReport(vendorName);
+            if (excluded)
+            {
+                continue;
+            }
+
+            lines.AddRange(allocation.Payments);
+            lines.AddRange(VendorPaymentBillAllocator.BuildOpeningAdjustmentLines(
+                vendorId,
+                vendorName,
+                allocation.OpeningAppliedInRange));
+        }
+
+        lines = lines
+            .GroupBy(l => (
+                l.VendorId,
+                l.PaymentNumber,
+                l.PaymentDate.Date,
+                l.Source,
+                Refs: string.Join("|", l.AppliedRefs.Select(r => $"{r.RefNo}:{r.AppliedAmount:0.00}"))))
+            .Select(g => g.First())
+            .ToList();
+
+        var monthCulture = CultureInfo.GetCultureInfo("en-GB");
+        var months = lines
+            .GroupBy(l =>
+            {
+                var groupDate = (l.ReportDate ?? l.PaymentDate).Date;
+                return new { groupDate.Year, groupDate.Month };
+            })
+            .OrderBy(g => g.Key.Year)
+            .ThenBy(g => g.Key.Month)
+            .Select(g =>
+            {
+                var monthLines = g
+                    .OrderBy(l => l.PaymentDate)
+                    .ThenBy(l => l.VendorName)
+                    .ThenBy(l => l.PaymentNumber)
+                    .ToList();
+                return new VendorPaymentMonthlyGroupDto(
+                    g.Key.Year,
+                    g.Key.Month,
+                    new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMMM yyyy", monthCulture),
+                    monthLines.Count,
+                    monthLines.Where(l => l.IncludeInTotal).Sum(l => l.Amount),
+                    monthLines);
+            })
+            .ToList();
+
+        return new VendorPaymentMonthlyReportDto(
+            fromDate,
+            toDate,
+            request.VendorId,
+            vendorLabel,
+            lines.Count,
+            lines.Where(l => l.IncludeInTotal).Sum(l => l.Amount),
+            months);
     }
 
     private sealed record StackLotKey(int ItemId, string? StackNo, string? LotNo)

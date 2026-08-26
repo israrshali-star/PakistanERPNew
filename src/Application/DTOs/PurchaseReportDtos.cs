@@ -109,3 +109,42 @@ public class StackLotTrackingRequest
     public string? LotNo { get; set; }
     public string? StackNo { get; set; }
 }
+
+public record VendorPaymentAppliedRefDto(
+    string RefNo,
+    string BillNumber,
+    DateTime? BillDate,
+    decimal AppliedAmount);
+
+public record VendorPaymentMonthlyLineDto(
+    int PaymentId,
+    string PaymentNumber,
+    DateTime PaymentDate,
+    int VendorId,
+    string VendorName,
+    string Source,
+    string PaymentMethod,
+    string? BankName,
+    string? ChequeNumber,
+    decimal Amount,
+    decimal UnallocatedAmount,
+    IReadOnlyList<VendorPaymentAppliedRefDto> AppliedRefs,
+    bool IncludeInTotal = true,
+    DateTime? ReportDate = null);
+
+public record VendorPaymentMonthlyGroupDto(
+    int Year,
+    int Month,
+    string MonthLabel,
+    int PaymentCount,
+    decimal TotalAmount,
+    IReadOnlyList<VendorPaymentMonthlyLineDto> Lines);
+
+public record VendorPaymentMonthlyReportDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    int? VendorId,
+    string? VendorLabel,
+    int PaymentCount,
+    decimal TotalAmount,
+    IReadOnlyList<VendorPaymentMonthlyGroupDto> Months);

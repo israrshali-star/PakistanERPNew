@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerReceiptInvoiceAllocationService, CustomerReceiptInvoiceAllocationService>();
         services.AddScoped<ICustomerReceiptAttachmentService, CustomerReceiptAttachmentService>();
         services.AddScoped<IVendorPaymentPdfService, VendorPaymentPdfService>();
+        services.AddScoped<IVendorPaymentMonthlyPdfService, VendorPaymentMonthlyPdfService>();
         services.AddScoped<IVendorPaymentShareService, VendorPaymentShareService>();
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IItemCartonSyncService, ItemCartonSyncService>();
