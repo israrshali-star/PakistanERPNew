@@ -83,6 +83,59 @@ public static class TradeInvoiceLayout
         return false;
     }
 
+    /// <summary>
+    /// Related-group companies omitted from Purchase by Vendor (Al Baasit, Al-Aziz, Arian, Kashaf, Al Wahhab).
+    /// </summary>
+    private static readonly string[] PurchaseByVendorExcludedNameTokens =
+    [
+        "albaasit",
+        "albasit",
+        "alaziz",
+        "arian",
+        "kashaf",
+        "alwahhab"
+    ];
+
+    public static bool IsExcludedFromPurchaseByVendorReport(string? vendorName) =>
+        MatchesAnyToken(vendorName, PurchaseByVendorExcludedNameTokens);
+
+    /// <summary>
+    /// Related-group companies shown on Related Company Purchase
+    /// (Al Baasit, Arian Traders, Kashaf Polyester, Al Wahhab Merchants).
+    /// </summary>
+    private static readonly string[] RelatedCompanyPurchaseNameTokens =
+    [
+        "albaasit",
+        "albasit",
+        "arian",
+        "kashaf",
+        "alwahhab"
+    ];
+
+    public static bool IsIncludedInRelatedCompanyPurchaseReport(string? vendorName) =>
+        MatchesAnyToken(vendorName, RelatedCompanyPurchaseNameTokens);
+
+    private static bool MatchesAnyToken(string? vendorName, string[] tokens)
+    {
+        if (string.IsNullOrWhiteSpace(vendorName))
+        {
+            return false;
+        }
+
+        var normalized = new string(vendorName.Where(char.IsLetter).ToArray())
+            .ToLowerInvariant();
+
+        foreach (var token in tokens)
+        {
+            if (normalized.Contains(token, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Company 3 (MIA) omits vendor ref from Stock Summary because lots span many stacks.</summary>
     public static bool ShowsStockSummaryVendorRef(int companyId) =>
         companyId != TradeInvoiceCompanyId;

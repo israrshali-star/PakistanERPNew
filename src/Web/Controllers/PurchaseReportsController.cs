@@ -30,6 +30,13 @@ public class PurchaseReportsController : Controller
         return View();
     }
 
+    public IActionResult PurchaseByRelatedVendor()
+    {
+        ViewData["BreadcrumbParent"] = "Purchase Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
+
     public IActionResult InputTaxSummary()
     {
         ViewData["BreadcrumbParent"] = "Purchase Reports";
@@ -45,6 +52,13 @@ public class PurchaseReportsController : Controller
     }
 
     public IActionResult VendorPaymentsMonthly()
+    {
+        ViewData["BreadcrumbParent"] = "Purchase Reports";
+        ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+        return View();
+    }
+
+    public IActionResult MonthlyPurchaseByVendor()
     {
         ViewData["BreadcrumbParent"] = "Purchase Reports";
         ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
@@ -106,6 +120,7 @@ public class PurchaseReportsApiController : ControllerBase
         [FromQuery] DateTime toDate,
         [FromQuery] int? vendorId,
         [FromQuery] bool approvedOnly = true,
+        [FromQuery] bool relatedCompaniesOnly = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -116,7 +131,8 @@ public class PurchaseReportsApiController : ControllerBase
                     FromDate = fromDate,
                     ToDate = toDate,
                     VendorId = vendorId,
-                    ApprovedOnly = approvedOnly
+                    ApprovedOnly = approvedOnly,
+                    RelatedCompaniesOnly = relatedCompaniesOnly
                 },
                 cancellationToken);
             return Ok(report);
@@ -218,6 +234,34 @@ public class PurchaseReportsApiController : ControllerBase
         try
         {
             return Ok(await _purchaseReportService.GetStackLotFilterLookupsAsync(itemId, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("monthly-by-vendor")]
+    [RequirePermission("Reports.View")]
+    public async Task<IActionResult> MonthlyByVendor(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] int? vendorId,
+        [FromQuery] bool approvedOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await _purchaseReportService.GetMonthlyPurchaseByVendorAsync(
+                new PurchaseReportRequest
+                {
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    VendorId = vendorId,
+                    ApprovedOnly = approvedOnly
+                },
+                cancellationToken);
+            return Ok(report);
         }
         catch (InvalidOperationException ex)
         {

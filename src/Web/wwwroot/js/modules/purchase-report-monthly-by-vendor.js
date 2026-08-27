@@ -32,39 +32,79 @@
         return body.message || body.Message || fallback;
     }
 
+    function readValue(obj, camelName, pascalName) {
+        if (!obj) {
+            return undefined;
+        }
+        if (obj[camelName] !== undefined && obj[camelName] !== null) {
+            return obj[camelName];
+        }
+        if (obj[pascalName] !== undefined && obj[pascalName] !== null) {
+            return obj[pascalName];
+        }
+        return undefined;
+    }
+
+    function renderRefList(values) {
+        var items = (values || []).filter(function (v) { return v; });
+        if (!items.length) {
+            return '<span class="text-muted">—</span>';
+        }
+        return items.map(function (item) {
+            return '<div>' + escapeHtml(item) + '</div>';
+        }).join('');
+    }
+
     function renderReport(data) {
         $('#report-period').text(
             'Period: ' + formatDate(data.fromDate) + ' to ' + formatDate(data.toDate) +
-            ' — ' + data.vendorCount + ' vendor(s)'
+            ' — ' + (data.vendorMonthCount || 0) + ' vendor-month(s)'
         );
 
         var $tbody = $('#report-lines');
         $tbody.empty();
 
-        if (!data.lines || data.lines.length === 0) {
-            $tbody.append('<tr><td colspan="5" class="text-muted text-center">No purchases found.</td></tr>');
+        var months = data.months || data.Months || [];
+        if (!months.length) {
+            $tbody.append('<tr><td colspan="7" class="text-muted text-center">No purchases found.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
 
-        var totalBills = 0;
-        data.lines.forEach(function (line) {
-            totalBills += parseInt(line.billCount, 10) || 0;
+        months.forEach(function (month) {
+            var monthLabel = readValue(month, 'monthLabel', 'MonthLabel') || '';
+            var vendorCount = readValue(month, 'vendorCount', 'VendorCount') || 0;
             $tbody.append(
-                '<tr>' +
-                '<td>' + escapeHtml(line.vendorName) + '</td>' +
-                '<td class="text-end">' + line.billCount + '</td>' +
-                '<td class="text-end">' + formatAmount(line.exValue) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.taxAmount) + '</td>' +
-                '<td class="text-end fw-semibold">' + formatAmount(line.netAmount) + '</td>' +
+                '<tr class="table-light">' +
+                '<th colspan="2">' + escapeHtml(monthLabel) +
+                ' <span class="fw-normal text-muted">(' + vendorCount + ' vendor(s))</span></th>' +
+                '<th class="text-end">' + formatAmount(readValue(month, 'totalExValue', 'TotalExValue')) + '</th>' +
+                '<th class="text-end">' + formatAmount(readValue(month, 'totalTax', 'TotalTax')) + '</th>' +
+                '<th class="text-end">' + formatAmount(readValue(month, 'totalNet', 'TotalNet')) + '</th>' +
+                '<th class="text-end">' + formatAmount(readValue(month, 'totalPayments', 'TotalPayments')) + '</th>' +
+                '<th></th>' +
                 '</tr>'
             );
+
+            (readValue(month, 'lines', 'Lines') || []).forEach(function (line) {
+                $tbody.append(
+                    '<tr>' +
+                    '<td>' + escapeHtml(readValue(line, 'vendorName', 'VendorName') || '') + '</td>' +
+                    '<td>' + renderRefList(readValue(line, 'billRefs', 'BillRefs')) + '</td>' +
+                    '<td class="text-end">' + formatAmount(readValue(line, 'exValue', 'ExValue')) + '</td>' +
+                    '<td class="text-end">' + formatAmount(readValue(line, 'taxAmount', 'TaxAmount')) + '</td>' +
+                    '<td class="text-end fw-semibold">' + formatAmount(readValue(line, 'netAmount', 'NetAmount')) + '</td>' +
+                    '<td class="text-end fw-semibold">' + formatAmount(readValue(line, 'paymentAmount', 'PaymentAmount')) + '</td>' +
+                    '<td>' + renderRefList(readValue(line, 'paidAgainstBills', 'PaidAgainstBills')) + '</td>' +
+                    '</tr>'
+                );
+            });
         });
 
-        $('#report-total-bills').text(totalBills);
         $('#report-total-exvalue').text(formatAmount(data.totalExValue));
         $('#report-total-tax').text(formatAmount(data.totalTax));
         $('#report-total-net').text(formatAmount(data.totalNet));
+        $('#report-total-payments').text(formatAmount(data.totalPayments));
         $('#report-footer').removeClass('d-none');
     }
 
@@ -105,16 +145,12 @@
             approvedOnly: $('#filter-approved-only').is(':checked')
         };
 
-        if ($('#report-content').data('relatedCompaniesOnly')) {
-            params.relatedCompaniesOnly = true;
-        }
-
         var vendorId = parseInt($('#filter-vendor').val(), 10);
         if (vendorId > 0) {
             params.vendorId = vendorId;
         }
 
-        $.getJSON('/api/purchase-reports/by-vendor', params)
+        $.getJSON('/api/purchase-reports/monthly-by-vendor', params)
             .done(renderReport)
             .fail(function (xhr) {
                 alert(getApiErrorMessage(xhr, 'Failed to load report.'));

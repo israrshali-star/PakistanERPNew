@@ -1,11 +1,11 @@
 @{
-    ViewData["Title"] = "Purchase by Vendor";
+    ViewData["Title"] = "Monthly Purchase by Vendor";
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
     <div>
-        <h4 class="text-primary mb-1">Purchase by Vendor</h4>
-        <p class="text-muted small mb-0">Vendor-wise monthly purchase totals: ex-value, tax, and net amount</p>
+        <h4 class="text-primary mb-1">Monthly Purchase by Vendor</h4>
+        <p class="text-muted small mb-0">Purchases grouped by vendor each month, with payment totals and bills applied</p>
     </div>
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
@@ -49,9 +49,9 @@
     </div>
 </div>
 
-<div class="card p-3 report-print-area report-print-fit" id="report-content">
+<div class="card p-3 report-print-area report-print-landscape" id="report-content">
     <div class="text-center mb-4">
-        <h5 class="text-primary mb-1">Purchase by Vendor</h5>
+        <h5 class="text-primary mb-1">Monthly Purchase by Vendor</h5>
         <p class="text-muted small mb-0" id="report-period">Select dates and click Load</p>
     </div>
 
@@ -60,22 +60,25 @@
             <thead class="table-light">
                 <tr>
                     <th>Vendor Name</th>
-                    <th class="text-end">Bills</th>
+                    <th>Bills</th>
                     <th class="text-end">Ex-value</th>
                     <th class="text-end">Tax</th>
                     <th class="text-end">Net Amount</th>
+                    <th class="text-end">Payments</th>
+                    <th>Paid against</th>
                 </tr>
             </thead>
             <tbody id="report-lines">
-                <tr><td colspan="5" class="text-muted text-center">No data loaded.</td></tr>
+                <tr><td colspan="7" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="report-footer" class="d-none table-light">
                 <tr>
-                    <th class="text-end">Totals</th>
-                    <th class="text-end" id="report-total-bills">0</th>
+                    <th colspan="2" class="text-end">Grand Total</th>
                     <th class="text-end" id="report-total-exvalue">0.00</th>
                     <th class="text-end" id="report-total-tax">0.00</th>
                     <th class="text-end" id="report-total-net">0.00</th>
+                    <th class="text-end" id="report-total-payments">0.00</th>
+                    <th></th>
                 </tr>
             </tfoot>
         </table>
@@ -88,5 +91,5 @@
 
 @section Scripts {
     <script src="~/js/modules/report-print-common.js" asp-append-version="true"></script>
-    <script src="~/js/modules/purchase-report-by-vendor.js" asp-append-version="true"></script>
+    <script src="~/js/modules/purchase-report-monthly-by-vendor.js" asp-append-version="true"></script>
 }

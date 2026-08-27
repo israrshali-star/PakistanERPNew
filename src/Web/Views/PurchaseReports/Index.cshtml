@@ -32,8 +32,36 @@
                 <div class="text-success fs-3"><i class="fa-solid fa-truck-field"></i></div>
                 <div class="flex-grow-1">
                     <h6 class="text-primary mb-1">Purchase by Vendor</h6>
-                    <p class="text-muted small mb-3">Vendor-wise purchase totals for a selected period</p>
+                    <p class="text-muted small mb-3">Vendor-wise ex-value, tax, and net amount for a selected period</p>
                     <a asp-action="PurchaseByVendor" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 d-none" id="card-related-company-purchase">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-success fs-3"><i class="fa-solid fa-building"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Related Company Purchase</h6>
+                    <p class="text-muted small mb-3">Al Baasit, Arian Traders, Kashaf Polyester, and Al Wahhab Merchants</p>
+                    <a asp-action="PurchaseByRelatedVendor" class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-arrow-right me-1"></i>Open Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="text-success fs-3"><i class="fa-solid fa-calendar-days"></i></div>
+                <div class="flex-grow-1">
+                    <h6 class="text-primary mb-1">Monthly Purchase by Vendor</h6>
+                    <p class="text-muted small mb-3">Monthly vendor purchases, payment totals, and bills paid against</p>
+                    <a asp-action="MonthlyPurchaseByVendor" class="btn btn-outline-primary btn-sm">
                         <i class="fa-solid fa-arrow-right me-1"></i>Open Report
                     </a>
                 </div>
@@ -92,6 +120,7 @@
                     var companyId = parseInt(company && (company.id || company.Id), 10) || 0;
                     if (companyId === 3) {
                         $('#card-vendor-payments-monthly').removeClass('d-none');
+                        $('#card-related-company-purchase').removeClass('d-none');
                     }
                 })
                 .fail(function () {

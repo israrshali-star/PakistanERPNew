@@ -33,4 +33,8 @@ public interface IPurchaseReportService
     Task<VendorPaymentMonthlyReportDto> GetVendorPaymentMonthlyAsync(
         PurchaseReportRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<MonthlyPurchaseByVendorReportDto> GetMonthlyPurchaseByVendorAsync(
+        PurchaseReportRequest request,
+        CancellationToken cancellationToken = default);
 }

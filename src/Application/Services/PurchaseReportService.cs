@@ -81,17 +81,27 @@ public class PurchaseReportService : IPurchaseReportService
             query = query.Where(b => b.VendorId == request.VendorId.Value);
         }
 
-        var grouped = await query
+        var bills = await query
+            .Select(b => new
+            {
+                b.VendorId,
+                ExValue = b.Lines.Sum(l => l.Amount),
+                b.TaxAmount,
+                b.NetAmount
+            })
+            .ToListAsync(cancellationToken);
+
+        var grouped = bills
             .GroupBy(b => b.VendorId)
             .Select(g => new
             {
                 VendorId = g.Key,
                 BillCount = g.Count(),
-                TotalQuantity = g.Sum(b => b.TotalQuantity),
+                ExValue = g.Sum(b => b.ExValue),
                 TaxAmount = g.Sum(b => b.TaxAmount),
                 NetAmount = g.Sum(b => b.NetAmount)
             })
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         var vendorIds = grouped.Select(g => g.VendorId).Distinct().ToList();
         var vendors = await _unitOfWork.Repository<Vendor>()
@@ -110,10 +120,13 @@ public class PurchaseReportService : IPurchaseReportService
                     vendor?.VendorCode ?? "—",
                     vendor?.VendorName ?? "—",
                     g.BillCount,
-                    g.TotalQuantity,
+                    g.ExValue,
                     g.TaxAmount,
                     g.NetAmount);
             })
+            .Where(l => request.RelatedCompaniesOnly
+                ? TradeInvoiceLayout.IsIncludedInRelatedCompanyPurchaseReport(l.VendorName)
+                : !TradeInvoiceLayout.IsExcludedFromPurchaseByVendorReport(l.VendorName))
             .OrderBy(l => l.VendorName)
             .ToList();
 
@@ -121,10 +134,146 @@ public class PurchaseReportService : IPurchaseReportService
             request.FromDate.Date,
             request.ToDate.Date,
             groupedLines.Count,
-            groupedLines.Sum(l => l.TotalQuantity),
+            groupedLines.Sum(l => l.ExValue),
             groupedLines.Sum(l => l.TaxAmount),
             groupedLines.Sum(l => l.NetAmount),
             groupedLines);
+    }
+
+    public async Task<MonthlyPurchaseByVendorReportDto> GetMonthlyPurchaseByVendorAsync(
+        PurchaseReportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (companyId, from, to) = ValidateDateRange(request);
+        var query = BuildBillQuery(companyId, from, to, request);
+
+        if (request.VendorId.HasValue)
+        {
+            query = query.Where(b => b.VendorId == request.VendorId.Value);
+        }
+
+        string? vendorLabel = null;
+        if (request.VendorId.HasValue)
+        {
+            vendorLabel = await _unitOfWork.Repository<Vendor>()
+                .Query()
+                .Where(v => v.Id == request.VendorId.Value && v.CompanyId == companyId)
+                .Select(v => v.VendorCode + " — " + v.VendorName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var bills = await query
+            .Select(b => new
+            {
+                b.VendorId,
+                VendorName = b.Vendor.VendorName,
+                b.BillDate,
+                b.BillNumber,
+                b.RefNo,
+                ExValue = b.Lines.Sum(l => l.Amount),
+                b.TaxAmount,
+                b.NetAmount
+            })
+            .ToListAsync(cancellationToken);
+
+        bills = bills
+            .Where(b => !TradeInvoiceLayout.IsExcludedFromPurchaseByVendorReport(b.VendorName))
+            .ToList();
+
+        var paymentReport = await GetVendorPaymentMonthlyAsync(request, cancellationToken);
+        var paymentByVendorMonth = paymentReport.Months
+            .SelectMany(month => month.Lines.Select(line => (month.Year, month.Month, Line: line)))
+            .Where(x => x.Line.IncludeInTotal)
+            .GroupBy(x => (x.Line.VendorId, x.Year, x.Month))
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToList());
+
+        var keys = bills
+            .Select(b => (b.VendorId, b.BillDate.Year, b.BillDate.Month))
+            .Concat(paymentByVendorMonth.Keys)
+            .Distinct()
+            .ToList();
+
+        var monthCulture = CultureInfo.GetCultureInfo("en-GB");
+        var months = keys
+            .GroupBy(k => (k.Year, k.Month))
+            .OrderBy(g => g.Key.Year)
+            .ThenBy(g => g.Key.Month)
+            .Select(monthGroup =>
+            {
+                var lines = monthGroup
+                    .Select(key =>
+                    {
+                        var monthBills = bills
+                            .Where(b => b.VendorId == key.VendorId
+                                        && b.BillDate.Year == key.Year
+                                        && b.BillDate.Month == key.Month)
+                            .OrderBy(b => b.BillDate)
+                            .ThenBy(b => b.BillNumber)
+                            .ToList();
+
+                        paymentByVendorMonth.TryGetValue(key, out var paymentLines);
+                        paymentLines ??= [];
+
+                        var vendorName = monthBills.FirstOrDefault()?.VendorName
+                            ?? paymentLines.Select(p => p.Line.VendorName).FirstOrDefault()
+                            ?? "—";
+
+                        var billRefs = monthBills
+                            .Select(b => VendorPaymentBillAllocator.ResolveBillRef(b.RefNo, b.BillNumber))
+                            .Where(r => !string.IsNullOrWhiteSpace(r))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+
+                        var paidAgainst = paymentLines
+                            .SelectMany(p => p.Line.AppliedRefs)
+                            .Select(r => r.RefNo)
+                            .Where(r => !string.IsNullOrWhiteSpace(r))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+
+                        return new MonthlyPurchaseVendorLineDto(
+                            key.VendorId,
+                            vendorName,
+                            monthBills.Count,
+                            monthBills.Sum(b => b.ExValue),
+                            monthBills.Sum(b => b.TaxAmount),
+                            monthBills.Sum(b => b.NetAmount),
+                            paymentLines.Sum(p => p.Line.Amount),
+                            billRefs,
+                            paidAgainst);
+                    })
+                    .Where(l => !TradeInvoiceLayout.IsExcludedFromPurchaseByVendorReport(l.VendorName))
+                    .OrderBy(l => l.VendorName)
+                    .ToList();
+
+                return new MonthlyPurchaseMonthDto(
+                    monthGroup.Key.Year,
+                    monthGroup.Key.Month,
+                    new DateTime(monthGroup.Key.Year, monthGroup.Key.Month, 1)
+                        .ToString("MMMM yyyy", monthCulture),
+                    lines.Count,
+                    lines.Sum(l => l.ExValue),
+                    lines.Sum(l => l.TaxAmount),
+                    lines.Sum(l => l.NetAmount),
+                    lines.Sum(l => l.PaymentAmount),
+                    lines);
+            })
+            .Where(m => m.Lines.Count > 0)
+            .ToList();
+
+        return new MonthlyPurchaseByVendorReportDto(
+            request.FromDate.Date,
+            request.ToDate.Date,
+            request.VendorId,
+            vendorLabel,
+            months.Sum(m => m.VendorCount),
+            months.Sum(m => m.TotalExValue),
+            months.Sum(m => m.TotalTax),
+            months.Sum(m => m.TotalNet),
+            months.Sum(m => m.TotalPayments),
+            months);
     }
 
     public async Task<InputTaxSummaryReportDto> GetInputTaxSummaryAsync(

@@ -27,7 +27,7 @@ public record PurchaseByVendorLineDto(
     string VendorCode,
     string VendorName,
     int BillCount,
-    decimal TotalQuantity,
+    decimal ExValue,
     decimal TaxAmount,
     decimal NetAmount);
 
@@ -35,7 +35,7 @@ public record PurchaseByVendorReportDto(
     DateTime FromDate,
     DateTime ToDate,
     int VendorCount,
-    decimal TotalQuantity,
+    decimal TotalExValue,
     decimal TotalTax,
     decimal TotalNet,
     IReadOnlyList<PurchaseByVendorLineDto> Lines);
@@ -56,6 +56,7 @@ public class PurchaseReportRequest
     public DateTime ToDate { get; set; }
     public int? VendorId { get; set; }
     public bool ApprovedOnly { get; set; } = true;
+    public bool RelatedCompaniesOnly { get; set; }
 }
 
 public record StackLotMovementDto(
@@ -148,3 +149,37 @@ public record VendorPaymentMonthlyReportDto(
     int PaymentCount,
     decimal TotalAmount,
     IReadOnlyList<VendorPaymentMonthlyGroupDto> Months);
+
+public record MonthlyPurchaseVendorLineDto(
+    int VendorId,
+    string VendorName,
+    int BillCount,
+    decimal ExValue,
+    decimal TaxAmount,
+    decimal NetAmount,
+    decimal PaymentAmount,
+    IReadOnlyList<string> BillRefs,
+    IReadOnlyList<string> PaidAgainstBills);
+
+public record MonthlyPurchaseMonthDto(
+    int Year,
+    int Month,
+    string MonthLabel,
+    int VendorCount,
+    decimal TotalExValue,
+    decimal TotalTax,
+    decimal TotalNet,
+    decimal TotalPayments,
+    IReadOnlyList<MonthlyPurchaseVendorLineDto> Lines);
+
+public record MonthlyPurchaseByVendorReportDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    int? VendorId,
+    string? VendorLabel,
+    int VendorMonthCount,
+    decimal TotalExValue,
+    decimal TotalTax,
+    decimal TotalNet,
+    decimal TotalPayments,
+    IReadOnlyList<MonthlyPurchaseMonthDto> Months);
