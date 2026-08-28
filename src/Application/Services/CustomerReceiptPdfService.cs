@@ -28,8 +28,8 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
-                page.Margin(28);
+                page.Size(model.UseLandscape ? PageSizes.A4.Landscape() : PageSizes.A4);
+                page.Margin(model.UseLandscape ? 24 : 28);
                 page.DefaultTextStyle(x => x.FontSize(10).FontFamily(fontFamily));
 
                 page.Content().Column(column =>

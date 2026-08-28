@@ -27,7 +27,8 @@ public record CustomerReceiptPdfDto(
     string StatusLabel,
     bool UseUrdu = false,
     decimal? RemainingBalance = null,
-    IReadOnlyList<CustomerReceiptInvoiceLineDto>? InvoicesPaid = null);
+    IReadOnlyList<CustomerReceiptInvoiceLineDto>? InvoicesPaid = null,
+    bool UseLandscape = false);
 
 public record CustomerReceiptShareInfoDto(
     int ReceiptId,
