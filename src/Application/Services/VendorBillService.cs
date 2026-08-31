@@ -211,7 +211,8 @@ public partial class VendorBillService : IVendorBillService
         var inventoryContext = hasBillInventoryHistory
             ? await GetBillInventoryContextAsync(
                 companyId,
-                bill.BillNumber,
+                bill.Id,
+                bill.BillDate,
                 lineEntities,
                 cancellationToken)
             : null;
@@ -597,7 +598,8 @@ public partial class VendorBillService : IVendorBillService
         var inventoryContext = hasBillInventoryHistory
             ? await GetBillInventoryContextAsync(
                 companyId,
-                entity.BillNumber,
+                entity.Id,
+                entity.BillDate,
                 existingLines,
                 cancellationToken)
             : null;
@@ -911,9 +913,36 @@ public partial class VendorBillService : IVendorBillService
             if (warehouseId.HasValue)
             {
                 var existingBillInventory = await _unitOfWork.Repository<InventoryTransaction>()
-                    .Query()
+                    .Query(asNoTracking: false)
                     .Where(t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber)
                     .ToListAsync(cancellationToken);
+
+                var currentLineKeys = bill.Lines
+                    .Where(l => l.ItemId.HasValue && l.ItemId > 0)
+                    .Select(l => BillLineStockKey(l.ItemId!.Value, l.StackNo, l.LotNo))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var inventoryContext = await GetBillInventoryContextAsync(
+                    companyId,
+                    bill.Id,
+                    bill.BillDate,
+                    bill.Lines.ToList(),
+                    cancellationToken);
+
+                var staleInventory = existingBillInventory
+                    .Where(t =>
+                        !currentLineKeys.Contains(BillLineStockKey(t.ItemId, t.StackNo, t.LotNo))
+                        && (inventoryContext is null
+                            || inventoryContext.GetSoldQuantity(t.ItemId, t.StackNo, t.LotNo) <= 0.01m))
+                    .ToList();
+                foreach (var stale in staleInventory)
+                {
+                    _unitOfWork.Repository<InventoryTransaction>().Remove(stale);
+                }
+
+                var remainingBillInventory = existingBillInventory
+                    .Except(staleInventory)
+                    .ToList();
 
                 var inventoryTransactions = new List<InventoryTransaction>();
                 foreach (var line in bill.Lines.Where(l => l.ItemId.HasValue && l.ItemId > 0))
@@ -925,7 +954,7 @@ public partial class VendorBillService : IVendorBillService
                         continue;
                     }
 
-                    var hasExistingTransaction = existingBillInventory.Any(
+                    var hasExistingTransaction = remainingBillInventory.Any(
                         t => t.ItemId == item.Id
                              && InventoryDimensionsMatch(t.StackNo, line.StackNo)
                              && InventoryDimensionsMatch(t.LotNo, line.LotNo));
@@ -952,11 +981,6 @@ public partial class VendorBillService : IVendorBillService
                         CreatedAt = now,
                         CreatedBy = userName
                     });
-
-                    item.CurrentStock = Math.Round(item.CurrentStock + quantity, 2);
-                    item.UpdatedAt = now;
-                    item.UpdatedBy = userName;
-                    _unitOfWork.Repository<Item>().Update(item);
                 }
 
                 if (inventoryTransactions.Count > 0)
@@ -977,6 +1001,13 @@ public partial class VendorBillService : IVendorBillService
 
             if (itemLineIds.Count > 0)
             {
+                await RecalculateItemStockFromTransactionsAsync(
+                    companyId,
+                    itemLineIds,
+                    now,
+                    userName,
+                    cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _itemCartonSyncService.SyncItemsAsync(companyId, itemLineIds, cancellationToken);
             }
         }
@@ -1042,7 +1073,8 @@ public partial class VendorBillService : IVendorBillService
 
         var inventoryContext = await GetBillInventoryContextAsync(
             companyId,
-            bill.BillNumber,
+            bill.Id,
+            bill.BillDate,
             bill.Lines.ToList(),
             cancellationToken);
 
@@ -1198,6 +1230,7 @@ public partial class VendorBillService : IVendorBillService
 
         var bill = await _unitOfWork.Repository<VendorBill>()
             .Query(asNoTracking: false)
+            .Include(b => b.Lines)
             .FirstOrDefaultAsync(b => b.Id == id && b.CompanyId == companyId, cancellationToken);
 
         if (bill is null)
@@ -1210,12 +1243,82 @@ public partial class VendorBillService : IVendorBillService
             return new VendorBillActionResult(false, "Only draft bills can be deleted.", null);
         }
 
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "system";
+
         bill.IsDeleted = true;
-        bill.DeletedAt = DateTime.UtcNow;
-        bill.DeletedBy = _currentUser.UserName;
+        bill.DeletedAt = now;
+        bill.DeletedBy = userName;
 
         _unitOfWork.Repository<VendorBill>().Update(bill);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var otherActiveSameNumber = await _unitOfWork.Repository<VendorBill>()
+            .Query()
+            .AnyAsync(
+                b => b.CompanyId == companyId
+                     && b.BillNumber == bill.BillNumber
+                     && b.Id != bill.Id,
+                cancellationToken);
+
+        var affectedItemIds = bill.Lines
+            .Where(l => l.ItemId is > 0)
+            .Select(l => l.ItemId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (!otherActiveSameNumber)
+        {
+            var inventoryTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+                .Query(asNoTracking: false)
+                .Where(t => t.CompanyId == companyId && t.ReferenceNo == bill.BillNumber)
+                .ToListAsync(cancellationToken);
+
+            var inventoryContext = await GetBillInventoryContextAsync(
+                companyId,
+                bill.Id,
+                bill.BillDate,
+                bill.Lines.ToList(),
+                cancellationToken);
+
+            foreach (var transaction in inventoryTransactions)
+            {
+                if (inventoryContext is not null
+                    && inventoryContext.GetSoldQuantity(
+                        transaction.ItemId,
+                        transaction.StackNo,
+                        transaction.LotNo) > 0.01m)
+                {
+                    continue;
+                }
+
+                affectedItemIds.Add(transaction.ItemId);
+                _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+            }
+
+            affectedItemIds = affectedItemIds.Distinct().ToList();
+        }
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (affectedItemIds.Count > 0)
+            {
+                await RecalculateItemStockFromTransactionsAsync(
+                    companyId,
+                    affectedItemIds,
+                    now,
+                    userName,
+                    cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _itemCartonSyncService.SyncItemsAsync(companyId, affectedItemIds, cancellationToken);
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to delete vendor bill {BillId}", id);
+            return new VendorBillActionResult(false, "Could not delete vendor bill.", null);
+        }
 
         try
         {
@@ -1656,7 +1759,9 @@ public partial class VendorBillService : IVendorBillService
 
         public decimal GetSoldQuantity(VendorBillLine line) =>
             line.ItemId is > 0
-                ? GetSoldQuantity(line.ItemId.Value, line.StackNo, line.LotNo)
+                ? Math.Min(
+                    Math.Round(line.Quantity, 2),
+                    GetSoldQuantity(line.ItemId.Value, line.StackNo, line.LotNo))
                 : 0m;
 
         public decimal GetSoldQuantity(int itemId, string? stackNo, string? lotNo) =>
@@ -1665,7 +1770,8 @@ public partial class VendorBillService : IVendorBillService
 
     private async Task<BillInventoryContext?> GetBillInventoryContextAsync(
         int companyId,
-        string billNumber,
+        int billId,
+        DateTime billDate,
         IReadOnlyList<VendorBillLine> lines,
         CancellationToken cancellationToken)
     {
@@ -1679,6 +1785,8 @@ public partial class VendorBillService : IVendorBillService
         {
             return null;
         }
+
+        var asOfDate = billDate.Date;
 
         // Sold qty is stack/lot specific so unsold opening stacks are not marked locked.
         var sales = await _unitOfWork.Repository<SalesInvoiceLine>()
@@ -1702,18 +1810,51 @@ public partial class VendorBillService : IVendorBillService
                 g => g.Key,
                 g => Math.Round(
                     g.Sum(x => x.InvoiceType == InvoiceType.CreditNote ? -x.Quantity : x.Quantity),
-                    2));
+                    2),
+                StringComparer.OrdinalIgnoreCase);
 
-        // Cap sold at each bill line qty (same stack may also appear on later purchases).
-        var perLine = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        foreach (var line in lines.Where(l => l.ItemId is > 0))
+        // Earlier purchases on the same stack are sold first. Later bills (or a re-entered
+        // bill after delete) must not inherit those sales or leftover stock-in cannot revert.
+        var earlierPurchases = await _unitOfWork.Repository<VendorBillLine>()
+            .Query()
+            .Where(l => l.ItemId.HasValue
+                        && itemIds.Contains(l.ItemId.Value)
+                        && l.VendorBill.CompanyId == companyId
+                        && l.VendorBill.Id != billId
+                        && (l.VendorBill.BillDate < asOfDate
+                            || (l.VendorBill.BillDate == asOfDate && l.VendorBill.Id < billId))
+                        && (l.VendorBill.Status == BillStatus.Approved
+                            || l.VendorBill.BillNumber == AppConstants.OpeningStockBillNumber))
+            .Select(l => new
+            {
+                ItemId = l.ItemId!.Value,
+                l.StackNo,
+                l.LotNo,
+                l.Quantity
+            })
+            .ToListAsync(cancellationToken);
+
+        var purchasedBeforeByStackLot = earlierPurchases
+            .GroupBy(l => BillLineStockKey(l.ItemId, l.StackNo, l.LotNo))
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(g.Sum(x => x.Quantity), 2),
+                StringComparer.OrdinalIgnoreCase);
+
+        var fifoSold = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in soldByStackLot.Keys
+                     .Concat(purchasedBeforeByStackLot.Keys)
+                     .Concat(lines
+                         .Where(l => l.ItemId is > 0)
+                         .Select(l => BillLineStockKey(l.ItemId!.Value, l.StackNo, l.LotNo)))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var key = BillLineStockKey(line.ItemId!.Value, line.StackNo, line.LotNo);
-            var soldAgainstStack = Math.Max(0m, soldByStackLot.GetValueOrDefault(key));
-            perLine[key] = Math.Min(Math.Round(line.Quantity, 2), soldAgainstStack);
+            var sold = Math.Max(0m, soldByStackLot.GetValueOrDefault(key));
+            var purchasedBefore = purchasedBeforeByStackLot.GetValueOrDefault(key);
+            fifoSold[key] = Math.Max(0m, Math.Round(sold - purchasedBefore, 2));
         }
 
-        return new BillInventoryContext(perLine);
+        return new BillInventoryContext(fifoSold);
     }
 
     private static bool IsLineSold(VendorBillLine line, BillInventoryContext? context) =>

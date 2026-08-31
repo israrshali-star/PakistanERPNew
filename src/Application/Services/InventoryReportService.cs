@@ -244,10 +244,9 @@ public class InventoryReportService : IInventoryReportService
                     ? Math.Round(value / stock, 2)
                     : Math.Round(g.Average(x => x.Rate), 2);
                 var lotKey = LotCartonKey(first.ItemId, lotNo);
-                var cartons = Math.Round(
-                    purchaseCartonsByLot.GetValueOrDefault(lotKey)
-                    - salesCartonsByLot.GetValueOrDefault(lotKey),
-                    2);
+                var purchasedCartons = purchaseCartonsByLot.GetValueOrDefault(lotKey);
+                var soldCartons = salesCartonsByLot.GetValueOrDefault(lotKey);
+                var cartons = Math.Round(purchasedCartons - soldCartons, 2);
                 if (cartons < 0m)
                 {
                     cartons = 0m;
@@ -261,6 +260,13 @@ public class InventoryReportService : IInventoryReportService
                     && masterItem.Cartons > 0m)
                 {
                     cartons = Math.Round(masterItem.Cartons, 2);
+                }
+
+                // Fully sold by carton: leftover kg is weight variance / orphan stock-in, not QOH.
+                if (ShouldClearWeightWhenCartonsExhausted(cartons, purchasedCartons, soldCartons))
+                {
+                    stock = 0m;
+                    value = 0m;
                 }
 
                 return new StockSummaryLineDto(
@@ -389,15 +395,18 @@ public class InventoryReportService : IInventoryReportService
             {
                 var item = itemById[s.ItemId];
                 var stackKey = StackCartonKey(s.ItemId, s.StackNo);
-                var cartons = Math.Round(
-                    purchaseCartonsByStack.GetValueOrDefault(stackKey)
-                    - salesCartonsByStack.GetValueOrDefault(stackKey),
-                    2);
+                var purchasedCartons = purchaseCartonsByStack.GetValueOrDefault(stackKey);
+                var soldCartons = salesCartonsByStack.GetValueOrDefault(stackKey);
+                var cartons = Math.Round(purchasedCartons - soldCartons, 2);
                 if (cartons < 0m)
                 {
                     cartons = 0m;
                 }
                 var quantity = Math.Round(s.Quantity, 2);
+                if (ShouldClearWeightWhenCartonsExhausted(cartons, purchasedCartons, soldCartons))
+                {
+                    quantity = 0m;
+                }
                 var (rate, value) = ResolveStockValuation(
                     costingBatch,
                     item.Id,
@@ -1067,6 +1076,17 @@ public class InventoryReportService : IInventoryReportService
         }
         return symbol;
     }
+
+    /// <summary>
+    /// When every carton of a lot/stack has been sold, leftover kg is not on-hand stock
+    /// (weight variance or an orphan stock-in after a bill was deleted and re-entered).
+    /// </summary>
+    private static bool ShouldClearWeightWhenCartonsExhausted(
+        decimal remainingCartons,
+        decimal purchasedCartons,
+        decimal soldCartons) =>
+        remainingCartons == 0m
+        && (purchasedCartons > 0.01m || soldCartons > 0.01m);
 
     /// <summary>
     /// Uses item purchase rate when set; otherwise values from inventory cost layers
