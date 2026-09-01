@@ -73,7 +73,7 @@
 
 <div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true"
      data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable receipt-modal-landscape">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title text-primary" id="receiptModalLabel">Customer Receipt</h5>
@@ -83,7 +83,7 @@
                 <div class="modal-body">
                     <input type="hidden" id="receipt-id" />
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-lg-2 col-md-4">
                             <label class="form-label" for="receipt-number">Receipt #</label>
                             <div class="input-group">
                                 <input type="text" class="form-control" id="receipt-number" required maxlength="50" />
@@ -92,18 +92,18 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-lg-2 col-md-4">
                             <label class="form-label" for="receipt-date">Receipt Date</label>
                             <input type="date" class="form-control" id="receipt-date" required />
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-lg-5 col-md-8">
                             <label class="form-label" for="receipt-customer-id">Customer</label>
                             <select class="form-select select2" id="receipt-customer-id" required>
                                 <option value="">— Select customer —</option>
                             </select>
                             <div class="form-text" id="receipt-customer-balance"></div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-lg-3 col-md-4">
                             <label class="form-label" for="receipt-amount">Amount (PKR)</label>
                             <input type="number" class="form-control" id="receipt-amount" step="0.01" min="0.01" required />
                             <div class="form-text text-success" id="receipt-amount-words"></div>
@@ -133,7 +133,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-lg-3 col-md-4">
                             <label class="form-label" for="payment-method">Payment Mode</label>
                             <select class="form-select" id="payment-method" required>
                                 <option value="1">Cash</option>
@@ -141,7 +141,7 @@
                                 <option value="3">Bank Transfer</option>
                             </select>
                         </div>
-                        <div class="col-md-8 bank-transfer-fields d-none">
+                        <div class="col-lg-9 col-md-8 bank-transfer-fields d-none">
                             <label class="form-label" for="receipt-bank-id">Deposit To Bank Account <span class="text-danger">*</span></label>
                             <select class="form-select select2" id="receipt-bank-id">
                                 <option value="">— Select bank —</option>
@@ -166,17 +166,17 @@
                                         Cheque drawn on your own bank account. Posts immediately to the selected bank (Dr Bank / Cr AR).
                                     </p>
                                     <div class="row g-3">
-                                        <div class="col-md-6">
+                                        <div class="col-lg-6 col-md-6">
                                             <label class="form-label" for="same-bank-id">Deposit To Bank Account <span class="text-danger">*</span></label>
                                             <select class="form-select select2" id="same-bank-id">
                                                 <option value="">— Select bank —</option>
                                             </select>
                                         </div>
-                                        <div class="col-md-3">
+                                        <div class="col-lg-3 col-md-3">
                                             <label class="form-label" for="same-bank-cheque-number">Cheque # <span class="text-danger">*</span></label>
                                             <input type="text" class="form-control" id="same-bank-cheque-number" maxlength="50" />
                                         </div>
-                                        <div class="col-md-3">
+                                        <div class="col-lg-3 col-md-3">
                                             <label class="form-label" for="same-bank-cheque-date">Cheque Date <span class="text-danger">*</span></label>
                                             <input type="date" class="form-control" id="same-bank-cheque-date" />
                                         </div>
@@ -192,16 +192,16 @@
                                         <strong>Banking → Make Deposit</strong> before approval clears the customer balance.
                                     </p>
                                     <div class="row g-3">
-                                        <div class="col-md-4">
+                                        <div class="col-lg-4 col-md-4">
                                             <label class="form-label" for="cheque-number">Cheque # <span class="text-danger">*</span></label>
                                             <input type="text" class="form-control" id="cheque-number" maxlength="50" placeholder="e.g. 50052468" />
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-lg-4 col-md-4">
                                             <label class="form-label" for="cheque-date">Cheque Date (post-dated OK) <span class="text-danger">*</span></label>
                                             <input type="date" class="form-control" id="cheque-date" />
                                             <div class="form-text">Held in Undeposited Funds until deposited.</div>
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-lg-4 col-md-4">
                                             <label class="form-label" for="cheque-drawn-bank">Drawn on Bank</label>
                                             <input type="text" class="form-control" id="cheque-drawn-bank" maxlength="100" placeholder="e.g. HBL, Meezan" />
                                         </div>
@@ -209,12 +209,12 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-12">
+                        <div class="col-lg-6">
                             <label class="form-label" for="receipt-notes">Notes</label>
                             <textarea class="form-control" id="receipt-notes" rows="2" maxlength="500"></textarea>
                             <div class="form-text d-none" id="receipt-notes-hint"></div>
                         </div>
-                        <div class="col-12" id="receipt-attachments-section">
+                        <div class="col-lg-6" id="receipt-attachments-section">
                             <label class="form-label" for="receipt-attachment-upload">Upload document</label>
                             <input type="file" class="form-control" id="receipt-attachment-upload"
                                    accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple />
@@ -239,6 +239,20 @@
         </div>
     </div>
 </div>
+
+@section Styles {
+    <style>
+        #receiptModal .receipt-modal-landscape {
+            max-width: min(1180px, 96vw);
+            width: 96vw;
+        }
+        @@media (min-width: 1200px) {
+            #receiptModal .receipt-modal-landscape {
+                max-width: 1180px;
+            }
+        }
+    </style>
+}
 
 @section Scripts {
     <partial name="_PrintChoiceModal" />

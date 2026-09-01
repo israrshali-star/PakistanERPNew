@@ -35,9 +35,8 @@ public static class TradeInvoiceLayout
     public static bool ShowsCustomerReceiptInvoiceAllocation(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
-    /// <summary>Company 3 (MIA) prints customer receipts on A4 landscape.</summary>
-    public static bool UsesLandscapeCustomerReceipt(int companyId) =>
-        companyId == TradeInvoiceCompanyId;
+    /// <summary>All companies print customer receipts on A4 landscape.</summary>
+    public static bool UsesLandscapeCustomerReceipt(int companyId) => true;
 
     /// <summary>Max receipt attachments for a company; null means use the global Attachments config default.</summary>
     public static int? GetCustomerReceiptAttachmentLimit(int companyId) =>
