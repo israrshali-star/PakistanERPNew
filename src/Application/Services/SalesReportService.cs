@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -9,6 +10,8 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class SalesReportService : ISalesReportService
 {
+    private const decimal MinimumVisibleBalance = 1000.00m;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentCompanyService _currentCompany;
 
@@ -198,6 +201,177 @@ public class SalesReportService : ISalesReportService
             summary?.Net ?? 0m);
     }
 
+    public async Task<CustomerBalanceReportDto> GetCustomerBalancesAsync(
+        SalesReportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (companyId, _, _) = ValidateDateRange(request);
+        var fromDate = request.FromDate.Date;
+        var toDate = request.ToDate.Date;
+
+        var customersQuery = _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => c.CompanyId == companyId);
+
+        if (request.CustomerId.HasValue)
+        {
+            customersQuery = customersQuery.Where(c => c.Id == request.CustomerId.Value);
+        }
+
+        string? customerLabel = null;
+        if (request.CustomerId.HasValue)
+        {
+            customerLabel = await _unitOfWork.Repository<Customer>()
+                .Query()
+                .Where(c => c.Id == request.CustomerId.Value && c.CompanyId == companyId)
+                .Select(c => c.BuyerId + " — " + c.BuyerName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var customers = await customersQuery
+            .Select(c => new { c.Id, c.BuyerId, c.BuyerName, c.OpeningBalance })
+            .ToListAsync(cancellationToken);
+
+        var invoiceQuery = _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(si => si.CompanyId == companyId && si.Status == InvoiceStatus.Posted);
+
+        if (request.CustomerId.HasValue)
+        {
+            invoiceQuery = invoiceQuery.Where(si => si.CustomerId == request.CustomerId.Value);
+        }
+
+        var invoices = await invoiceQuery
+            .Select(si => new { si.CustomerId, si.InvoiceDate, si.InvoiceType, si.NetTotal })
+            .ToListAsync(cancellationToken);
+
+        var receiptQuery = _unitOfWork.Repository<CustomerReceipt>()
+            .Query()
+            .Where(r => r.CompanyId == companyId);
+
+        if (request.CustomerId.HasValue)
+        {
+            receiptQuery = receiptQuery.Where(r => r.CustomerId == request.CustomerId.Value);
+        }
+
+        var receipts = await receiptQuery
+            .Select(r => new
+            {
+                r.CustomerId,
+                r.ReceiptDate,
+                r.PaymentMethod,
+                r.Status,
+                r.ClearedAt,
+                r.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        var bankQuery = _unitOfWork.Repository<BankTransaction>()
+            .Query()
+            .Where(bt =>
+                bt.CompanyId == companyId
+                && bt.CustomerId != null
+                && bt.TransactionType == BankTransactionType.Withdrawal
+                && bt.JournalEntryId != null);
+
+        if (request.CustomerId.HasValue)
+        {
+            bankQuery = bankQuery.Where(bt => bt.CustomerId == request.CustomerId.Value);
+        }
+
+        var bankMovements = await bankQuery
+            .Select(bt => new
+            {
+                CustomerId = bt.CustomerId!.Value,
+                bt.TransactionDate,
+                bt.CustomerBalanceEffect
+            })
+            .ToListAsync(cancellationToken);
+
+        var periodByCustomer = customers.ToDictionary(
+            c => c.Id,
+            _ => new CustomerPeriodTotals());
+
+        foreach (var invoice in invoices)
+        {
+            if (!periodByCustomer.TryGetValue(invoice.CustomerId, out var totals))
+            {
+                continue;
+            }
+
+            var net = invoice.InvoiceType == InvoiceType.CreditNote
+                ? -invoice.NetTotal
+                : invoice.NetTotal;
+            ApplyDatedNet(totals, invoice.InvoiceDate.Date, fromDate, toDate, net);
+        }
+
+        foreach (var receipt in receipts)
+        {
+            if (!CustomerReceiptBalanceRules.AffectsCustomerBalance(
+                    receipt.PaymentMethod,
+                    receipt.Status,
+                    receipt.ClearedAt)
+                || !periodByCustomer.TryGetValue(receipt.CustomerId, out var totals))
+            {
+                continue;
+            }
+
+            ApplyDatedNet(totals, receipt.ReceiptDate.Date, fromDate, toDate, -receipt.Amount);
+        }
+
+        foreach (var movement in bankMovements)
+        {
+            if (!periodByCustomer.TryGetValue(movement.CustomerId, out var totals))
+            {
+                continue;
+            }
+
+            ApplyDatedNet(totals, movement.TransactionDate.Date, fromDate, toDate, movement.CustomerBalanceEffect);
+        }
+
+        var lines = customers
+            .Select(customer =>
+            {
+                var totals = periodByCustomer[customer.Id];
+                var openingNet = customer.OpeningBalance + totals.BeforeFromNet;
+                var periodDebit = RoundMoney(totals.PeriodDebit);
+                var periodCredit = RoundMoney(totals.PeriodCredit);
+                var closingNet = openingNet + periodDebit - periodCredit;
+                var (openingDebit, openingCredit) = SplitBalance(openingNet);
+                var (closingDebit, closingCredit) = SplitBalance(closingNet);
+
+                return new CustomerBalanceLineDto(
+                    customer.Id,
+                    customer.BuyerId,
+                    customer.BuyerName,
+                    openingDebit,
+                    openingCredit,
+                    periodDebit,
+                    periodCredit,
+                    closingDebit,
+                    closingCredit);
+            })
+            .Where(line => line.ClosingDebit > MinimumVisibleBalance
+                           || line.ClosingCredit > MinimumVisibleBalance)
+            .OrderBy(line => line.CustomerName)
+            .ThenBy(line => line.CustomerCode)
+            .ToList();
+
+        return new CustomerBalanceReportDto(
+            fromDate,
+            toDate,
+            request.CustomerId,
+            customerLabel,
+            lines.Count,
+            lines.Sum(l => l.OpeningDebit),
+            lines.Sum(l => l.OpeningCredit),
+            lines.Sum(l => l.PeriodDebit),
+            lines.Sum(l => l.PeriodCredit),
+            lines.Sum(l => l.ClosingDebit),
+            lines.Sum(l => l.ClosingCredit),
+            lines);
+    }
+
     public async Task<IReadOnlyList<SalesReportCustomerLookupDto>> GetCustomerLookupsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -251,5 +425,54 @@ public class SalesReportService : ISalesReportService
         }
 
         return query;
+    }
+
+    private static void ApplyDatedNet(
+        CustomerPeriodTotals totals,
+        DateTime movementDate,
+        DateTime fromDate,
+        DateTime toDate,
+        decimal net)
+    {
+        if (movementDate < fromDate)
+        {
+            totals.BeforeFromNet += net;
+            return;
+        }
+
+        if (movementDate > toDate)
+        {
+            return;
+        }
+
+        if (net > 0m)
+        {
+            totals.PeriodDebit += net;
+        }
+        else if (net < 0m)
+        {
+            totals.PeriodCredit += Math.Abs(net);
+        }
+    }
+
+    private static decimal RoundMoney(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static (decimal Debit, decimal Credit) SplitBalance(decimal net)
+    {
+        var rounded = RoundMoney(net);
+        if (rounded == 0m)
+        {
+            return (0m, 0m);
+        }
+
+        return rounded > 0m ? (rounded, 0m) : (0m, Math.Abs(rounded));
+    }
+
+    private sealed class CustomerPeriodTotals
+    {
+        public decimal BeforeFromNet { get; set; }
+        public decimal PeriodDebit { get; set; }
+        public decimal PeriodCredit { get; set; }
     }
 }

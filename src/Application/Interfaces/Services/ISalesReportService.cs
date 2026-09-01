@@ -16,6 +16,10 @@ public interface ISalesReportService
         SalesReportRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<CustomerBalanceReportDto> GetCustomerBalancesAsync(
+        SalesReportRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SalesReportCustomerLookupDto>> GetCustomerLookupsAsync(
         CancellationToken cancellationToken = default);
 }

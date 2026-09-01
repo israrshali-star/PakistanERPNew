@@ -60,6 +60,31 @@ public record SalesTaxSummaryReportDto(
 
 public record SalesReportCustomerLookupDto(int Id, string BuyerId, string Name);
 
+public record CustomerBalanceLineDto(
+    int CustomerId,
+    string CustomerCode,
+    string CustomerName,
+    decimal OpeningDebit,
+    decimal OpeningCredit,
+    decimal PeriodDebit,
+    decimal PeriodCredit,
+    decimal ClosingDebit,
+    decimal ClosingCredit);
+
+public record CustomerBalanceReportDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    int? CustomerId,
+    string? CustomerLabel,
+    int CustomerCount,
+    decimal TotalOpeningDebit,
+    decimal TotalOpeningCredit,
+    decimal TotalPeriodDebit,
+    decimal TotalPeriodCredit,
+    decimal TotalClosingDebit,
+    decimal TotalClosingCredit,
+    IReadOnlyList<CustomerBalanceLineDto> Lines);
+
 public class SalesReportRequest
 {
     public DateTime FromDate { get; set; }
