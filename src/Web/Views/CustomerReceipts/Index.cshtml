@@ -73,7 +73,7 @@
 
 <div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true"
      data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable receipt-modal-landscape">
+    <div class="modal-dialog modal-dialog-centered receipt-modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title text-primary" id="receiptModalLabel">Customer Receipt</h5>
@@ -242,13 +242,45 @@
 
 @section Styles {
     <style>
-        #receiptModal .receipt-modal-landscape {
-            max-width: min(1180px, 96vw);
-            width: 96vw;
+        #receiptModal .receipt-modal-dialog {
+            width: min(860px, calc(100vw - 2rem));
+            max-width: min(860px, calc(100vw - 2rem));
+            margin: 1.25rem auto;
+            height: auto;
+            max-height: calc(100vh - 2.5rem);
         }
-        @@media (min-width: 1200px) {
-            #receiptModal .receipt-modal-landscape {
-                max-width: 1180px;
+
+        #receiptModal .modal-content {
+            max-height: calc(100vh - 2.5rem);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #receiptModal .modal-body {
+            overflow-y: auto;
+            padding-top: 1rem;
+            padding-bottom: 0.75rem;
+        }
+
+        #receiptModal .modal-header,
+        #receiptModal .modal-footer {
+            flex-shrink: 0;
+        }
+
+        #receipt-allocation-panel .table-responsive {
+            max-height: 160px;
+        }
+
+        @@media (max-width: 576px) {
+            #receiptModal .receipt-modal-dialog {
+                width: calc(100vw - 1rem);
+                max-width: calc(100vw - 1rem);
+                margin: 0.5rem auto;
+                max-height: calc(100vh - 1rem);
+            }
+
+            #receiptModal .modal-content {
+                max-height: calc(100vh - 1rem);
             }
         }
     </style>
