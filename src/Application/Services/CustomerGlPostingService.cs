@@ -218,8 +218,18 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
 
         var lines = new List<JournalEntryLine>
         {
-            CreateLine(bankChartOfAccountId, amount, 0m, $"Cheque cleared — {chequeRef}"),
-            CreateLine(ar.Value, 0m, amount, JournalDocumentMemo.WithDocumentNumber(receipt.ReceiptNumber, partyName))
+            CreateLine(
+                bankChartOfAccountId,
+                amount,
+                0m,
+                JournalDocumentMemo.WithNotes($"Cheque cleared — {chequeRef}", receipt.Notes)),
+            CreateLine(
+                ar.Value,
+                0m,
+                amount,
+                JournalDocumentMemo.WithNotes(
+                    JournalDocumentMemo.WithDocumentNumber(receipt.ReceiptNumber, partyName),
+                    receipt.Notes))
         };
 
         var postResult = await CreatePostedJournalAsync(
@@ -329,16 +339,16 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
         {
             reversalLines =
             [
-                CreateLine(ar.Value, amount, 0m, $"Cheque returned — {chequeRef}"),
-                CreateLine(bankCoaId.Value, 0m, amount, $"Cheque returned — {chequeRef}")
+                CreateLine(ar.Value, amount, 0m, JournalDocumentMemo.WithNotes($"Cheque returned — {chequeRef}", receipt.Notes)),
+                CreateLine(bankCoaId.Value, 0m, amount, JournalDocumentMemo.WithNotes($"Cheque returned — {chequeRef}", receipt.Notes))
             ];
         }
         else
         {
             reversalLines =
             [
-                CreateLine(ar.Value, amount, 0m, $"Cheque returned — {chequeRef}"),
-                CreateLine(undepositedId.Value, 0m, amount, $"Cheque returned — {chequeRef}")
+                CreateLine(ar.Value, amount, 0m, JournalDocumentMemo.WithNotes($"Cheque returned — {chequeRef}", receipt.Notes)),
+                CreateLine(undepositedId.Value, 0m, amount, JournalDocumentMemo.WithNotes($"Cheque returned — {chequeRef}", receipt.Notes))
             ];
         }
 
@@ -648,25 +658,14 @@ public partial class CustomerGlPostingService : ICustomerGlPostingService
                 : $"{partyName} — {receiptRef}";
         }
 
-        if (!string.IsNullOrWhiteSpace(receipt.Notes))
-        {
-            memo = $"{memo} — {receipt.Notes.Trim()}";
-        }
-
-        return memo;
+        return JournalDocumentMemo.WithNotes(memo, receipt.Notes);
     }
 
     private static string BuildReceiptCreditMemo(CustomerReceipt receipt, string partyName)
     {
-        var receiptRef = receipt.ReceiptNumber.Trim();
-        if (!string.IsNullOrWhiteSpace(receipt.Notes))
-        {
-            return JournalDocumentMemo.WithDocumentNumber(
-                receiptRef,
-                $"{partyName} — {receipt.Notes.Trim()}");
-        }
-
-        return JournalDocumentMemo.WithDocumentNumber(receiptRef, partyName);
+        return JournalDocumentMemo.WithNotes(
+            JournalDocumentMemo.WithDocumentNumber(receipt.ReceiptNumber.Trim(), partyName),
+            receipt.Notes);
     }
 
     private static bool UsesBankLedger(PaymentMethod paymentMethod, ChequeBankType? chequeBankType) =>

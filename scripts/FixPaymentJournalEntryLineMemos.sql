@@ -1,21 +1,16 @@
 /*
-  Backfill JournalEntryLine.Memo for customer receipts and vendor payments so
-  chart-of-account ledgers show the party name (customer/vendor) instead of
-  generic bank/cash labels.
+  Backfill JournalEntryLine.Memo for company 3 so chart-of-account ledgers
+  show transaction notes on the relevant cash, bank, and party accounts.
 
   Ledger display (ChartOfAccountsService.GetLedgerAsync) prefers line.Memo over
   journal entry description.
 
   Rules:
-    Customer receipt — bank debit line:  {BuyerName} — {ReceiptNumber}
-    Customer receipt — cash debit (10015): {BuyerName}
-    Customer receipt — AR credit line:   {BuyerName}
+    Customer receipt — keep existing party/document memo and append Notes
+    Bank transaction — append Description (write cheque / transfer / deposit notes)
+    Make Deposit     — bank + undeposited lines use customer, cheque, and receipt notes
 
-    Vendor payment — bank credit line:   {VendorName} — {PaymentNumber}
-    Vendor payment — cash credit (10015): {VendorName}
-    Vendor payment — AP debit line:      {VendorName}
-
-  Safe to re-run: sets Memo to the target value each time.
+  Safe to re-run: only appends notes that are not already present.
 */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -24,94 +19,131 @@ SET ANSI_NULLS ON;
 
 DECLARE @CompanyId INT = 3;
 
-DECLARE @CashAccountId INT;
-DECLARE @ArAccountId INT;
-DECLARE @ApAccountId INT;
-
-SELECT @CashAccountId = Id
-FROM ChartOfAccounts
-WHERE CompanyId = @CompanyId
-  AND AccountNumber = N'10015'
-  AND IsDeleted = 0;
-
-SELECT @ArAccountId = Id
-FROM ChartOfAccounts
-WHERE CompanyId = @CompanyId
-  AND AccountNumber = N'11110'
-  AND IsDeleted = 0;
-
-SELECT @ApAccountId = Id
-FROM ChartOfAccounts
-WHERE CompanyId = @CompanyId
-  AND AccountNumber = N'20000'
-  AND IsDeleted = 0;
-
-IF @CashAccountId IS NULL OR @ArAccountId IS NULL OR @ApAccountId IS NULL
-BEGIN
-    RAISERROR('Required chart of accounts (10015, 11110, 20000) not found for CompanyId %d.', 16, 1, @CompanyId);
-    RETURN;
-END;
-
 BEGIN TRANSACTION;
 
--- Customer receipts
+-- Customer receipts: write Notes on every journal line (cash, bank, AR)
 UPDATE jel
 SET Memo = CASE
-    WHEN jel.ChartOfAccountId = @ArAccountId THEN LTRIM(RTRIM(c.BuyerName))
-    WHEN jel.ChartOfAccountId = @CashAccountId AND jel.Debit > 0 THEN LTRIM(RTRIM(c.BuyerName))
-    WHEN jel.Debit > 0 THEN LTRIM(RTRIM(c.BuyerName)) + N' — ' + LTRIM(RTRIM(cr.ReceiptNumber))
-    ELSE jel.Memo
+    WHEN cr.Notes IS NULL OR LTRIM(RTRIM(cr.Notes)) = N'' THEN jel.Memo
+    WHEN jel.Memo IS NULL OR LTRIM(RTRIM(jel.Memo)) = N'' THEN LTRIM(RTRIM(cr.Notes))
+    WHEN CHARINDEX(LTRIM(RTRIM(cr.Notes)), jel.Memo) > 0 THEN jel.Memo
+    ELSE jel.Memo + N' — ' + LTRIM(RTRIM(cr.Notes))
 END
 FROM JournalEntryLines jel
 INNER JOIN JournalEntries je ON je.Id = jel.JournalEntryId
 INNER JOIN CustomerReceipts cr ON cr.Id = je.ReferenceId AND cr.CompanyId = je.CompanyId
-INNER JOIN Customers c ON c.Id = cr.CustomerId AND c.CompanyId = cr.CompanyId
+WHERE je.CompanyId = @CompanyId
+  AND je.IsDeleted = 0
+  AND je.ReferenceType = N'CustomerReceipt'
+  AND cr.IsDeleted = 0;
+
+DECLARE @CustomerReceiptLinesUpdated INT = @@ROWCOUNT;
+
+-- Banking write cheque / transfer / deposit: write Description on every line
+UPDATE jel
+SET Memo = CASE
+    WHEN bt.Description IS NULL OR LTRIM(RTRIM(bt.Description)) = N'' THEN jel.Memo
+    WHEN jel.Memo IS NULL OR LTRIM(RTRIM(jel.Memo)) = N'' THEN LTRIM(RTRIM(bt.Description))
+    WHEN CHARINDEX(LTRIM(RTRIM(bt.Description)), jel.Memo) > 0 THEN jel.Memo
+    ELSE jel.Memo + N' — ' + LTRIM(RTRIM(bt.Description))
+END
+FROM JournalEntryLines jel
+INNER JOIN JournalEntries je ON je.Id = jel.JournalEntryId
+INNER JOIN BankTransactions bt ON bt.Id = je.ReferenceId AND bt.CompanyId = je.CompanyId
+WHERE je.CompanyId = @CompanyId
+  AND je.IsDeleted = 0
+  AND je.ReferenceType = N'BankTransaction'
+  AND bt.IsDeleted = 0;
+
+DECLARE @BankTransactionLinesUpdated INT = @@ROWCOUNT;
+
+-- Make Deposit: put the deposited cash-receipt note on bank + undeposited lines
+UPDATE jel
+SET Memo = CASE
+    WHEN CHARINDEX(LTRIM(RTRIM(deposit.Memo)), ISNULL(jel.Memo, N'')) > 0
+         AND (bt.Description IS NULL OR LTRIM(RTRIM(bt.Description)) = N''
+              OR CHARINDEX(LTRIM(RTRIM(bt.Description)), ISNULL(jel.Memo, N'')) > 0)
+        THEN jel.Memo
+    ELSE CASE
+        WHEN bt.Description IS NULL OR LTRIM(RTRIM(bt.Description)) = N''
+             OR CHARINDEX(LTRIM(RTRIM(bt.Description)), deposit.Memo) > 0
+            THEN deposit.Memo
+        ELSE deposit.Memo + N' — ' + LTRIM(RTRIM(bt.Description))
+    END
+END
+FROM JournalEntryLines jel
+INNER JOIN JournalEntries je ON je.Id = jel.JournalEntryId
+INNER JOIN BankTransactions bt ON bt.Id = je.ReferenceId AND bt.CompanyId = je.CompanyId
+INNER JOIN (
+    SELECT
+        cr.DepositedBankTransactionId,
+        CASE
+            WHEN cr.PaymentMethod = 2 AND cr.ChequeNumber IS NOT NULL AND LTRIM(RTRIM(cr.ChequeNumber)) <> N''
+                THEN LTRIM(RTRIM(c.BuyerName)) + N' — Chq #' + LTRIM(RTRIM(cr.ChequeNumber))
+            ELSE LTRIM(RTRIM(c.BuyerName)) + N' — ' + LTRIM(RTRIM(cr.ReceiptNumber))
+        END
+        + CASE
+            WHEN cr.Notes IS NULL OR LTRIM(RTRIM(cr.Notes)) = N'' THEN N''
+            ELSE N' — ' + LTRIM(RTRIM(cr.Notes))
+          END AS Memo
+    FROM CustomerReceipts cr
+    INNER JOIN Customers c ON c.Id = cr.CustomerId AND c.CompanyId = cr.CompanyId
+    WHERE cr.CompanyId = @CompanyId
+      AND cr.IsDeleted = 0
+      AND c.IsDeleted = 0
+      AND cr.DepositedBankTransactionId IS NOT NULL
+) deposit ON deposit.DepositedBankTransactionId = bt.Id
+WHERE je.CompanyId = @CompanyId
+  AND je.IsDeleted = 0
+  AND je.ReferenceType = N'BankTransaction'
+  AND bt.IsDeleted = 0
+  AND bt.TransactionType = 1;
+
+DECLARE @DepositLinesUpdated INT = @@ROWCOUNT;
+
+-- Journal header description: include receipt notes for list/search clarity
+UPDATE je
+SET Description = CASE
+    WHEN CHARINDEX(LTRIM(RTRIM(cr.Notes)), ISNULL(je.Description, N'')) > 0
+        THEN je.Description
+    WHEN je.Description IS NULL OR LTRIM(RTRIM(je.Description)) = N''
+        THEN N'Customer receipt ' + LTRIM(RTRIM(cr.ReceiptNumber)) + N' — ' + LTRIM(RTRIM(cr.Notes))
+    ELSE je.Description + N' — ' + LTRIM(RTRIM(cr.Notes))
+END
+FROM JournalEntries je
+INNER JOIN CustomerReceipts cr ON cr.Id = je.ReferenceId AND cr.CompanyId = je.CompanyId
 WHERE je.CompanyId = @CompanyId
   AND je.IsDeleted = 0
   AND je.ReferenceType = N'CustomerReceipt'
   AND cr.IsDeleted = 0
-  AND c.IsDeleted = 0;
+  AND cr.Notes IS NOT NULL
+  AND LTRIM(RTRIM(cr.Notes)) <> N'';
 
-DECLARE @CustomerReceiptLinesUpdated INT = @@ROWCOUNT;
+DECLARE @ReceiptDescriptionsUpdated INT = @@ROWCOUNT;
 
--- Vendor payments
-UPDATE jel
-SET Memo = CASE
-    WHEN jel.ChartOfAccountId = @ApAccountId THEN LTRIM(RTRIM(v.VendorName))
-    WHEN jel.ChartOfAccountId = @CashAccountId AND jel.Credit > 0 THEN LTRIM(RTRIM(v.VendorName))
-    WHEN jel.Credit > 0 THEN LTRIM(RTRIM(v.VendorName)) + N' — ' + LTRIM(RTRIM(vp.PaymentNumber))
-    ELSE jel.Memo
+UPDATE je
+SET Description = CASE
+    WHEN CHARINDEX(LTRIM(RTRIM(bt.Description)), ISNULL(je.Description, N'')) > 0
+        THEN je.Description
+    WHEN je.Description IS NULL OR LTRIM(RTRIM(je.Description)) = N''
+        THEN LTRIM(RTRIM(bt.Description))
+    ELSE je.Description + N' — ' + LTRIM(RTRIM(bt.Description))
 END
-FROM JournalEntryLines jel
-INNER JOIN JournalEntries je ON je.Id = jel.JournalEntryId
-INNER JOIN VendorPayments vp ON vp.Id = je.ReferenceId AND vp.CompanyId = je.CompanyId
-INNER JOIN Vendors v ON v.Id = vp.VendorId AND v.CompanyId = vp.CompanyId
+FROM JournalEntries je
+INNER JOIN BankTransactions bt ON bt.Id = je.ReferenceId AND bt.CompanyId = je.CompanyId
 WHERE je.CompanyId = @CompanyId
   AND je.IsDeleted = 0
-  AND je.ReferenceType = N'VendorPayment'
-  AND vp.IsDeleted = 0
-  AND v.IsDeleted = 0;
+  AND je.ReferenceType = N'BankTransaction'
+  AND bt.IsDeleted = 0
+  AND bt.Description IS NOT NULL
+  AND LTRIM(RTRIM(bt.Description)) <> N'';
 
-DECLARE @VendorPaymentLinesUpdated INT = @@ROWCOUNT;
+DECLARE @BankDescriptionsUpdated INT = @@ROWCOUNT;
 
 COMMIT TRANSACTION;
 
 PRINT CONCAT('Customer receipt JE lines updated: ', @CustomerReceiptLinesUpdated);
-PRINT CONCAT('Vendor payment JE lines updated: ', @VendorPaymentLinesUpdated);
-
--- Sample verification
-SELECT TOP 12
-    je.EntryNumber,
-    je.Description,
-    coa.AccountNumber,
-    coa.AccountName,
-    jel.Debit,
-    jel.Credit,
-    jel.Memo
-FROM JournalEntries je
-INNER JOIN JournalEntryLines jel ON jel.JournalEntryId = je.Id
-INNER JOIN ChartOfAccounts coa ON coa.Id = jel.ChartOfAccountId
-WHERE je.CompanyId = @CompanyId
-  AND je.IsDeleted = 0
-  AND je.ReferenceType IN (N'CustomerReceipt', N'VendorPayment')
-ORDER BY je.Id, jel.Id;
+PRINT CONCAT('Bank transaction JE lines updated: ', @BankTransactionLinesUpdated);
+PRINT CONCAT('Deposit receipt memos updated: ', @DepositLinesUpdated);
+PRINT CONCAT('Customer receipt JE descriptions updated: ', @ReceiptDescriptionsUpdated);
+PRINT CONCAT('Bank transaction JE descriptions updated: ', @BankDescriptionsUpdated);

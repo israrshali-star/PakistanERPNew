@@ -223,12 +223,12 @@ public partial class BankGlPostingService : IBankGlPostingService
                         null);
                 }
 
-                var bankLabel = await GetAccountLabelAsync(transaction.ChartOfAccountId, cancellationToken);
-                return (true, null,
-                [
-                    CreateLine(transaction.ChartOfAccountId, amount, 0m, $"Deposit — {bankLabel}"),
-                    CreateLine(undepositedId.Value, 0m, amount, "Undeposited Funds")
-                ]);
+                var depositLines = await BuildDepositLinesAsync(
+                    transaction,
+                    amount,
+                    undepositedId.Value,
+                    cancellationToken);
+                return (true, null, depositLines);
             }
 
             case BankTransactionType.Withdrawal:
@@ -240,7 +240,10 @@ public partial class BankGlPostingService : IBankGlPostingService
 
                 var party = await ResolvePartyNameAsync(transaction, cancellationToken);
                 var payFromAccountNumber = await GetAccountNumberAsync(transaction.ChartOfAccountId, cancellationToken);
-                var payFromMemo = BuildWithdrawalPayFromMemo(transaction, party, payFromAccountNumber);
+                var payFromMemo = WithTxnNotes(
+                    transaction,
+                    BuildWithdrawalPayFromMemo(transaction, party, payFromAccountNumber));
+                party = WithTxnNotes(transaction, party);
 
                 if (transaction.CustomerId.HasValue)
                 {
@@ -332,7 +335,7 @@ public partial class BankGlPostingService : IBankGlPostingService
 
                 var fromLabel = await GetAccountLabelAsync(transaction.ChartOfAccountId, cancellationToken);
                 var toLabel = await GetAccountLabelAsync(transaction.TransferToChartOfAccountId.Value, cancellationToken);
-                var memo = $"Transfer {fromLabel} → {toLabel}";
+                var memo = WithTxnNotes(transaction, $"Transfer {fromLabel} → {toLabel}");
 
                 return (true, null,
                 [
@@ -419,11 +422,90 @@ public partial class BankGlPostingService : IBankGlPostingService
         return (true, null, lines);
     }
 
+    private async Task<List<JournalEntryLine>> BuildDepositLinesAsync(
+        BankTransaction transaction,
+        decimal amount,
+        int undepositedId,
+        CancellationToken cancellationToken)
+    {
+        var receipts = await _unitOfWork.Repository<CustomerReceipt>()
+            .Query()
+            .Where(r => r.CompanyId == transaction.CompanyId
+                        && r.DepositedBankTransactionId == transaction.Id
+                        && !r.IsDeleted)
+            .Select(r => new
+            {
+                r.ReceiptNumber,
+                r.Amount,
+                r.PaymentMethod,
+                r.ChequeNumber,
+                r.Notes,
+                CustomerName = r.Customer.BuyerName
+            })
+            .ToListAsync(cancellationToken);
+
+        if (receipts.Count > 0)
+        {
+            var lines = new List<JournalEntryLine>();
+            foreach (var receipt in receipts)
+            {
+                var memo = BuildDepositReceiptMemo(
+                    receipt.CustomerName,
+                    receipt.ReceiptNumber,
+                    receipt.PaymentMethod,
+                    receipt.ChequeNumber,
+                    receipt.Notes,
+                    transaction.Description);
+                var receiptAmount = Math.Round(receipt.Amount, 2);
+                lines.Add(CreateLine(transaction.ChartOfAccountId, receiptAmount, 0m, memo));
+                lines.Add(CreateLine(undepositedId, 0m, receiptAmount, memo));
+            }
+
+            return lines;
+        }
+
+        var bankLabel = await GetAccountLabelAsync(transaction.ChartOfAccountId, cancellationToken);
+        return
+        [
+            CreateLine(
+                transaction.ChartOfAccountId,
+                amount,
+                0m,
+                WithTxnNotes(transaction, $"Deposit — {bankLabel}")),
+            CreateLine(
+                undepositedId,
+                0m,
+                amount,
+                WithTxnNotes(transaction, "Undeposited Funds"))
+        ];
+    }
+
+    private static string BuildDepositReceiptMemo(
+        string? customerName,
+        string receiptNumber,
+        PaymentMethod paymentMethod,
+        string? chequeNumber,
+        string? receiptNotes,
+        string? transactionNotes)
+    {
+        var party = string.IsNullOrWhiteSpace(customerName) ? "Customer" : customerName.Trim();
+        var memo = paymentMethod == PaymentMethod.Cheque && !string.IsNullOrWhiteSpace(chequeNumber)
+            ? $"{party} — Chq #{chequeNumber.Trim()}"
+            : $"{party} — {receiptNumber.Trim()}";
+
+        return JournalDocumentMemo.WithNotes(
+            JournalDocumentMemo.WithNotes(memo, receiptNotes),
+            transactionNotes);
+    }
+
+    private static string WithTxnNotes(BankTransaction transaction, string memo) =>
+        JournalDocumentMemo.WithNotes(memo, transaction.Description);
+
     private static string BuildJournalDescription(BankTransaction transaction, string? payFromAccountNumber = null)
     {
         var party = transaction.PartyName?.Trim() ?? "payment";
 
-        return transaction.TransactionType switch
+        var description = transaction.TransactionType switch
         {
             BankTransactionType.Deposit => "Bank deposit",
             BankTransactionType.Withdrawal => transaction.PaymentMethod switch
@@ -439,6 +521,8 @@ public partial class BankGlPostingService : IBankGlPostingService
             BankTransactionType.Transfer => "Cash/bank transfer",
             _ => "Bank transaction"
         };
+
+        return JournalDocumentMemo.WithNotes(description, transaction.Description);
     }
 
     private static string BuildWithdrawalPayFromMemo(

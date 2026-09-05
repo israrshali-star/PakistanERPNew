@@ -650,6 +650,8 @@ public class BankTransactionService : IBankTransactionService
                         }
                     }
                 }
+
+                await MarkChequesDepositedAsync(depositReceipts, entity.Id, cancellationToken);
             }
 
             var glResult = await _bankGlPostingService.PostBankTransactionAsync(entity, cancellationToken);
@@ -666,11 +668,6 @@ public class BankTransactionService : IBankTransactionService
                 }
 
                 return new BankTransactionSaveResult(false, glResult.Message, null);
-            }
-
-            if (depositReceipts is { Count: > 0 })
-            {
-                await MarkChequesDepositedAsync(depositReceipts, entity.Id, cancellationToken);
             }
 
             if (useTransaction)
