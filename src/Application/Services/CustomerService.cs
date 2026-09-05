@@ -610,7 +610,7 @@ public partial class CustomerService : ICustomerService
                     receipt.ReturnedAt ?? receipt.ReceiptDate,
                     1_000_000 + receipt.Id,
                     receipt.ReceiptNumber,
-                    $"Cheque Returned ({returnedRef})",
+                    JournalDocumentMemo.WithNotes($"Cheque Returned ({returnedRef})", receipt.Notes),
                     receipt.Amount,
                     0m,
                     0m,
@@ -626,13 +626,11 @@ public partial class CustomerService : ICustomerService
             var chequeRef = !string.IsNullOrWhiteSpace(receipt.ChequeNumber)
                 ? receipt.ChequeNumber.Trim()
                 : receipt.ReceiptNumber;
-            var description = isPendingCheque
-                ? $"Cheque in Clearing ({chequeRef})"
-                : $"Customer Receipt ({receipt.PaymentMethod})";
-            if (!string.IsNullOrWhiteSpace(receipt.Notes))
-            {
-                description = $"{description} — {receipt.Notes.Trim()}";
-            }
+            var description = JournalDocumentMemo.WithNotes(
+                isPendingCheque
+                    ? $"Cheque in Clearing ({chequeRef})"
+                    : $"Customer Receipt ({receipt.PaymentMethod})",
+                receipt.Notes);
 
             movements.Add((
                 receipt.ReceiptDate,
@@ -673,6 +671,7 @@ public partial class CustomerService : ICustomerService
                 bt.TransactionDate,
                 bt.ChequeNumber,
                 bt.PaymentMethod,
+                bt.Description,
                 bt.CustomerBalanceEffect
             })
             .ToListAsync(cancellationToken);
@@ -684,13 +683,15 @@ public partial class CustomerService : ICustomerService
                 ? cheque.ChequeNumber.Trim()
                 : $"PAY-{cheque.Id:D4}";
 
-            var description = cheque.PaymentMethod switch
-            {
-                PaymentMethod.Cheque => "Cheque Payment",
-                PaymentMethod.BankTransfer => "Bank Transfer",
-                PaymentMethod.Cash => "Cash Payment",
-                _ => "Payment"
-            };
+            var description = JournalDocumentMemo.WithNotes(
+                cheque.PaymentMethod switch
+                {
+                    PaymentMethod.Cheque => "Cheque Payment",
+                    PaymentMethod.BankTransfer => "Bank Transfer",
+                    PaymentMethod.Cash => "Cash Payment",
+                    _ => "Payment"
+                },
+                cheque.Description);
 
             movements.Add((
                 cheque.TransactionDate,
