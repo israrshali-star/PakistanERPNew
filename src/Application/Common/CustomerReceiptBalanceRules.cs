@@ -20,4 +20,28 @@ public static class CustomerReceiptBalanceRules
         DateTime? clearedAt) =>
         !IsChequeReturned(status)
         && (paymentMethod != PaymentMethod.Cheque || IsChequeCleared(status, clearedAt));
+
+    /// <summary>
+    /// Other-bank cheques lock after deposit or bank clearance because they belong to a deposit batch.
+    /// Same-bank cheques post directly to the bank (like cash) and stay editable.
+    /// </summary>
+    public static bool IsLockedFromModification(
+        PaymentMethod paymentMethod,
+        ChequeBankType? chequeBankType,
+        CustomerReceiptStatus status,
+        DateTime? clearedAt,
+        bool isDeposited)
+    {
+        if (IsChequeReturned(status))
+        {
+            return true;
+        }
+
+        if (paymentMethod != PaymentMethod.Cheque || chequeBankType == ChequeBankType.SameBank)
+        {
+            return false;
+        }
+
+        return isDeposited || IsChequeCleared(status, clearedAt);
+    }
 }

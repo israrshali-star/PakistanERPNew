@@ -193,6 +193,77 @@
         return null;
     }
 
+    // API returns enums as strings (JsonStringEnumConverter); selects use numeric values.
+    function normalizePaymentMethodValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return 1;
+        }
+
+        var asNumber = parseInt(value, 10);
+        if (!isNaN(asNumber) && asNumber > 0) {
+            return asNumber;
+        }
+
+        var name = String(value).replace(/\s+/g, '').toLowerCase();
+        if (name === 'cheque') {
+            return 2;
+        }
+        if (name === 'banktransfer') {
+            return 3;
+        }
+
+        return 1;
+    }
+
+    function normalizeChequeBankTypeValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
+
+        var asNumber = parseInt(value, 10);
+        if (!isNaN(asNumber) && asNumber > 0) {
+            return asNumber;
+        }
+
+        var name = String(value).replace(/\s+/g, '').toLowerCase();
+        if (name === 'samebank') {
+            return 1;
+        }
+        if (name === 'otherbank') {
+            return 2;
+        }
+
+        return null;
+    }
+
+    function isReceiptReturned(receipt) {
+        var status = receipt && (receipt.status || receipt.Status);
+        if (status === 3 || status === 'Returned') {
+            return true;
+        }
+        return String(status || '').toLowerCase() === 'returned';
+    }
+
+    function isReceiptLockedFromEdit(receipt) {
+        if (!receipt) {
+            return false;
+        }
+        if (isReceiptReturned(receipt)) {
+            return true;
+        }
+
+        var chequeType = normalizeChequeBankTypeValue(receipt.chequeBankType || receipt.ChequeBankType);
+        if (chequeType === 1) {
+            return false;
+        }
+
+        if (receipt.isDeposited === true || receipt.IsDeposited === true) {
+            return true;
+        }
+
+        return !!(receipt.clearedAt || receipt.ClearedAt);
+    }
+
     function setChequeBankType(value) {
         $('#cheque-type-same-bank').prop('checked', value === 1);
         $('#cheque-type-other-bank').prop('checked', value === 2);
@@ -748,19 +819,13 @@
                         if (row.depositStatus === 'Returned (Not Cleared)') {
                             return buttons.join('') || '<span class="text-muted small">Returned</span>';
                         }
-                        if (row.depositStatus === 'Cleared' || row.depositStatus === 'Deposited (Awaiting Approval)') {
-                            if (!buttons.length) {
-                                return '<span class="text-muted small">Locked</span>';
-                            }
-                            return buttons.join('');
-                        }
-                        if (canEdit) {
+                        if (canEdit && row.canModify) {
                             buttons.push(
                                 '<button type="button" class="btn btn-sm btn-outline-primary btn-edit-receipt" data-id="' + row.id + '" title="Edit">' +
                                 '<i class="fa-solid fa-pen"></i></button>'
                             );
                         }
-                        if (canDelete) {
+                        if (canDelete && row.canModify) {
                             buttons.push(
                                 '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-receipt ms-1" data-id="' + row.id + '" title="Delete">' +
                                 '<i class="fa-solid fa-trash"></i></button>'
@@ -821,20 +886,22 @@
                     }
                     updateCustomerBalanceHint();
                 });
-                $('#payment-method').val(receipt.paymentMethod).trigger('change');
-                setChequeBankType(receipt.chequeBankType || 2);
+                var paymentMethod = normalizePaymentMethodValue(receipt.paymentMethod);
+                var chequeBankType = normalizeChequeBankTypeValue(receipt.chequeBankType);
+                $('#payment-method').val(String(paymentMethod)).trigger('change');
+                setChequeBankType(paymentMethod === 2 ? (chequeBankType || 2) : null);
                 if (window.setPaSelect2Value) {
                     window.setPaSelect2Value($('#receipt-bank-id'), receipt.bankId || '', receipt.bankName || '');
                     window.setPaSelect2Value(
                         $('#same-bank-id'),
-                        receipt.chequeBankType === 1 ? (receipt.bankId || '') : '',
+                        chequeBankType === 1 ? (receipt.bankId || '') : '',
                         receipt.bankName || ''
                     );
                 } else {
                     $('#receipt-bank-id').val(receipt.bankId || '').trigger('change');
-                    $('#same-bank-id').val(receipt.chequeBankType === 1 ? (receipt.bankId || '') : '').trigger('change');
+                    $('#same-bank-id').val(chequeBankType === 1 ? (receipt.bankId || '') : '').trigger('change');
                 }
-                if (receipt.chequeBankType === 1) {
+                if (chequeBankType === 1) {
                     $('#same-bank-cheque-number').val(receipt.chequeNumber || '');
                     $('#same-bank-cheque-date').val(toInputDate(receipt.chequeDate));
                 } else {
@@ -844,7 +911,7 @@
                 }
                 $('#receipt-notes').val(noteFields.userNotes);
                 togglePaymentFields();
-                setFormReadOnly(receipt.isDeposited === true || !!receipt.clearedAt);
+                setFormReadOnly(isReceiptLockedFromEdit(receipt));
                 updateCustomerBalanceHint();
                 updateAmountInWords();
                 renderAttachments(receipt.attachments || receipt.Attachments || []);

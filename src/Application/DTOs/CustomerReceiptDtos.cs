@@ -34,7 +34,8 @@ public record CustomerReceiptListItemDto(
     string? ChequeNumber,
     DateTime? ChequeDate,
     string? DepositStatus,
-    bool CanMarkReturned);
+    bool CanMarkReturned,
+    bool CanModify);
 
 public class CustomerReceiptSaveRequest
 {

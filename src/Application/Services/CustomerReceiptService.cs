@@ -116,7 +116,11 @@ public partial class CustomerReceiptService : ICustomerReceiptService
                     today),
                 r.PaymentMethod == PaymentMethod.Cheque
                     && r.ChequeBankType == ChequeBankType.OtherBank
-                    && !CustomerReceiptBalanceRules.IsChequeReturned(r.Status)))
+                    && r.Status != CustomerReceiptStatus.Returned,
+                r.Status != CustomerReceiptStatus.Returned
+                    && (r.PaymentMethod != PaymentMethod.Cheque
+                        || r.ChequeBankType == ChequeBankType.SameBank
+                        || !(r.IsDeposited || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null)))))
             .ToListAsync(cancellationToken);
 
         return new DataTableResponse<CustomerReceiptListItemDto>(
@@ -328,7 +332,12 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             return new CustomerReceiptSaveResult(false, "Returned cheques cannot be edited.", null);
         }
 
-        if (entity.IsDeposited || CustomerReceiptBalanceRules.IsChequeCleared(entity.Status, entity.ClearedAt))
+        if (CustomerReceiptBalanceRules.IsLockedFromModification(
+            entity.PaymentMethod,
+            entity.ChequeBankType,
+            entity.Status,
+            entity.ClearedAt,
+            entity.IsDeposited))
         {
             return new CustomerReceiptSaveResult(
                 false,
@@ -424,17 +433,22 @@ public partial class CustomerReceiptService : ICustomerReceiptService
             return new CustomerReceiptSaveResult(false, "Receipt not found.", null);
         }
 
-        if (entity.IsDeposited || CustomerReceiptBalanceRules.IsChequeCleared(entity.Status, entity.ClearedAt))
+        if (CustomerReceiptBalanceRules.IsChequeReturned(entity.Status))
+        {
+            return new CustomerReceiptSaveResult(false, "Returned cheques cannot be deleted.", null);
+        }
+
+        if (CustomerReceiptBalanceRules.IsLockedFromModification(
+            entity.PaymentMethod,
+            entity.ChequeBankType,
+            entity.Status,
+            entity.ClearedAt,
+            entity.IsDeposited))
         {
             return new CustomerReceiptSaveResult(
                 false,
                 "This cheque has been deposited or cleared and cannot be deleted.",
                 null);
-        }
-
-        if (CustomerReceiptBalanceRules.IsChequeReturned(entity.Status))
-        {
-            return new CustomerReceiptSaveResult(false, "Returned cheques cannot be deleted.", null);
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
