@@ -171,10 +171,10 @@
             '<input type="number" class="form-control form-control-xs text-end line-price" min="0" step="0.01" value="' +
             value + '" required />';
         if (!isTradeInvoiceCompany()) {
-            return '<td>' + input + '</td>';
+            return '<td class="col-rate">' + input + '</td>';
         }
 
-        return '<td>' +
+        return '<td class="col-rate">' +
             '<div class="input-group input-group-sm">' +
             input +
             '<button type="button" class="btn btn-outline-secondary btn-convert-lb-kg px-1" ' +
@@ -278,14 +278,14 @@
             '<td><input type="hidden" class="line-item-id" />' +
             '<input type="text" class="form-control form-control-xs line-item-name" readonly placeholder="Lot" /></td>' +
             '<td><input type="text" class="form-control form-control-xs line-desc" maxlength="500" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
+            '<td class="col-stack"><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-carton-desc" maxlength="50" placeholder="Carton desc" /></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
+            '<td class="col-ctn"><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
+            '<td class="col-carton-desc"><input type="text" class="form-control form-control-xs line-carton-desc" maxlength="50" placeholder="Carton desc" /></td>' +
+            '<td class="col-qty"><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
             '<td class="text-muted line-unit">—</td>' +
             buildPriceCellHtml(0) +
-            '<td class="tax-line-col"><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
+            '<td class="tax-line-col col-tax"><input type="number" class="form-control form-control-xs text-end line-tax" min="0" step="0.01" value="' + getScenarioTaxRate().toFixed(2) + '" /></td>' +
             '<td class="text-end text-currency line-total">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
             '</tr>'

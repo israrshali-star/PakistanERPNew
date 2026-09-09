@@ -72,11 +72,11 @@
                     <tr>
                         <th>Lot</th>
                         <th>Item</th>
-                        <th>Description</th>
-                        <th>Stack</th>
-                        <th class="text-end">Ctn</th>
-                        <th class="text-end">Qty</th>
-                        <th class="text-end">Rate</th>
+                        <th class="col-desc">Description</th>
+                        <th class="col-stack">Stack</th>
+                        <th class="text-end col-ctn">Ctn</th>
+                        <th class="text-end col-qty">Qty</th>
+                        <th class="text-end col-rate">Rate</th>
                         <th class="text-end">Amount</th>
                         <th></th>
                     </tr>
@@ -171,9 +171,53 @@
         }
 
         .bill-create-compact .table-compact th:nth-child(3),
-        .bill-create-compact .table-compact td:nth-child(3) {
-            white-space: normal;
-            min-width: 7rem;
+        .bill-create-compact .table-compact td:nth-child(3),
+        .bill-create-compact .table-compact .col-desc {
+            white-space: normal !important;
+            min-width: 12rem;
+            width: 28%;
+        }
+
+        .bill-create-compact .table-compact .col-stack {
+            width: 5.5rem;
+            max-width: 5.5rem;
+        }
+
+        .bill-create-compact .table-compact .col-ctn,
+        .bill-create-compact .table-compact .col-qty {
+            width: 5rem;
+            max-width: 5rem;
+        }
+
+        .bill-create-compact .table-compact .col-rate {
+            width: 5.6rem;
+            min-width: 5.6rem;
+        }
+
+        .bill-create-compact .table-compact .col-stack .form-control,
+        .bill-create-compact .table-compact .col-ctn .form-control,
+        .bill-create-compact .table-compact .col-qty .form-control,
+        .bill-create-compact .table-compact .col-rate .form-control {
+            width: 100%;
+            min-width: 0;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+            -moz-appearance: textfield;
+        }
+
+        .bill-create-compact .table-compact .col-ctn .form-control::-webkit-outer-spin-button,
+        .bill-create-compact .table-compact .col-ctn .form-control::-webkit-inner-spin-button,
+        .bill-create-compact .table-compact .col-qty .form-control::-webkit-outer-spin-button,
+        .bill-create-compact .table-compact .col-qty .form-control::-webkit-inner-spin-button,
+        .bill-create-compact .table-compact .col-rate .form-control::-webkit-outer-spin-button,
+        .bill-create-compact .table-compact .col-rate .form-control::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .bill-create-compact .table-compact .col-desc .form-control {
+            width: 100%;
+            min-width: 0;
         }
 
         .bill-create-compact .line-lot-cell .select2-container {

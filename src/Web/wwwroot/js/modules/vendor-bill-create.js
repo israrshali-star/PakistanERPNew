@@ -160,12 +160,12 @@
             '<td class="line-lot-cell"><select class="form-select form-select-sm line-lot">' + lotOptions + '</select></td>' +
             '<td><input type="hidden" class="line-item-id" />' +
             '<input type="text" class="form-control form-control-xs line-item-name" readonly placeholder="Lot" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-desc" maxlength="500" placeholder="Required if no item" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
+            '<td class="col-desc"><input type="text" class="form-control form-control-xs line-desc" maxlength="500" placeholder="Required if no item" /></td>' +
+            '<td class="col-stack"><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
-            '<td><input type="number" class="form-control form-control-xs text-end line-rate" min="0" step="0.01" value="0" required /></td>' +
+            '<td class="col-ctn"><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +
+            '<td class="col-qty"><input type="number" class="form-control form-control-xs text-end line-qty" min="0.01" step="0.01" value="' + ((prefill && prefill.qty) || 1) + '" required /></td>' +
+            '<td class="col-rate"><input type="number" class="form-control form-control-xs text-end line-rate" min="0" step="0.01" value="0" required /></td>' +
             '<td class="text-end text-currency line-amount">0.00</td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
             '</tr>'

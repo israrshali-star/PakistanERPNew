@@ -101,13 +101,13 @@
                         <th>Lot</th>
                         <th>Item</th>
                         <th>Description</th>
-                        <th>Stack</th>
-                        <th class="text-end">Ctn</th>
-                        <th>Carton Desc</th>
-                        <th class="text-end">Qty</th>
+                        <th class="col-stack">Stack</th>
+                        <th class="text-end col-ctn">Ctn</th>
+                        <th class="col-carton-desc">Carton Desc</th>
+                        <th class="text-end col-qty">Qty</th>
                         <th>U/M</th>
-                        <th class="text-end" id="invoice-price-header">Price</th>
-                        <th class="tax-line-col text-end">Tax%</th>
+                        <th class="text-end col-rate" id="invoice-price-header">Price</th>
+                        <th class="tax-line-col text-end col-tax">Tax%</th>
                         <th class="text-end">Total</th>
                         <th></th>
                     </tr>
@@ -204,7 +204,86 @@
         .invoice-create-compact .table-compact th:nth-child(3),
         .invoice-create-compact .table-compact td:nth-child(3) {
             white-space: normal;
-            min-width: 7rem;
+            min-width: 6.5rem;
+        }
+
+        .invoice-create-compact .table-compact .col-stack {
+            width: 5.5rem;
+            max-width: 5.5rem;
+        }
+
+        .invoice-create-compact .table-compact .col-ctn,
+        .invoice-create-compact .table-compact .col-qty {
+            width: 5rem;
+            max-width: 5rem;
+        }
+
+        .invoice-create-compact .table-compact .col-rate {
+            width: 1%;
+            min-width: 4.6rem;
+            white-space: nowrap;
+        }
+
+        .invoice-create-compact .table-compact .col-rate .input-group {
+            flex-wrap: nowrap;
+            width: auto;
+        }
+
+        .invoice-create-compact .table-compact .col-rate .line-price {
+            width: 4.6rem;
+            max-width: 4.6rem;
+            flex: 0 0 4.6rem;
+        }
+
+        .invoice-create-compact .table-compact .col-rate .btn-convert-lb-kg {
+            font-size: 0.65rem;
+            padding-left: 0.2rem;
+            padding-right: 0.2rem;
+        }
+
+        .invoice-create-compact .table-compact .col-tax {
+            width: 3.15rem;
+            max-width: 3.15rem;
+        }
+
+        .invoice-create-compact .table-compact .col-carton-desc {
+            min-width: 12rem;
+            width: 22%;
+            white-space: normal !important;
+        }
+
+        .invoice-create-compact .table-compact .col-stack .form-control,
+        .invoice-create-compact .table-compact .col-ctn .form-control,
+        .invoice-create-compact .table-compact .col-qty .form-control,
+        .invoice-create-compact .table-compact .col-rate .form-control,
+        .invoice-create-compact .table-compact .col-tax .form-control {
+            width: 100%;
+            min-width: 0;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+            -moz-appearance: textfield;
+        }
+
+        .invoice-create-compact .table-compact .col-tax .form-control {
+            padding-left: 0.12rem;
+            padding-right: 0.12rem;
+        }
+
+        .invoice-create-compact .table-compact .col-ctn .form-control::-webkit-outer-spin-button,
+        .invoice-create-compact .table-compact .col-ctn .form-control::-webkit-inner-spin-button,
+        .invoice-create-compact .table-compact .col-qty .form-control::-webkit-outer-spin-button,
+        .invoice-create-compact .table-compact .col-qty .form-control::-webkit-inner-spin-button,
+        .invoice-create-compact .table-compact .col-rate .form-control::-webkit-outer-spin-button,
+        .invoice-create-compact .table-compact .col-rate .form-control::-webkit-inner-spin-button,
+        .invoice-create-compact .table-compact .col-tax .form-control::-webkit-outer-spin-button,
+        .invoice-create-compact .table-compact .col-tax .form-control::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .invoice-create-compact .table-compact .col-carton-desc .form-control {
+            width: 100%;
+            min-width: 0;
         }
 
         .invoice-create-compact .line-lot-cell .select2-container {
