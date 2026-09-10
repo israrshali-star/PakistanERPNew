@@ -187,6 +187,10 @@ public partial class CustomerService : ICustomerService
         }
 
         var now = DateTime.UtcNow;
+        var (formattedNtn, formattedCnic) = TradeInvoiceLayout.FormatCustomerTaxIds(
+            request.NTN,
+            request.CNIC,
+            companyId);
 
         var entity = new Customer
         {
@@ -201,8 +205,8 @@ public partial class CustomerService : ICustomerService
             Phone = request.Phone?.Trim(),
             Mobile = request.Mobile?.Trim(),
             Email = request.Email?.Trim(),
-            NTN = request.NTN?.Trim(),
-            CNIC = request.CNIC?.Trim(),
+            NTN = formattedNtn,
+            CNIC = formattedCnic,
             STRN = request.STRN?.Trim(),
             CustomerType = request.CustomerType,
             InvoiceType = request.InvoiceType,
@@ -306,8 +310,12 @@ public partial class CustomerService : ICustomerService
         entity.Phone = request.Phone?.Trim();
         entity.Mobile = request.Mobile?.Trim();
         entity.Email = request.Email?.Trim();
-        entity.NTN = request.NTN?.Trim();
-        entity.CNIC = request.CNIC?.Trim();
+        var (formattedNtn, formattedCnic) = TradeInvoiceLayout.FormatCustomerTaxIds(
+            request.NTN,
+            request.CNIC,
+            companyId);
+        entity.NTN = formattedNtn;
+        entity.CNIC = formattedCnic;
         entity.STRN = request.STRN?.Trim();
         entity.CustomerType = request.CustomerType;
         entity.InvoiceType = request.InvoiceType;

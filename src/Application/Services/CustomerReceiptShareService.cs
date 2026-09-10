@@ -201,8 +201,7 @@ public class CustomerReceiptShareService : ICustomerReceiptShareService
             model.StatusLabel,
             useUrdu,
             remaining,
-            allocation?.Invoices,
-            TradeInvoiceLayout.UsesLandscapeCustomerReceipt(model.CompanyId));
+            allocation?.Invoices);
     }
 
     private static string BuildWhatsAppMessage(ReceiptShareModel model, bool useUrdu)

@@ -134,6 +134,7 @@
                                 var lines = [
                                     'Net: ' + formatCurrency(context.parsed.y),
                                     'Revenue: ' + formatCurrency(point.revenue || 0),
+                                    'COGS: ' + formatCurrency(point.cogs || 0),
                                     'Expenses: ' + formatCurrency(point.expenses || 0)
                                 ];
                                 return lines;

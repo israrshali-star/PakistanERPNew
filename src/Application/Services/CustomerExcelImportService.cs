@@ -107,6 +107,7 @@ public class CustomerExcelImportService : ICustomerExcelImportService
             var cnic = NormalizeTaxId(GetCell(row, columnMap, "cnic"));
             var ntn = NormalizeTaxId(GetCell(row, columnMap, "ntn"));
             var strn = NormalizeTaxId(GetCell(row, columnMap, "registration", "strn"));
+            (ntn, cnic) = TradeInvoiceLayout.FormatCustomerTaxIds(ntn, cnic, companyId);
             var provinceName = GetCell(row, columnMap, "province");
             var provinceId = ResolveProvinceId(provinceName, provinceByName);
             var (customerType, scenarioId) = ResolveCustomerTypeAndScenario(ntn, cnic);

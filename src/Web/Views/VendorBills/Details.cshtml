@@ -106,23 +106,23 @@
 <div class="card p-3">
     <h6 class="text-primary mb-3">Line Items</h6>
     <div class="table-responsive">
-        <table class="table table-sm table-hover">
+        <table class="table table-sm table-hover bill-lines-table">
             <thead>
                 <tr>
-                    <th>Item / Description</th>
-                    <th>Stack No</th>
-                    <th>Lot No</th>
-                    <th class="text-end">Cartons</th>
-                    <th class="text-end">Qty</th>
-                    <th class="text-end">Rate</th>
-                    <th class="text-end">Amount</th>
+                    <th class="bill-col-desc">Item / Description</th>
+                    <th class="bill-col-stack">Stack No</th>
+                    <th class="bill-col-lot">Lot No</th>
+                    <th class="text-end bill-col-num">Cartons</th>
+                    <th class="text-end bill-col-num">Qty</th>
+                    <th class="text-end bill-col-num">Rate</th>
+                    <th class="text-end bill-col-amt">Amount</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var line in Model.Lines)
                 {
                     <tr class="@(line.IsLocked ? "table-secondary" : line.SoldQuantity > 0 ? "table-warning" : null)">
-                        <td>
+                        <td class="bill-col-desc">
                             @if (!string.IsNullOrWhiteSpace(line.ItemCode))
                             {
                                 <div><code>@line.ItemCode</code> @line.ItemName</div>
@@ -139,12 +139,12 @@
                                 </div>
                             }
                         </td>
-                        <td>@(line.StackNo ?? "—")</td>
-                        <td>@(line.LotNo ?? "—")</td>
-                        <td class="text-end">@line.Cartons.ToString("N2")</td>
-                        <td class="text-end">@line.Quantity.ToString("N2")</td>
-                        <td class="text-end text-currency">@line.Rate.ToString("N2")</td>
-                        <td class="text-end text-currency fw-semibold">@line.Amount.ToString("N2")</td>
+                        <td class="bill-col-stack">@(line.StackNo ?? "—")</td>
+                        <td class="bill-col-lot">@(line.LotNo ?? "—")</td>
+                        <td class="text-end bill-col-num">@line.Cartons.ToString("N2")</td>
+                        <td class="text-end bill-col-num">@line.Quantity.ToString("N2")</td>
+                        <td class="text-end text-currency bill-col-num">@line.Rate.ToString("N2")</td>
+                        <td class="text-end text-currency fw-semibold bill-col-amt">@line.Amount.ToString("N2")</td>
                     </tr>
                 }
             </tbody>
@@ -231,6 +231,53 @@
         }
     </div>
 </div>
+
+@section Styles {
+    <style>
+        .bill-lines-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .bill-lines-table .bill-col-desc {
+            width: 42%;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .bill-lines-table .bill-col-stack,
+        .bill-lines-table .bill-col-lot {
+            width: 8%;
+            white-space: nowrap;
+        }
+
+        .bill-lines-table .bill-col-num {
+            width: 9%;
+            white-space: nowrap;
+        }
+
+        .bill-lines-table .bill-col-amt {
+            width: 12%;
+            white-space: nowrap;
+        }
+
+        @@media print {
+            .bill-lines-table {
+                font-size: 0.8rem;
+            }
+
+            .bill-lines-table .bill-col-desc {
+                width: 44%;
+            }
+
+            .bill-lines-table .bill-col-stack,
+            .bill-lines-table .bill-col-lot,
+            .bill-lines-table .bill-col-num {
+                width: 8%;
+            }
+        }
+    </style>
+}
 
 @section Scripts {
     <script src="~/js/modules/vendor-bill-details.js" asp-append-version="true"></script>

@@ -876,18 +876,33 @@ public class EntitySearchService : IEntitySearchService
             return true;
         }
 
-        var haystack = string.Join(
-            ' ',
+        var aliases = new List<string>
+        {
             accountNumber,
             accountName,
             SalesTaxPayableDisplayName(accountNumber, accountName),
             "sales tax",
-            "sales tax payable",
-            "further tax",
-            "further tax payable",
-            "payable");
+            "tax",
+            "payable"
+        };
 
-        return haystack.Contains(term.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(accountNumber, GlAccountNumbers.FurtherTaxPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add("further tax");
+            aliases.Add("further tax payable");
+            aliases.Add("4%");
+        }
+        else if (string.Equals(accountNumber, GlAccountNumbers.SalesTaxPayable18, StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add("sales tax 18");
+            aliases.Add("18%");
+        }
+        else if (string.Equals(accountNumber, GlAccountNumbers.SalesTaxPayable, StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add("sales tax payable");
+        }
+
+        return aliases.Any(alias => alias.Contains(term.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<Dictionary<int, (decimal Debits, decimal Credits)>> GetGlBalancesAsync(

@@ -40,12 +40,12 @@
         <table class="table table-sm trade-invoice-table mb-0">
             <thead>
                 <tr>
-                    <th>Description</th>
-                    <th>CTN Description</th>
-                    <th class="text-end">No of Ctn</th>
-                    <th class="text-end">QTY</th>
-                    <th class="text-end">Rate</th>
-                    <th class="text-end">Amount</th>
+                    <th class="trade-col-desc">Description</th>
+                    <th class="trade-col-ctn-desc">CTN Description</th>
+                    <th class="text-end trade-col-num">No of Ctn</th>
+                    <th class="text-end trade-col-num">QTY</th>
+                    <th class="text-end trade-col-num">Rate</th>
+                    <th class="text-end trade-col-amt">Amount</th>
                 </tr>
             </thead>
             <tbody>
@@ -58,12 +58,12 @@
                         line.StackNo);
                     var amount = TradeInvoiceLayout.LineAmountExTax(line.Quantity, line.Price, line.Discount);
                     <tr>
-                        <td>@description</td>
-                        <td>@(line.CartonDescription ?? "")</td>
-                        <td class="text-end">@line.Cartons.ToString("N2")</td>
-                        <td class="text-end">@line.Quantity.ToString("N2")</td>
-                        <td class="text-end">@TradeInvoiceLayout.FormatAmount(line.Price)</td>
-                        <td class="text-end">@TradeInvoiceLayout.FormatAmount(amount)</td>
+                        <td class="trade-col-desc">@description</td>
+                        <td class="trade-col-ctn-desc">@(line.CartonDescription ?? "")</td>
+                        <td class="text-end trade-col-num">@line.Cartons.ToString("N2")</td>
+                        <td class="text-end trade-col-num">@line.Quantity.ToString("N2")</td>
+                        <td class="text-end trade-col-num">@TradeInvoiceLayout.FormatAmount(line.Price)</td>
+                        <td class="text-end trade-col-amt">@TradeInvoiceLayout.FormatAmount(amount)</td>
                     </tr>
                 }
             </tbody>

@@ -49,6 +49,8 @@
 
 .trade-invoice-table {
     border-color: #333 !important;
+    table-layout: fixed;
+    width: 100%;
 }
 
 .trade-invoice-table th,
@@ -59,6 +61,28 @@
 
 .trade-invoice-table th {
     font-weight: 600;
+    white-space: nowrap;
+}
+
+.trade-invoice-table .trade-col-desc {
+    width: 26%;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.trade-invoice-table .trade-col-ctn-desc {
+    width: 34%;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.trade-invoice-table .trade-col-num {
+    width: 9%;
+    white-space: nowrap;
+}
+
+.trade-invoice-table .trade-col-amt {
+    width: 13%;
     white-space: nowrap;
 }
 

@@ -11,6 +11,7 @@ public static class FbrPayloadBuilder
         "THIS IS SYSTEM GENERATED INVOICE DOES NOT REQUIRE SIGNATURE AND COMPANY STAMP.";
 
     public const string DefaultSaleType = "Goods at standard rate (default)";
+    public const string ThirdScheduleSaleType = "3rd Schedule Goods";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -51,10 +52,35 @@ public static class FbrPayloadBuilder
     public static string MapSaleType(string? scenarioCode) =>
         scenarioCode switch
         {
-            "SN002" => "Goods at standard rate (default)",
+            "SN008" or "SN027" or "SN0027" => ThirdScheduleSaleType,
+            "SN002" => DefaultSaleType,
             "SN001" => DefaultSaleType,
             _ => DefaultSaleType
         };
+
+    /// <summary>FBR HS/UoM catalog uses "KG"; invoice screens may show "kg".</summary>
+    public static string? MapFbrUom(string? unit)
+    {
+        if (string.IsNullOrWhiteSpace(unit))
+        {
+            return unit;
+        }
+
+        var trimmed = unit.Trim();
+        if (trimmed.Equals("kg", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("kgs", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("kilogram", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("lb", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("pound", StringComparison.OrdinalIgnoreCase))
+        {
+            return "KG";
+        }
+
+        return trimmed;
+    }
+
+    public static bool IsThirdScheduleSaleType(string? saleType) =>
+        string.Equals(saleType, ThirdScheduleSaleType, StringComparison.OrdinalIgnoreCase);
 
     private static FbrInvoiceItemPayload MapLine(FbrSubmissionLineRequest line, bool alignSalesTaxToFbr)
     {
@@ -63,8 +89,19 @@ public static class FbrPayloadBuilder
         decimal furtherTax;
         decimal totalValues;
         decimal discount;
+        var retailPrice = 0m;
+        var thirdSchedule = IsThirdScheduleSaleType(line.SaleType);
 
-        if (alignSalesTaxToFbr)
+        if (thirdSchedule)
+        {
+            retailPrice = Math.Round(valueExcludingSt, 2, MidpointRounding.AwayFromZero);
+            salesTax = Math.Round(retailPrice * line.TaxRate / 100m, 2, MidpointRounding.AwayFromZero);
+            furtherTax = Math.Round(line.FurtherTaxAmount, 2, MidpointRounding.AwayFromZero);
+            totalValues = Math.Round(retailPrice + salesTax + furtherTax, 2, MidpointRounding.AwayFromZero);
+            discount = Math.Round(line.Discount, 2, MidpointRounding.AwayFromZero);
+            valueExcludingSt = 0m;
+        }
+        else if (alignSalesTaxToFbr)
         {
             // FBR recalculates ST from ValueSalesExcludingST × Rate using round-half-up.
             valueExcludingSt = Math.Round(valueExcludingSt, 2, MidpointRounding.AwayFromZero);
@@ -91,11 +128,11 @@ public static class FbrPayloadBuilder
             HsCode = line.HsCode,
             ProductDescription = line.ProductDescription,
             Rate = FormatTaxRatePercent(line.TaxRate),
-            UoM = line.Unit,
+            UoM = MapFbrUom(line.Unit),
             Quantity = Math.Round(line.Quantity, 2),
             TotalValues = totalValues,
             ValueSalesExcludingSt = valueExcludingSt,
-            FixedNotifiedValueOrRetailPrice = 0m,
+            FixedNotifiedValueOrRetailPrice = retailPrice,
             SalesTaxApplicable = salesTax,
             SalesTaxWithheldAtSource = 0m,
             ExtraTax = string.Empty,

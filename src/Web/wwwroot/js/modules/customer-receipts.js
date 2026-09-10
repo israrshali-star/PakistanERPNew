@@ -128,6 +128,8 @@
     }
 
     var amountWordsTimer = null;
+    var amountWordsRequest = 0;
+    var isSaving = false;
 
     function updateAmountInWords() {
         var $words = $('#receipt-amount-words');
@@ -135,6 +137,8 @@
         if (!$words.length) {
             return;
         }
+
+        var requestId = ++amountWordsRequest;
         if (!amount || amount <= 0) {
             $words.text('');
             return;
@@ -144,12 +148,57 @@
         amountWordsTimer = setTimeout(function () {
             $.getJSON('/api/lookup/amount-in-words', { amount: amount })
                 .done(function (res) {
+                    if (requestId !== amountWordsRequest) {
+                        return;
+                    }
                     $words.text(res.text || '');
                 })
                 .fail(function () {
+                    if (requestId !== amountWordsRequest) {
+                        return;
+                    }
                     $words.text('');
                 });
         }, 250);
+    }
+
+    function clearSelect2($el) {
+        if (window.setPaSelect2Value) {
+            window.setPaSelect2Value($el, '', '');
+            return;
+        }
+        $el.val(null).trigger('change');
+    }
+
+    function syncSelect2Width($elements) {
+        $elements.each(function () {
+            var $el = $(this);
+            if ($el.data('select2')) {
+                $el.next('.select2-container').css('width', '100%');
+            }
+        });
+    }
+
+    function fetchNextReceiptNumber() {
+        return $.ajax({
+            url: '/api/customer-receipts/next-receipt-number',
+            method: 'GET',
+            dataType: 'json',
+            cache: false
+        })
+            .done(function (res) {
+                $('#receipt-number').val(res.receiptNumber);
+            })
+            .fail(function (xhr) {
+                showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
+            });
+    }
+
+    function setSavingState(saving) {
+        isSaving = saving;
+        var $btn = $('#btn-save-receipt');
+        $btn.prop('disabled', saving);
+        $btn.text(saving ? 'Saving...' : 'Save Receipt');
     }
 
     function ensureCompanySelected() {
@@ -282,11 +331,15 @@
         $('#cheque-number, #cheque-date').prop('required', isOtherBank);
 
         if (!isSameBank) {
-            $('#same-bank-id').val('').trigger('change');
+            clearSelect2($('#same-bank-id'));
             $('#same-bank-cheque-number, #same-bank-cheque-date').val('');
         }
         if (!isOtherBank) {
             $('#cheque-number, #cheque-date, #cheque-drawn-bank').val('');
+        }
+
+        if (isSameBank) {
+            syncSelect2Width($('#same-bank-id'));
         }
     }
 
@@ -311,8 +364,10 @@
         }
 
         if (isCheque) {
-            $('#receipt-bank-id').val('').trigger('change');
+            clearSelect2($('#receipt-bank-id'));
         }
+
+        syncSelect2Width($('#payment-method, #receipt-bank-id, #same-bank-id'));
 
         var $notesLabel = $('label[for="receipt-notes"]');
         var $notesHint = $('#receipt-notes-hint');
@@ -513,6 +568,22 @@
         }
     }
 
+    function applySavedReceiptToCustomerCache(payload) {
+        if (!payload || !payload.customerId) {
+            return;
+        }
+
+        var customer = customers.find(function (c) { return c.id === payload.customerId; });
+        if (!customer) {
+            return;
+        }
+
+        var postsImmediately = payload.paymentMethod !== 2 || payload.chequeBankType === 1;
+        if (postsImmediately) {
+            customer.balance = (parseFloat(customer.balance) || 0) - (parseFloat(payload.amount) || 0);
+        }
+    }
+
     var allocationTimer = null;
     var allocationRequest = 0;
 
@@ -528,6 +599,11 @@
     }
 
     function hideAllocationPanel() {
+        allocationRequest += 1;
+        if (allocationTimer) {
+            clearTimeout(allocationTimer);
+            allocationTimer = null;
+        }
         $('#receipt-allocation-panel').addClass('d-none');
         clearAllocationPanel();
     }
@@ -640,14 +716,21 @@
     }
 
     function resetReceiptForm() {
+        amountWordsRequest += 1;
+        if (amountWordsTimer) {
+            clearTimeout(amountWordsTimer);
+            amountWordsTimer = null;
+        }
+
         $('#receipt-id').val('');
         $('#receipt-number').val('');
         $('#receipt-date').val(toInputDate(new Date()));
         $('#receipt-amount').val('');
         $('#receipt-amount-words').text('');
-        $('#receipt-customer-id').val('').trigger('change');
-        $('#payment-method').val('1');
-        $('#receipt-bank-id, #same-bank-id').val('').trigger('change');
+        clearSelect2($('#receipt-customer-id'));
+        $('#payment-method').val('1').trigger('change');
+        clearSelect2($('#receipt-bank-id'));
+        clearSelect2($('#same-bank-id'));
         setChequeBankType(null);
         $('#same-bank-cheque-number, #same-bank-cheque-date, #cheque-number, #cheque-date, #cheque-drawn-bank, #receipt-notes').val('');
         clearAttachmentUi();
@@ -655,20 +738,14 @@
         togglePaymentFields();
         hideAllocationPanel();
         updateCustomerBalanceHint();
+        syncSelect2Width($('#receipt-customer-id, #receipt-bank-id, #same-bank-id, #payment-method'));
     }
 
     function prepareFormForNextReceipt() {
         resetReceiptForm();
         clearFormMessages();
         $('#receiptModalLabel').text('New Customer Receipt');
-
-        $.getJSON('/api/customer-receipts/next-receipt-number')
-            .done(function (res) {
-                $('#receipt-number').val(res.receiptNumber);
-            })
-            .fail(function (xhr) {
-                showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
-            });
+        fetchNextReceiptNumber();
     }
 
     function initSelect2($element) {
@@ -796,23 +873,24 @@
                 {
                     data: null,
                     orderable: false,
-                    className: 'text-end',
+                    className: 'text-end text-nowrap',
+                    width: '1%',
                     render: function (data, type, row) {
                         var buttons = [
-                            '<button type="button" class="btn btn-sm btn-outline-danger btn-print-receipt me-1" data-id="' + row.id + '" title="Print / PDF">' +
+                            '<button type="button" class="btn btn-link btn-sm p-0 me-1 btn-print-receipt" data-id="' + row.id + '" title="Print / PDF">' +
                             '<i class="fa-solid fa-print"></i></button>',
-                            '<button type="button" class="btn btn-sm btn-outline-success btn-share-receipt" data-id="' + row.id + '" title="Share on WhatsApp">' +
+                            '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-share-receipt" data-id="' + row.id + '" title="Share on WhatsApp">' +
                             '<i class="fa-brands fa-whatsapp"></i></button>'
                         ];
                         if (canEdit && row.depositStatus === 'Deposited (Awaiting Approval)') {
                             buttons.push(
-                                '<button type="button" class="btn btn-sm btn-success btn-approve-clearance" data-id="' + row.id + '" title="Approve clearance">' +
+                                '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-approve-clearance" data-id="' + row.id + '" title="Approve clearance">' +
                                 '<i class="fa-solid fa-check"></i></button>'
                             );
                         }
                         if (canEdit && row.canMarkReturned) {
                             buttons.push(
-                                '<button type="button" class="btn btn-sm btn-outline-danger btn-mark-returned ms-1" data-id="' + row.id + '" title="Mark cheque returned / not cleared">' +
+                                '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-danger btn-mark-returned" data-id="' + row.id + '" title="Mark cheque returned / not cleared">' +
                                 '<i class="fa-solid fa-rotate-left"></i></button>'
                             );
                         }
@@ -821,13 +899,13 @@
                         }
                         if (canEdit && row.canModify) {
                             buttons.push(
-                                '<button type="button" class="btn btn-sm btn-outline-primary btn-edit-receipt" data-id="' + row.id + '" title="Edit">' +
+                                '<button type="button" class="btn btn-link btn-sm p-0 me-1 btn-edit-receipt" data-id="' + row.id + '" title="Edit">' +
                                 '<i class="fa-solid fa-pen"></i></button>'
                             );
                         }
                         if (canDelete && row.canModify) {
                             buttons.push(
-                                '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-receipt ms-1" data-id="' + row.id + '" title="Delete">' +
+                                '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-receipt" data-id="' + row.id + '" title="Delete">' +
                                 '<i class="fa-solid fa-trash"></i></button>'
                             );
                         }
@@ -845,14 +923,7 @@
 
         loadLookups()
             .done(function () {
-                $.getJSON('/api/customer-receipts/next-receipt-number')
-                    .done(function (res) {
-                        $('#receipt-number').val(res.receiptNumber);
-                    })
-                    .fail(function (xhr) {
-                        showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
-                    });
-
+                fetchNextReceiptNumber();
                 receiptModal.show();
             })
             .fail(function (xhr) {
@@ -1011,6 +1082,10 @@
         e.preventDefault();
         clearFormMessages();
 
+        if (isSaving) {
+            return;
+        }
+
         if (!validateReceiptForm()) {
             return;
         }
@@ -1029,6 +1104,7 @@
         var method = id ? 'PUT' : 'POST';
         var url = id ? '/api/customer-receipts/' + id : '/api/customer-receipts';
 
+        setSavingState(true);
         $.ajax({
             url: url,
             method: method,
@@ -1037,6 +1113,9 @@
         })
             .done(function (res) {
                 dataTable.ajax.reload(null, false);
+                if (!id) {
+                    applySavedReceiptToCustomerCache(payload);
+                }
                 var savedMsg = payload.paymentMethod === 2
                     ? (payload.chequeBankType === 1
                         ? (id ? 'Same-bank cheque updated and cleared.' : 'Same-bank cheque saved and cleared. Enter another receipt or close when finished.')
@@ -1051,6 +1130,7 @@
 
                 var afterAttachments = function () {
                     if (id && openedFromReturnUrl && goBackToReturnUrl()) {
+                        setSavingState(false);
                         return;
                     }
 
@@ -1064,6 +1144,7 @@
                             prepareFormForNextReceipt();
                             showFormSuccess(savedMsg);
                         }
+                        setSavingState(false);
                     });
                 };
 
@@ -1075,6 +1156,7 @@
                             if (id) {
                                 reloadAttachments(savedId);
                             }
+                            setSavingState(false);
                         });
                 } else {
                     afterAttachments();
@@ -1086,6 +1168,7 @@
                     ? (body.message || body.Message)
                     : getApiErrorMessage(xhr, 'Could not save receipt.');
                 showFormError(message);
+                setSavingState(false);
             });
     }
 
@@ -1131,6 +1214,10 @@
             });
         }
 
+        document.getElementById('receiptModal').addEventListener('shown.bs.modal', function () {
+            syncSelect2Width($('#receipt-customer-id, #receipt-bank-id, #same-bank-id, #payment-method'));
+        });
+
         document.getElementById('receiptModal').addEventListener('hidden.bs.modal', function () {
             if (openedFromReturnUrl && goBackToReturnUrl()) {
                 return;
@@ -1157,13 +1244,7 @@
 
         $('#btn-add-receipt').on('click', openCreateModal);
         $('#btn-generate-receipt-number').on('click', function () {
-            $.getJSON('/api/customer-receipts/next-receipt-number')
-                .done(function (res) {
-                    $('#receipt-number').val(res.receiptNumber);
-                })
-                .fail(function (xhr) {
-                    showFormError(getApiErrorMessage(xhr, 'Could not generate receipt number.'));
-                });
+            fetchNextReceiptNumber();
         });
 
         $('#payment-method').on('change', togglePaymentFields);

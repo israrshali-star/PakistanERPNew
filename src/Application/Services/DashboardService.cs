@@ -169,6 +169,7 @@ public class DashboardService : IDashboardService
             .Where(l => accountIds.Contains(l.ChartOfAccountId)
                         && l.JournalEntry.CompanyId == companyId
                         && l.JournalEntry.Status == JournalStatus.Posted
+                        && !l.JournalEntry.IsDeleted
                         && l.JournalEntry.EntryDate >= startMonth
                         && l.JournalEntry.EntryDate < endExclusive)
             .Select(l => new
@@ -180,7 +181,7 @@ public class DashboardService : IDashboardService
             })
             .ToListAsync(cancellationToken);
 
-        var totalsByMonth = new Dictionary<(int Year, int Month), (decimal Revenue, decimal Expenses)>();
+        var totalsByMonth = new Dictionary<(int Year, int Month), (decimal Revenue, decimal Cogs, decimal Expenses)>();
 
         foreach (var line in journalLines)
         {
@@ -198,6 +199,8 @@ public class DashboardService : IDashboardService
                     totals.Revenue += line.Credit - line.Debit;
                     break;
                 case CogsTypeId:
+                    totals.Cogs += line.Debit - line.Credit;
+                    break;
                 case ExpenseTypeId:
                     totals.Expenses += line.Debit - line.Credit;
                     break;
@@ -211,11 +214,12 @@ public class DashboardService : IDashboardService
         {
             var month = startMonth.AddMonths(i);
             totalsByMonth.TryGetValue((month.Year, month.Month), out var totals);
-            var netProfit = totals.Revenue - totals.Expenses;
+            var netProfit = totals.Revenue - totals.Cogs - totals.Expenses;
             points.Add(new MonthlyProfitLossPointDto(
                 month.ToString("MMM yyyy"),
                 netProfit,
                 totals.Revenue,
+                totals.Cogs,
                 totals.Expenses));
         }
 
@@ -228,7 +232,7 @@ public class DashboardService : IDashboardService
         for (var i = 0; i < 12; i++)
         {
             var month = startMonth.AddMonths(i);
-            points.Add(new MonthlyProfitLossPointDto(month.ToString("MMM yyyy"), 0m, 0m, 0m));
+            points.Add(new MonthlyProfitLossPointDto(month.ToString("MMM yyyy"), 0m, 0m, 0m, 0m));
         }
 
         return points;

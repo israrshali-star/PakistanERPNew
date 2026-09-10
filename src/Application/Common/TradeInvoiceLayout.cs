@@ -35,9 +35,6 @@ public static class TradeInvoiceLayout
     public static bool ShowsCustomerReceiptInvoiceAllocation(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
-    /// <summary>All companies print customer receipts on A4 landscape.</summary>
-    public static bool UsesLandscapeCustomerReceipt(int companyId) => true;
-
     /// <summary>Max receipt attachments for a company; null means use the global Attachments config default.</summary>
     public static int? GetCustomerReceiptAttachmentLimit(int companyId) =>
         companyId == TradeInvoiceCompanyId ? 2 : null;
@@ -159,6 +156,12 @@ public static class TradeInvoiceLayout
         FbrNtnWithoutCheckDigitCompanyIds.Contains(companyId);
 
     /// <summary>
+    /// Companies 2, 4, 5, 6, 7 store customer CNIC as #####-#######-# and NTN as #######-#.
+    /// </summary>
+    public static bool UsesHyphenatedCustomerTaxIds(int companyId) =>
+        BulkInvoicePrintCompanyIds.Contains(companyId);
+
+    /// <summary>
     /// Recalculate FBR line sales tax with round-half-up (AwayFromZero) so FBR validation matches.
     /// Company 3 (MIA) keeps ERP-stored line tax amounts in the FBR payload.
     /// </summary>
@@ -210,6 +213,94 @@ public static class TradeInvoiceLayout
         return trimmed;
     }
 
+    /// <summary>
+    /// Apply company tax-id display formats. CNIC-shaped values stored in NTN are moved to CNIC.
+    /// </summary>
+    public static (string? Ntn, string? Cnic) FormatCustomerTaxIds(string? ntn, string? cnic, int companyId)
+    {
+        var trimmedNtn = NullIfEmpty(ntn);
+        var trimmedCnic = NullIfEmpty(cnic);
+        if (!UsesHyphenatedCustomerTaxIds(companyId))
+        {
+            return (trimmedNtn, trimmedCnic);
+        }
+
+        var formattedCnic = FormatCnic(trimmedCnic);
+        if (trimmedNtn is not null && LooksLikeCnic(trimmedNtn))
+        {
+            formattedCnic ??= FormatCnic(trimmedNtn);
+            trimmedNtn = null;
+        }
+
+        return (FormatNtn(trimmedNtn), formattedCnic);
+    }
+
+    /// <summary>CNIC display format #####-#######-#.</summary>
+    public static string? FormatCnic(string? value)
+    {
+        var trimmed = NullIfEmpty(value);
+        if (trimmed is null)
+        {
+            return null;
+        }
+
+        if (IsHyphenatedCnic(trimmed))
+        {
+            return trimmed;
+        }
+
+        var digits = DigitsOnly(trimmed);
+        if (digits.Length == 13)
+        {
+            return $"{digits[..5]}-{digits[5..12]}-{digits[12..]}";
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>NTN display format #######-# (letter-prefixed FBR NTNs keep their prefix).</summary>
+    public static string? FormatNtn(string? value)
+    {
+        var trimmed = NullIfEmpty(value);
+        if (trimmed is null)
+        {
+            return null;
+        }
+
+        if (LooksLikeCnic(trimmed))
+        {
+            return FormatCnic(trimmed);
+        }
+
+        var cleaned = trimmed.Replace(" ", string.Empty).Replace(".-", "-");
+
+        var sepIndex = cleaned.LastIndexOfAny(['-', '.']);
+        if (sepIndex > 0
+            && sepIndex == cleaned.Length - 2
+            && char.IsDigit(cleaned[^1]))
+        {
+            var head = cleaned[..sepIndex];
+            if (head.Length == 7 && IsDigits(head.AsSpan()))
+            {
+                return $"{head}-{cleaned[^1]}";
+            }
+
+            if (head.Length is >= 6 and <= 8
+                && char.IsLetter(head[0])
+                && IsLettersOrDigits(head.AsSpan()))
+            {
+                return $"{head}-{cleaned[^1]}";
+            }
+        }
+
+        if (IsDigits(cleaned.AsSpan()) && cleaned.Length == 8)
+        {
+            return $"{cleaned[..7]}-{cleaned[7]}";
+        }
+
+        return cleaned;
+    }
+
     /// <summary>CNIC with hyphens: #####-#######-# (15 chars).</summary>
     private static bool IsHyphenatedCnic(string value) =>
         value.Length == 15
@@ -244,6 +335,48 @@ public static class TradeInvoiceLayout
 
         return true;
     }
+
+    private static bool LooksLikeCnic(string value)
+    {
+        if (IsHyphenatedCnic(value))
+        {
+            return true;
+        }
+
+        var digits = DigitsOnly(value);
+        if (digits.Length != 13)
+        {
+            return false;
+        }
+
+        foreach (var ch in value)
+        {
+            if (!char.IsDigit(ch) && ch is not '-' and not ' ' and not '.')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string DigitsOnly(string value)
+    {
+        var chars = new char[value.Length];
+        var count = 0;
+        foreach (var ch in value)
+        {
+            if (char.IsDigit(ch))
+            {
+                chars[count++] = ch;
+            }
+        }
+
+        return new string(chars, 0, count);
+    }
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public static bool SupportsGodownChallanEmail(int companyId) =>
         companyId == TradeInvoiceCompanyId;

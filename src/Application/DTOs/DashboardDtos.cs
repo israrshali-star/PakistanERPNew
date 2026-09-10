@@ -17,7 +17,12 @@ public record MonthlySalesPointDto(string Label, decimal Cartons);
 
 public record DailySalesPointDto(string Label, DateTime Date, decimal Cartons);
 
-public record MonthlyProfitLossPointDto(string Label, decimal NetProfit, decimal Revenue, decimal Expenses);
+public record MonthlyProfitLossPointDto(
+    string Label,
+    decimal NetProfit,
+    decimal Revenue,
+    decimal Cogs,
+    decimal Expenses);
 
 public record TopCustomerBalanceDto(int CustomerId, string BuyerName, string BuyerId, decimal Balance, string BalanceSide);
 

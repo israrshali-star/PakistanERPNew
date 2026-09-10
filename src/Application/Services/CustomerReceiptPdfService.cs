@@ -28,32 +28,33 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(24);
-                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(fontFamily));
+                // A4 portrait, compact so a typical receipt prints on the top half of the sheet.
+                page.Size(PageSizes.A4);
+                page.Margin(12);
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily(fontFamily));
 
                 page.Content().Column(column =>
                 {
                     column.Item().Row(row =>
                     {
-                        row.RelativeItem().AlignLeft().Text(model.CompanyName).FontSize(11);
-                        row.RelativeItem().AlignRight().Text(labels.PaymentReceipt).Bold().FontSize(16);
+                        row.RelativeItem().AlignLeft().Text(model.CompanyName).FontSize(10);
+                        row.RelativeItem().AlignRight().Text(labels.PaymentReceipt).Bold().FontSize(13);
                     });
 
-                    column.Item().PaddingTop(18).Element(c => ComposeReceivedFromBox(c, model, labels));
-                    column.Item().PaddingTop(14).Row(row =>
+                    column.Item().PaddingTop(8).Element(c => ComposeReceivedFromBox(c, model, labels));
+                    column.Item().PaddingTop(8).Row(row =>
                     {
                         row.RelativeItem().Element(c => ComposeLeftDetailsTable(c, model, labels));
-                        row.ConstantItem(12);
+                        row.ConstantItem(8);
                         row.RelativeItem().Element(c => ComposeRightAmountTable(c, model, labels));
                     });
 
-                    column.Item().PaddingTop(16).Text(labels.InvoicesPaid).Bold().FontSize(11);
-                    column.Item().PaddingTop(6).Element(c => ComposeInvoicesPaidTable(c, model, labels));
+                    column.Item().PaddingTop(8).Text(labels.InvoicesPaid).Bold().FontSize(10);
+                    column.Item().PaddingTop(4).Element(c => ComposeInvoicesPaidTable(c, model, labels));
 
-                    column.Item().PaddingTop(10).AlignRight()
+                    column.Item().PaddingTop(6).AlignRight()
                         .Text($"{labels.ReceiptNumber}: {model.ReceiptNumber}  ·  {labels.Printed} {DateTime.Now:dd/MM/yyyy HH:mm}")
-                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                        .FontSize(7).FontColor(Colors.Grey.Darken1);
                 });
             });
         }).GeneratePdf();
@@ -64,10 +65,10 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
         CustomerReceiptPdfDto model,
         CustomerReceiptPdfLabels labels)
     {
-        container.Border(1).BorderColor(BorderColor).Padding(10).Column(box =>
+        container.Border(1).BorderColor(BorderColor).Padding(6).Column(box =>
         {
-            box.Item().AlignCenter().Text(labels.ReceivedFrom).Bold().FontSize(11);
-            box.Item().PaddingTop(8).AlignCenter().Text(model.CustomerName).Bold().FontSize(13);
+            box.Item().AlignCenter().Text(labels.ReceivedFrom).Bold().FontSize(9);
+            box.Item().PaddingTop(4).AlignCenter().Text(model.CustomerName).Bold().FontSize(12);
         });
     }
 
@@ -181,7 +182,7 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
         string label,
         string value,
         bool valueBold = false,
-        float valueFontSize = 10)
+        float valueFontSize = 9)
     {
         table.Cell().Element(LabelCell).Text(label);
         table.Cell().Element(BodyCell).Text(text =>
@@ -195,13 +196,13 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
     }
 
     private static IContainer LabelCell(IContainer container) =>
-        container.Border(1).BorderColor(BorderColor).Padding(6).DefaultTextStyle(x => x.SemiBold());
+        container.Border(1).BorderColor(BorderColor).Padding(4).DefaultTextStyle(x => x.SemiBold());
 
     private static IContainer BodyCell(IContainer container) =>
-        container.Border(1).BorderColor(BorderColor).Padding(6);
+        container.Border(1).BorderColor(BorderColor).Padding(4);
 
     private static IContainer HeaderCell(IContainer container) =>
-        container.Border(1).BorderColor(BorderColor).Padding(6).DefaultTextStyle(x => x.SemiBold().FontSize(9));
+        container.Border(1).BorderColor(BorderColor).Padding(4).DefaultTextStyle(x => x.SemiBold().FontSize(8));
 
     private static string ResolveCheckRefNo(CustomerReceiptPdfDto model)
     {

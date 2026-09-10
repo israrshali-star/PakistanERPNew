@@ -366,6 +366,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var now = DateTime.UtcNow;
         var netTotal = Math.Round(lineBuild.SubTotal - lineBuild.DiscountTotal + lineBuild.TaxTotal, 2);
+        var (formattedBuyerNtn, formattedBuyerCnic) = TradeInvoiceLayout.FormatCustomerTaxIds(
+            request.BuyerNTN?.Trim() ?? customer.NTN,
+            request.BuyerCNIC?.Trim() ?? customer.CNIC,
+            companyId);
 
         var entity = new SalesInvoice
         {
@@ -375,8 +379,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address,
             ShippingAddress = request.ShippingAddress.Trim(),
             ProvinceId = request.ProvinceId ?? customer.ProvinceId,
-            BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN,
-            BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC,
+            BuyerNTN = formattedBuyerNtn,
+            BuyerCNIC = formattedBuyerCnic,
             InvoiceDate = request.InvoiceDate.Date,
             InvoiceType = request.InvoiceType,
             ScenarioId = request.ScenarioId ?? customer.ScenarioId,
@@ -558,14 +562,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var now = DateTime.UtcNow;
         var netTotal = Math.Round(lineBuild.SubTotal - lineBuild.DiscountTotal + lineBuild.TaxTotal, 2);
+        var (formattedBuyerNtn, formattedBuyerCnic) = TradeInvoiceLayout.FormatCustomerTaxIds(
+            request.BuyerNTN?.Trim() ?? customer.NTN,
+            request.BuyerCNIC?.Trim() ?? customer.CNIC,
+            companyId);
 
         entity.InvoiceNumber = invoiceNumber;
         entity.CustomerId = customer.Id;
         entity.BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address;
         entity.ShippingAddress = request.ShippingAddress.Trim();
         entity.ProvinceId = request.ProvinceId ?? customer.ProvinceId;
-        entity.BuyerNTN = request.BuyerNTN?.Trim() ?? customer.NTN;
-        entity.BuyerCNIC = request.BuyerCNIC?.Trim() ?? customer.CNIC;
+        entity.BuyerNTN = formattedBuyerNtn;
+        entity.BuyerCNIC = formattedBuyerCnic;
         entity.InvoiceDate = request.InvoiceDate.Date;
         entity.InvoiceType = request.InvoiceType;
         entity.ScenarioId = request.ScenarioId ?? customer.ScenarioId;
@@ -1482,6 +1490,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         if (!fbrResult.Success)
         {
+            if (!string.IsNullOrWhiteSpace(fbrResult.ResponseJson))
+            {
+                invoice.FbrResponseJson = fbrResult.ResponseJson;
+                invoice.UpdatedAt = DateTime.UtcNow;
+                invoice.UpdatedBy = _currentUser.UserName;
+                _unitOfWork.Repository<SalesInvoice>().Update(invoice);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             return new SalesInvoiceActionResult(
                 false,
                 fbrResult.Message,

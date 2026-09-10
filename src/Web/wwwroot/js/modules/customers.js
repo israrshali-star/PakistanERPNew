@@ -6,6 +6,8 @@
     var canCreate = false;
     var canEdit = false;
     var canDelete = false;
+    var currentCompanyId = 0;
+    var HYPHENATED_TAX_ID_COMPANY_IDS = [2, 4, 5, 6, 7];
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -69,6 +71,73 @@
         }
 
         return 1;
+    }
+
+    function usesHyphenatedTaxIds() {
+        return HYPHENATED_TAX_ID_COMPANY_IDS.indexOf(currentCompanyId) !== -1;
+    }
+
+    function digitsOnly(value) {
+        return String(value || '').replace(/\D/g, '');
+    }
+
+    function formatCnicValue(value) {
+        var digits = digitsOnly(value).slice(0, 13);
+        if (!digits) {
+            return '';
+        }
+        if (digits.length <= 5) {
+            return digits;
+        }
+        if (digits.length <= 12) {
+            return digits.slice(0, 5) + '-' + digits.slice(5);
+        }
+        return digits.slice(0, 5) + '-' + digits.slice(5, 12) + '-' + digits.slice(12);
+    }
+
+    function formatNtnValue(value) {
+        var raw = String(value || '').trim().toUpperCase().replace(/\s+/g, '').replace(/\.-/g, '-');
+        if (!raw) {
+            return '';
+        }
+
+        if (/^\d{7}-\d$/.test(raw) || /^[A-Z]\d{6,7}-\d$/.test(raw)) {
+            return raw;
+        }
+
+        if (/^[A-Z]/.test(raw)) {
+            var letter = raw.charAt(0);
+            var letterDigits = raw.slice(1).replace(/\D/g, '').slice(0, 8);
+            if (letterDigits.length <= 6) {
+                return letter + letterDigits;
+            }
+            if (letterDigits.length === 7) {
+                return letter + letterDigits.slice(0, 6) + '-' + letterDigits.slice(6);
+            }
+            return letter + letterDigits.slice(0, 7) + '-' + letterDigits.slice(7);
+        }
+
+        var digits = digitsOnly(raw).slice(0, 8);
+        if (digits.length <= 7) {
+            return digits;
+        }
+        return digits.slice(0, 7) + '-' + digits.slice(7);
+    }
+
+    function applyTaxIdFormatsToForm() {
+        if (!usesHyphenatedTaxIds()) {
+            return;
+        }
+
+        $('#ntn').val(formatNtnValue($('#ntn').val()));
+        $('#cnic').val(formatCnicValue($('#cnic').val()));
+    }
+
+    function syncTaxIdFormatHints() {
+        var enabled = usesHyphenatedTaxIds();
+        $('#ntn-format-hint, #cnic-format-hint').toggleClass('d-none', !enabled);
+        $('#ntn').attr('placeholder', enabled ? '#######-#' : '');
+        $('#cnic').attr('placeholder', enabled ? '#####-#######-#' : '');
     }
 
     function getSelectIntValue(selector) {
@@ -245,6 +314,7 @@
                 $('#further-tax-rate').val(c.furtherTaxRate != null ? c.furtherTaxRate : '');
                 $('#ntn').val(c.ntn || '');
                 $('#cnic').val(c.cnic || '');
+                applyTaxIdFormatsToForm();
                 $('#strn').val(c.strn || '');
                 $('#phone').val(c.phone || '');
                 $('#mobile').val(c.mobile || '');
@@ -298,8 +368,8 @@
             phone: $('#phone').val().trim() || null,
             mobile: $('#mobile').val().trim() || null,
             email: $('#email').val().trim() || null,
-            ntn: $('#ntn').val().trim() || null,
-            cnic: $('#cnic').val().trim() || null,
+            ntn: (usesHyphenatedTaxIds() ? formatNtnValue($('#ntn').val()) : $('#ntn').val().trim()) || null,
+            cnic: (usesHyphenatedTaxIds() ? formatCnicValue($('#cnic').val()) : $('#cnic').val().trim()) || null,
             strn: $('#strn').val().trim() || null,
             customerType: normalizeCustomerTypeValue($('#customer-type').val()),
             invoiceType: normalizeInvoiceTypeValue($('#invoice-type').val()),
@@ -365,13 +435,19 @@
 
         loadLookups().always(function () {
             ensureCompanySelected()
-                .done(function () {
+                .done(function (company) {
+                    currentCompanyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                    syncTaxIdFormatHints();
                     hideCompanyWarning();
                     initDataTable();
                 })
                 .fail(function () {
                     showCompanyWarning();
                 });
+        });
+
+        $('#ntn, #cnic').on('blur', function () {
+            applyTaxIdFormatsToForm();
         });
 
         var $addBtn = $('#btn-add-customer');
