@@ -76,7 +76,9 @@ public record CustomerLedgerEntryDto(
     decimal Balance,
     decimal PendingCredit = 0m,
     int? ReceiptId = null,
-    IReadOnlyList<CustomerLedgerAttachmentLinkDto>? Attachments = null);
+    IReadOnlyList<CustomerLedgerAttachmentLinkDto>? Attachments = null,
+    int? InvoiceId = null,
+    bool CanShareInvoice = false);
 
 public record CustomerLedgerDto(
     CustomerDto Customer,

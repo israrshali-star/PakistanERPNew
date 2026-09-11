@@ -30,10 +30,12 @@
 
     function renderStatement(data) {
         var $tbody = $('#statement-entries');
+        var canViewInvoice = $tbody.data('can-view-invoice') === true || $tbody.data('can-view-invoice') === 'true';
         var canOpenReceipt = $tbody.data('can-open-receipt') === true || $tbody.data('can-open-receipt') === 'true';
         var canEditReceipt = $tbody.data('can-edit-receipt') === true || $tbody.data('can-edit-receipt') === 'true';
+        var showRowActions = canViewInvoice || canOpenReceipt;
         var returnUrl = $tbody.attr('data-return-url') || '';
-        var colSpan = canOpenReceipt ? 9 : 8;
+        var colSpan = showRowActions ? 9 : 8;
 
         $('#stmt-customer-name').text(data.customer.buyerName);
         $('#stmt-buyer-id').text(data.customer.buyerId);
@@ -80,6 +82,8 @@
             }
 
             var receiptId = entry.receiptId || entry.ReceiptId || 0;
+            var invoiceId = entry.invoiceId || entry.InvoiceId || 0;
+            var canShareInvoice = entry.canShareInvoice === true || entry.CanShareInvoice === true;
             var editHref = '/CustomerReceipts?edit=' + receiptId;
             if (returnUrl) {
                 editHref += '&returnUrl=' + encodeURIComponent(returnUrl);
@@ -87,19 +91,33 @@
             var refHtml = '<code>' + $('<div>').text(entry.reference).html() + '</code>';
             if (receiptId && canOpenReceipt) {
                 refHtml = '<a href="' + editHref + '" class="text-decoration-none" title="' +
-                    (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' + refHtml + '</a>';
+                    (canEditReceipt ? 'View / edit receipt' : 'View receipt') + '">' + refHtml + '</a>';
+            } else if (invoiceId && canViewInvoice) {
+                refHtml = '<a href="/SalesInvoices/Details/' + invoiceId + '" class="text-decoration-none" title="View invoice">' +
+                    refHtml + '</a>';
             }
 
             var actionsHtml = '';
-            if (canOpenReceipt) {
-                if (receiptId) {
-                    actionsHtml = '<td class="no-print text-end">' +
-                        '<a href="' + editHref + '" class="btn btn-sm ' +
-                        (canEditReceipt ? 'btn-outline-primary' : 'btn-outline-secondary') + '" title="' +
-                        (canEditReceipt ? 'Edit receipt' : 'Open receipt') + '">' +
-                        '<i class="fa-solid ' + (canEditReceipt ? 'fa-pen' : 'fa-eye') + ' me-1"></i>' +
-                        (canEditReceipt ? 'Edit' : 'Open') +
-                        '</a></td>';
+            if (showRowActions) {
+                if (invoiceId && canViewInvoice) {
+                    actionsHtml = '<td class="no-print text-end text-nowrap">' +
+                        '<a href="/SalesInvoices/Details/' + invoiceId + '" class="btn btn-link btn-sm p-0 me-1" title="View invoice">' +
+                        '<i class="fa-solid fa-eye"></i></a>';
+                    if (canShareInvoice) {
+                        actionsHtml += '<button type="button" class="btn btn-link btn-sm p-0 text-success js-share-invoice" data-id="' +
+                            invoiceId + '" title="Share invoice"><i class="fa-solid fa-share-nodes"></i></button>';
+                    }
+                    actionsHtml += '</td>';
+                } else if (receiptId && canOpenReceipt) {
+                    actionsHtml = '<td class="no-print text-end text-nowrap">' +
+                        '<a href="' + editHref + '" class="btn btn-link btn-sm p-0 me-1" title="' +
+                        (canEditReceipt ? 'View / edit receipt' : 'View receipt') + '">' +
+                        '<i class="fa-solid fa-eye"></i></a>' +
+                        '<button type="button" class="btn btn-link btn-sm p-0 me-1 js-print-receipt" data-id="' + receiptId +
+                        '" title="Print / PDF"><i class="fa-solid fa-print"></i></button>' +
+                        '<button type="button" class="btn btn-link btn-sm p-0 text-success js-share-receipt" data-id="' +
+                        receiptId + '" title="Share receipt"><i class="fa-brands fa-whatsapp"></i></button>' +
+                        '</td>';
                 } else {
                     actionsHtml = '<td class="no-print text-end"><span class="text-muted">—</span></td>';
                 }

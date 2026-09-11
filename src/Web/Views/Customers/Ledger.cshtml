@@ -3,9 +3,11 @@
 @inject IPermissionService PermissionService
 @{
     ViewData["Title"] = "Customer Ledger";
-    var canOpenReceipt = await PermissionService.HasPermissionAsync("Sales.View")
+    var canViewInvoice = await PermissionService.HasPermissionAsync("Sales.View");
+    var canOpenReceipt = canViewInvoice
         || await PermissionService.HasPermissionAsync("Sales.Edit");
     var canEditReceipt = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var showRowActions = canViewInvoice || canOpenReceipt;
     var receiptReturnUrl = Uri.EscapeDataString(
         Url.Action("Ledger", "Customers", new { id = Model.Customer.Id }) ?? $"/Customers/Ledger/{Model.Customer.Id}");
 }
@@ -67,7 +69,7 @@
                     <th class="text-end">Pending</th>
                     <th class="text-end">Balance</th>
                     <th class="no-print">Documents</th>
-                    @if (canOpenReceipt)
+                    @if (showRowActions)
                     {
                         <th class="no-print text-end">Actions</th>
                     }
@@ -76,7 +78,7 @@
             <tbody>
                 @if (Model.Entries.Count == 0)
                 {
-                    <tr><td colspan="@(canOpenReceipt ? 9 : 8)" class="text-muted text-center">No ledger entries yet.</td></tr>
+                    <tr><td colspan="@(showRowActions ? 9 : 8)" class="text-muted text-center">No ledger entries yet.</td></tr>
                 }
                 else
                 {
@@ -89,7 +91,15 @@
                                 {
                                     <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value&amp;returnUrl=@receiptReturnUrl"
                                        class="text-decoration-none"
-                                       title="@(canEditReceipt ? "Edit receipt" : "Open receipt")">
+                                       title="@(canEditReceipt ? "Edit receipt" : "View receipt")">
+                                        <code>@entry.Reference</code>
+                                    </a>
+                                }
+                                else if (entry.InvoiceId.HasValue && canViewInvoice)
+                                {
+                                    <a href="/SalesInvoices/Details/@entry.InvoiceId.Value"
+                                       class="text-decoration-none"
+                                       title="View invoice">
                                         <code>@entry.Reference</code>
                                     </a>
                                 }
@@ -130,16 +140,45 @@
                                     <span class="text-muted">—</span>
                                 }
                             </td>
-                            @if (canOpenReceipt)
+                            @if (showRowActions)
                             {
-                                <td class="no-print text-end">
-                                    @if (entry.ReceiptId.HasValue)
+                                <td class="no-print text-end text-nowrap">
+                                    @if (entry.InvoiceId.HasValue && canViewInvoice)
+                                    {
+                                        <a href="/SalesInvoices/Details/@entry.InvoiceId.Value"
+                                           class="btn btn-link btn-sm p-0 me-1"
+                                           title="View invoice">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </a>
+                                        @if (entry.CanShareInvoice)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-link btn-sm p-0 text-success js-share-invoice"
+                                                    data-id="@entry.InvoiceId.Value"
+                                                    title="Share invoice">
+                                                <i class="fa-solid fa-share-nodes"></i>
+                                            </button>
+                                        }
+                                    }
+                                    else if (entry.ReceiptId.HasValue && canOpenReceipt)
                                     {
                                         <a href="/CustomerReceipts?edit=@entry.ReceiptId.Value&amp;returnUrl=@receiptReturnUrl"
-                                           class="btn btn-sm @(canEditReceipt ? "btn-outline-primary" : "btn-outline-secondary")"
-                                           title="@(canEditReceipt ? "Edit receipt" : "Open receipt")">
-                                            <i class="fa-solid @(canEditReceipt ? "fa-pen" : "fa-eye") me-1"></i>@(canEditReceipt ? "Edit" : "Open")
+                                           class="btn btn-link btn-sm p-0 me-1"
+                                           title="@(canEditReceipt ? "View / edit receipt" : "View receipt")">
+                                            <i class="fa-solid fa-eye"></i>
                                         </a>
+                                        <button type="button"
+                                                class="btn btn-link btn-sm p-0 me-1 js-print-receipt"
+                                                data-id="@entry.ReceiptId.Value"
+                                                title="Print / PDF">
+                                            <i class="fa-solid fa-print"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-link btn-sm p-0 text-success js-share-receipt"
+                                                data-id="@entry.ReceiptId.Value"
+                                                title="Share receipt">
+                                            <i class="fa-brands fa-whatsapp"></i>
+                                        </button>
                                     }
                                     else
                                     {
@@ -166,7 +205,7 @@
                         <th class="text-end text-currency text-muted">@(movementEntries.Sum(e => e.PendingCredit) > 0 ? movementEntries.Sum(e => e.PendingCredit).ToString("N2") : "—")</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
                         <th class="no-print"></th>
-                        @if (canOpenReceipt)
+                        @if (showRowActions)
                         {
                             <th class="no-print"></th>
                         }
@@ -175,7 +214,7 @@
                         <th colspan="6" class="text-end">Closing Balance</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
                         <th class="no-print"></th>
-                        @if (canOpenReceipt)
+                        @if (showRowActions)
                         {
                             <th class="no-print"></th>
                         }
@@ -189,10 +228,15 @@
 
 <partial name="_PrintChoiceModal" />
 <partial name="_LedgerShareModal" />
+<partial name="~/Views/SalesInvoices/_InvoiceShareModal.cshtml" />
+<partial name="_ReceiptShareModal" />
 
 @section Scripts {
     <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/sales-invoice-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/customer-receipt-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/ledger-row-share.js" asp-append-version="true"></script>
     <script>
         document.getElementById('btn-print-ledger').addEventListener('click', function () {
             if (window.PrintChoice) {

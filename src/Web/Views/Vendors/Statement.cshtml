@@ -1,7 +1,11 @@
 @using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
 @{
     ViewData["Title"] = "Vendor Statement";
     var vendor = ViewBag.Vendor as VendorDto;
+    var canViewPurchase = await PermissionService.HasPermissionAsync("Purchase.View")
+        || await PermissionService.HasPermissionAsync("Purchase.Edit");
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
@@ -64,15 +68,26 @@
                     <th class="text-end">Debit (PKR)</th>
                     <th class="text-end">Credit (PKR)</th>
                     <th class="text-end">Balance (PKR)</th>
+                    <th class="no-print">Documents</th>
+                    @if (canViewPurchase)
+                    {
+                        <th class="no-print text-end">Actions</th>
+                    }
                 </tr>
             </thead>
-            <tbody id="statement-entries">
-                <tr><td colspan="6" class="text-muted text-center">No data loaded.</td></tr>
+            <tbody id="statement-entries"
+                   data-can-view-purchase="@canViewPurchase.ToString().ToLower()">
+                <tr><td colspan="@(canViewPurchase ? 8 : 7)" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="statement-footer" class="d-none">
                 <tr class="table-light">
                     <th colspan="5" class="text-end">Closing Balance</th>
                     <th class="text-end" id="stmt-closing-balance">0.00</th>
+                    <th class="no-print"></th>
+                    @if (canViewPurchase)
+                    {
+                        <th class="no-print"></th>
+                    }
                 </tr>
             </tfoot>
         </table>
@@ -94,6 +109,11 @@
 
 @section Scripts {
     <partial name="_LedgerShareModal" />
+    <partial name="_VendorPaymentShareModal" />
+    <partial name="_PrintChoiceModal" />
+    <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/vendor-payment-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/ledger-row-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/vendor-statement.js" asp-append-version="true"></script>
 }

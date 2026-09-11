@@ -1,6 +1,10 @@
 @model PakistanAccountingERP.Application.DTOs.VendorLedgerDto
+@using PakistanAccountingERP.Application.Interfaces.Services
+@inject IPermissionService PermissionService
 @{
     ViewData["Title"] = "Vendor Ledger";
+    var canViewPurchase = await PermissionService.HasPermissionAsync("Purchase.View")
+        || await PermissionService.HasPermissionAsync("Purchase.Edit");
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
@@ -64,12 +68,17 @@
                     <th class="text-end">Debit</th>
                     <th class="text-end">Credit</th>
                     <th class="text-end">Balance</th>
+                    <th class="no-print">Documents</th>
+                    @if (canViewPurchase)
+                    {
+                        <th class="no-print text-end">Actions</th>
+                    }
                 </tr>
             </thead>
             <tbody>
                 @if (Model.Entries.Count == 0)
                 {
-                    <tr><td colspan="6" class="text-muted text-center">No ledger entries yet.</td></tr>
+                    <tr><td colspan="@(canViewPurchase ? 8 : 7)" class="text-muted text-center">No ledger entries yet.</td></tr>
                 }
                 else
                 {
@@ -77,11 +86,103 @@
                     {
                         <tr>
                             <td>@(entry.Date == DateTime.MinValue ? "—" : entry.Date.ToString("dd/MM/yyyy"))</td>
-                            <td><code>@entry.Reference</code></td>
+                            <td>
+                                @if (entry.BillId.HasValue && canViewPurchase)
+                                {
+                                    <a href="/VendorBills/Details/@entry.BillId.Value"
+                                       class="text-decoration-none"
+                                       title="View vendor bill">
+                                        <code>@entry.Reference</code>
+                                    </a>
+                                }
+                                else if (entry.PaymentId.HasValue && canViewPurchase)
+                                {
+                                    <a href="/api/vendor-payments/@entry.PaymentId.Value/pdf"
+                                       class="text-decoration-none"
+                                       target="_blank"
+                                       title="View payment PDF">
+                                        <code>@entry.Reference</code>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <code>@entry.Reference</code>
+                                }
+                            </td>
                             <td>@entry.Description</td>
                             <td class="text-end text-currency">@(entry.Debit > 0 ? entry.Debit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency">@(entry.Credit > 0 ? entry.Credit.ToString("N2") : "—")</td>
                             <td class="text-end text-currency fw-semibold">@entry.Balance.ToString("N2")</td>
+                            <td class="no-print">
+                                @if (entry.Attachments is { Count: > 0 })
+                                {
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        @foreach (var doc in entry.Attachments)
+                                        {
+                                            <span class="d-inline-flex align-items-center gap-1">
+                                                <a class="btn btn-link btn-sm p-0 text-primary"
+                                                   href="/api/vendor-bills/attachments/@doc.Id/download"
+                                                   target="_blank"
+                                                   title="View @doc.FileName">
+                                                    <i class="fa-solid fa-eye"></i>
+                                                </a>
+                                                <a class="btn btn-link btn-sm p-0 text-secondary"
+                                                   href="/api/vendor-bills/attachments/@doc.Id/download"
+                                                   title="Download @doc.FileName">
+                                                    <i class="fa-solid fa-download"></i>
+                                                </a>
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            @if (canViewPurchase)
+                            {
+                                <td class="no-print text-end text-nowrap">
+                                    @if (entry.BillId.HasValue)
+                                    {
+                                        <a href="/VendorBills/Details/@entry.BillId.Value"
+                                           class="btn btn-link btn-sm p-0 me-1"
+                                           title="View vendor bill">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </a>
+                                        @if (entry.Attachments is { Count: > 0 })
+                                        {
+                                            var firstDoc = entry.Attachments[0];
+                                            <button type="button"
+                                                    class="btn btn-link btn-sm p-0 text-success js-share-file"
+                                                    data-url="/api/vendor-bills/attachments/@firstDoc.Id/download"
+                                                    data-name="@firstDoc.FileName"
+                                                    title="Share bill document">
+                                                <i class="fa-solid fa-share-nodes"></i>
+                                            </button>
+                                        }
+                                    }
+                                    else if (entry.PaymentId.HasValue)
+                                    {
+                                        <a href="/api/vendor-payments/@entry.PaymentId.Value/pdf"
+                                           class="btn btn-link btn-sm p-0 me-1"
+                                           target="_blank"
+                                           title="View payment PDF">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </a>
+                                        <button type="button"
+                                                class="btn btn-link btn-sm p-0 text-success js-share-vendor-payment"
+                                                data-id="@entry.PaymentId.Value"
+                                                title="Share payment">
+                                            <i class="fa-brands fa-whatsapp"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                            }
                         </tr>
                     }
                 }
@@ -99,10 +200,20 @@
                         <th class="text-end text-currency">@totalDebit.ToString("N2")</th>
                         <th class="text-end text-currency">@totalCredit.ToString("N2")</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                        <th class="no-print"></th>
+                        @if (canViewPurchase)
+                        {
+                            <th class="no-print"></th>
+                        }
                     </tr>
                     <tr class="table-light">
                         <th colspan="5" class="text-end">Closing Balance</th>
                         <th class="text-end text-currency">@Model.ClosingBalance.ToString("N2")</th>
+                        <th class="no-print"></th>
+                        @if (canViewPurchase)
+                        {
+                            <th class="no-print"></th>
+                        }
                     </tr>
                 </tfoot>
             }
@@ -113,10 +224,13 @@
 
 <partial name="_PrintChoiceModal" />
 <partial name="_LedgerShareModal" />
+<partial name="_VendorPaymentShareModal" />
 
 @section Scripts {
     <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/vendor-payment-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/ledger-row-share.js" asp-append-version="true"></script>
     <script>
         document.getElementById('btn-print-ledger').addEventListener('click', function () {
             if (window.PrintChoice) {

@@ -47,13 +47,18 @@ public record VendorSaveResult(bool Success, string? Message, VendorDto? Vendor)
 
 public record NextVendorCodeDto(string VendorCode);
 
+public record VendorLedgerAttachmentLinkDto(int Id, string FileName);
+
 public record VendorLedgerEntryDto(
     DateTime Date,
     string Reference,
     string Description,
     decimal Debit,
     decimal Credit,
-    decimal Balance);
+    decimal Balance,
+    int? BillId = null,
+    int? PaymentId = null,
+    IReadOnlyList<VendorLedgerAttachmentLinkDto>? Attachments = null);
 
 public record VendorLedgerDto(
     VendorDto Vendor,

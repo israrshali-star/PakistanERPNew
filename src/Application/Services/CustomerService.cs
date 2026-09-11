@@ -505,6 +505,7 @@ public partial class CustomerService : ICustomerService
             invoiceQuery = invoiceQuery.Where(si => si.InvoiceDate <= toDate.Value);
         }
 
+        var companyId = _currentCompany.GetRequiredCompanyId();
         var invoices = await invoiceQuery
             .OrderBy(si => si.InvoiceDate)
             .ThenBy(si => si.Id)
@@ -514,7 +515,8 @@ public partial class CustomerService : ICustomerService
                 si.InvoiceDate,
                 si.InvoiceNumber,
                 si.InvoiceType,
-                si.NetTotal
+                si.NetTotal,
+                si.FbrSubmittedAt
             })
             .ToListAsync(cancellationToken);
 
@@ -579,6 +581,8 @@ public partial class CustomerService : ICustomerService
             decimal Credit,
             decimal PendingCredit,
             int? ReceiptId,
+            int? InvoiceId,
+            bool CanShareInvoice,
             IReadOnlyList<CustomerLedgerAttachmentLinkDto> Attachments)>();
 
         foreach (var invoice in invoices)
@@ -592,6 +596,9 @@ public partial class CustomerService : ICustomerService
                 credit = invoice.NetTotal;
             }
 
+            var canShareInvoice = invoice.FbrSubmittedAt.HasValue
+                || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId;
+
             movements.Add((
                 invoice.InvoiceDate,
                 invoice.Id,
@@ -601,6 +608,8 @@ public partial class CustomerService : ICustomerService
                 credit,
                 0m,
                 null,
+                invoice.Id,
+                canShareInvoice,
                 Array.Empty<CustomerLedgerAttachmentLinkDto>()));
         }
 
@@ -623,6 +632,8 @@ public partial class CustomerService : ICustomerService
                     0m,
                     0m,
                     receipt.Id,
+                    null,
+                    false,
                     receiptAttachments));
                 continue;
             }
@@ -649,6 +660,8 @@ public partial class CustomerService : ICustomerService
                 isPendingCheque ? 0m : receipt.Amount,
                 isPendingCheque ? receipt.Amount : 0m,
                 receipt.Id,
+                null,
+                false,
                 receiptAttachments));
         }
 
@@ -710,6 +723,8 @@ public partial class CustomerService : ICustomerService
                 cheque.CustomerBalanceEffect < 0m ? Math.Abs(cheque.CustomerBalanceEffect) : 0m,
                 0m,
                 null,
+                null,
+                false,
                 Array.Empty<CustomerLedgerAttachmentLinkDto>()));
         }
 
@@ -726,7 +741,9 @@ public partial class CustomerService : ICustomerService
                 balance,
                 movement.PendingCredit,
                 movement.ReceiptId,
-                movement.Attachments.Count > 0 ? movement.Attachments : null));
+                movement.Attachments.Count > 0 ? movement.Attachments : null,
+                movement.InvoiceId,
+                movement.CanShareInvoice));
         }
 
         return entries;

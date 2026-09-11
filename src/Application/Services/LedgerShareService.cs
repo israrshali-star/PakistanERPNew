@@ -641,13 +641,23 @@ public class LedgerShareService : ILedgerShareService
             opening,
             closing,
             false,
-            entries.Select(e => new PartyLedgerPdfLineDto(
-                e.Date,
-                e.Reference,
-                e.Description,
-                e.Debit,
-                e.Credit,
-                e.Balance)).ToList(),
+            entries.Select(e =>
+            {
+                var description = e.Description;
+                if (e.Attachments is { Count: > 0 })
+                {
+                    var names = string.Join(", ", e.Attachments.Select(a => a.FileName));
+                    description = $"{description} [Docs: {names}]";
+                }
+
+                return new PartyLedgerPdfLineDto(
+                    e.Date,
+                    e.Reference,
+                    description,
+                    e.Debit,
+                    e.Credit,
+                    e.Balance);
+            }).ToList(),
             useUrdu);
 
     private static string ResolvePartyName(string partyName, string? partyNameUrdu, bool useUrdu) =>

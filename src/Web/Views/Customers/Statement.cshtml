@@ -4,9 +4,11 @@
 @{
     ViewData["Title"] = "Customer Statement";
     var customer = ViewBag.Customer as CustomerDto;
-    var canOpenReceipt = await PermissionService.HasPermissionAsync("Sales.View")
+    var canViewInvoice = await PermissionService.HasPermissionAsync("Sales.View");
+    var canOpenReceipt = canViewInvoice
         || await PermissionService.HasPermissionAsync("Sales.Edit");
     var canEditReceipt = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var showRowActions = canViewInvoice || canOpenReceipt;
     var receiptReturnUrl = customer is null
         ? string.Empty
         : (Url.Action("Statement", "Customers", new { id = customer.Id }) ?? $"/Customers/Statement/{customer.Id}");
@@ -74,24 +76,25 @@
                     <th class="text-end">Pending (PKR)</th>
                     <th class="text-end">Balance (PKR)</th>
                     <th class="no-print">Documents</th>
-                    @if (canOpenReceipt)
+                    @if (showRowActions)
                     {
                         <th class="no-print text-end">Actions</th>
                     }
                 </tr>
             </thead>
             <tbody id="statement-entries"
+                   data-can-view-invoice="@canViewInvoice.ToString().ToLower()"
                    data-can-open-receipt="@canOpenReceipt.ToString().ToLower()"
                    data-can-edit-receipt="@canEditReceipt.ToString().ToLower()"
                    data-return-url="@receiptReturnUrl">
-                <tr><td colspan="@(canOpenReceipt ? 9 : 8)" class="text-muted text-center">No data loaded.</td></tr>
+                <tr><td colspan="@(showRowActions ? 9 : 8)" class="text-muted text-center">No data loaded.</td></tr>
             </tbody>
             <tfoot id="statement-footer" class="d-none">
                 <tr class="table-light">
                     <th colspan="6" class="text-end">Closing Balance</th>
                     <th class="text-end" id="stmt-closing-balance">0.00</th>
                     <th class="no-print"></th>
-                    @if (canOpenReceipt)
+                    @if (showRowActions)
                     {
                         <th class="no-print"></th>
                     }
@@ -116,6 +119,13 @@
 
 @section Scripts {
     <partial name="_LedgerShareModal" />
+    <partial name="~/Views/SalesInvoices/_InvoiceShareModal.cshtml" />
+    <partial name="_ReceiptShareModal" />
+    <partial name="_PrintChoiceModal" />
+    <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
     <script src="~/js/modules/ledger-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/sales-invoice-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/customer-receipt-share.js" asp-append-version="true"></script>
+    <script src="~/js/modules/ledger-row-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/customer-statement.js" asp-append-version="true"></script>
 }

@@ -450,6 +450,26 @@ public partial class VendorService : IVendorService
             })
             .ToListAsync(cancellationToken);
 
+        var billIds = bills.Select(b => b.Id).ToList();
+        var billAttachmentRows = billIds.Count == 0
+            ? new List<(int Id, int VendorBillId, string FileName)>()
+            : (await _unitOfWork.Repository<VendorBillAttachment>()
+                .Query()
+                .Where(a => billIds.Contains(a.VendorBillId))
+                .OrderBy(a => a.CreatedAt)
+                .Select(a => new { a.Id, a.VendorBillId, a.FileName })
+                .ToListAsync(cancellationToken))
+              .Select(a => (a.Id, a.VendorBillId, a.FileName))
+              .ToList();
+
+        var attachmentsByBill = billAttachmentRows
+            .GroupBy(a => a.VendorBillId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<VendorLedgerAttachmentLinkDto>)g
+                    .Select(a => new VendorLedgerAttachmentLinkDto(a.Id, a.FileName))
+                    .ToList());
+
         var paymentQuery = _unitOfWork.Repository<VendorPayment>()
             .Query()
             .Where(p => p.VendorId == vendorId);
@@ -475,17 +495,32 @@ public partial class VendorService : IVendorService
             })
             .ToListAsync(cancellationToken);
 
-        var movements = new List<(DateTime Date, int SortKey, string Reference, string Description, decimal Debit, decimal Credit)>();
+        var movements = new List<(
+            DateTime Date,
+            int SortKey,
+            string Reference,
+            string Description,
+            decimal Debit,
+            decimal Credit,
+            int? BillId,
+            int? PaymentId,
+            IReadOnlyList<VendorLedgerAttachmentLinkDto> Attachments)>();
 
         foreach (var bill in bills)
         {
+            attachmentsByBill.TryGetValue(bill.Id, out var billAttachments);
+            billAttachments ??= Array.Empty<VendorLedgerAttachmentLinkDto>();
+
             movements.Add((
                 bill.BillDate,
                 bill.Id,
                 bill.BillNumber,
                 "Vendor Bill",
                 0m,
-                bill.NetAmount));
+                bill.NetAmount,
+                bill.Id,
+                null,
+                billAttachments));
         }
 
         foreach (var payment in payments)
@@ -496,7 +531,10 @@ public partial class VendorService : IVendorService
                 payment.PaymentNumber,
                 $"Vendor Payment ({payment.PaymentMethod})",
                 payment.Amount,
-                0m));
+                0m,
+                null,
+                payment.Id,
+                Array.Empty<VendorLedgerAttachmentLinkDto>()));
         }
 
         var chequeQuery = _unitOfWork.Repository<BankTransaction>()
@@ -551,7 +589,10 @@ public partial class VendorService : IVendorService
                 reference,
                 description,
                 cheque.Amount,
-                0m));
+                0m,
+                null,
+                null,
+                Array.Empty<VendorLedgerAttachmentLinkDto>()));
         }
 
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
@@ -563,7 +604,10 @@ public partial class VendorService : IVendorService
                 movement.Description,
                 movement.Debit,
                 movement.Credit,
-                balance));
+                balance,
+                movement.BillId,
+                movement.PaymentId,
+                movement.Attachments.Count > 0 ? movement.Attachments : null));
         }
 
         return entries;
