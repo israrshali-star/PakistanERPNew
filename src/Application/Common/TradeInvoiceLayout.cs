@@ -35,6 +35,13 @@ public static class TradeInvoiceLayout
     public static bool ShowsCustomerReceiptInvoiceAllocation(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) shows Paid/Unpaid in the sales list FBR # column from FIFO receipt allocation.</summary>
+    public static bool ShowsSalesListPaymentStatus(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
+    /// <summary>Paisa on bills is ignored when deciding Paid/Unpaid (outstanding under 1 rupee is paid).</summary>
+    public const decimal SalesListPaymentWholeRupee = 1m;
+
     /// <summary>Max receipt attachments for a company; null means use the global Attachments config default.</summary>
     public static int? GetCustomerReceiptAttachmentLimit(int companyId) =>
         companyId == TradeInvoiceCompanyId ? 2 : null;

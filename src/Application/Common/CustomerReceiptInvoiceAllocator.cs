@@ -18,7 +18,8 @@ public static class CustomerReceiptInvoiceAllocator
         bool IsReceivable,
         string Reference,
         decimal Amount,
-        bool IsTargetReceipt = false);
+        bool IsTargetReceipt = false,
+        int? InvoiceId = null);
 
     public static CustomerReceiptInvoiceAllocationDto Allocate(
         decimal openingBalance,
@@ -86,6 +87,73 @@ public static class CustomerReceiptInvoiceAllocator
             applied);
     }
 
+    /// <summary>
+    /// FIFO-applies all credits (receipts, write cheques, credit notes, opening credit)
+    /// and returns remaining unpaid amount by sales invoice id.
+    /// Fully paid invoices are omitted.
+    /// </summary>
+    public static IReadOnlyDictionary<int, decimal> ComputeRemainingByInvoiceId(
+        decimal openingBalance,
+        IReadOnlyList<Movement> movements)
+    {
+        var unpaid = new List<UnpaidItem>();
+        var creditPool = 0m;
+
+        if (openingBalance > 0m)
+        {
+            unpaid.Add(new UnpaidItem(OpeningBalanceReference, null, openingBalance));
+        }
+        else if (openingBalance < 0m)
+        {
+            creditPool = Math.Abs(openingBalance);
+        }
+
+        foreach (var movement in movements.OrderBy(m => m.Date.Date).ThenBy(m => m.SortKey))
+        {
+            if (movement.IsTargetReceipt || movement.Amount == 0m)
+            {
+                continue;
+            }
+
+            var amount = Math.Abs(movement.Amount);
+            var isReceivable = movement.IsReceivable && movement.Amount > 0m;
+
+            if (isReceivable)
+            {
+                if (creditPool > 0m)
+                {
+                    var used = Math.Min(amount, creditPool);
+                    amount -= used;
+                    creditPool -= used;
+                }
+
+                if (amount > 0m)
+                {
+                    unpaid.Add(new UnpaidItem(
+                        movement.Reference,
+                        movement.Date.Date,
+                        amount,
+                        movement.InvoiceId));
+                }
+            }
+            else
+            {
+                creditPool += ApplyCredit(unpaid, amount, recorded: null);
+            }
+        }
+
+        var remaining = new Dictionary<int, decimal>();
+        foreach (var item in unpaid)
+        {
+            if (item.InvoiceId is int invoiceId && item.Remaining > 0m)
+            {
+                remaining[invoiceId] = item.Remaining;
+            }
+        }
+
+        return remaining;
+    }
+
     private static decimal ApplyCredit(
         List<UnpaidItem> unpaid,
         decimal credit,
@@ -112,5 +180,9 @@ public static class CustomerReceiptInvoiceAllocator
         return credit;
     }
 
-    private sealed record UnpaidItem(string Reference, DateTime? InvoiceDate, decimal Remaining);
+    private sealed record UnpaidItem(
+        string Reference,
+        DateTime? InvoiceDate,
+        decimal Remaining,
+        int? InvoiceId = null);
 }

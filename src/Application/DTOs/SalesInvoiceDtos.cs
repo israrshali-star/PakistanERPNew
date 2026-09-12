@@ -17,7 +17,9 @@ public record SalesInvoiceListItemDto(
     bool HasFbrPdf,
     bool CanDelete,
     bool IsActive,
-    bool CanShareInvoice);
+    bool CanShareInvoice,
+    InvoiceType InvoiceType = InvoiceType.SalesInvoice,
+    bool? IsPaid = null);
 
 public record SalesInvoiceLineDto(
     int Id,

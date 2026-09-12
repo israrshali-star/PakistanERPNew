@@ -10,4 +10,8 @@ public interface ICustomerReceiptInvoiceAllocationService
         decimal amount,
         int? receiptId = null,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<int, decimal>> GetRemainingByInvoiceIdAsync(
+        IReadOnlyCollection<int> customerIds,
+        CancellationToken cancellationToken = default);
 }

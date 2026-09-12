@@ -24,6 +24,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
     private readonly IInventoryCostingService _inventoryCosting;
     private readonly IItemCartonSyncService _itemCartonSyncService;
     private readonly ISalesInvoicePdfService _salesInvoicePdfService;
+    private readonly ICustomerReceiptInvoiceAllocationService _invoiceAllocationService;
     private readonly ILogger<SalesInvoiceService> _logger;
 
     private const string CartageItemCode = "ITEM-0002";
@@ -38,6 +39,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         IInventoryCostingService inventoryCosting,
         IItemCartonSyncService itemCartonSyncService,
         ISalesInvoicePdfService salesInvoicePdfService,
+        ICustomerReceiptInvoiceAllocationService invoiceAllocationService,
         ILogger<SalesInvoiceService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -49,6 +51,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         _inventoryCosting = inventoryCosting;
         _itemCartonSyncService = itemCartonSyncService;
         _salesInvoicePdfService = salesInvoicePdfService;
+        _invoiceAllocationService = invoiceAllocationService;
         _logger = logger;
     }
 
@@ -136,14 +139,53 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.Status != InvoiceStatus.Cancelled,
                 i.Status == InvoiceStatus.Posted
                     && (i.FbrSubmittedAt != null
-                        || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId)))
+                        || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId),
+                i.InvoiceType,
+                null))
             .ToListAsync(cancellationToken);
+
+        if (TradeInvoiceLayout.ShowsSalesListPaymentStatus(companyId) && rows.Count > 0)
+        {
+            rows = await AttachPaymentStatusAsync(rows, cancellationToken);
+        }
 
         return new DataTableResponse<SalesInvoiceListItemDto>(
             request.Draw,
             recordsTotal,
             recordsFiltered,
             rows);
+    }
+
+    private async Task<List<SalesInvoiceListItemDto>> AttachPaymentStatusAsync(
+        List<SalesInvoiceListItemDto> rows,
+        CancellationToken cancellationToken)
+    {
+        var customerIds = rows
+            .Where(r => r.Status == nameof(InvoiceStatus.Posted)
+                        && r.InvoiceType != InvoiceType.CreditNote)
+            .Select(r => r.CustomerId)
+            .Distinct()
+            .ToList();
+
+        if (customerIds.Count == 0)
+        {
+            return rows;
+        }
+
+        var remainingByInvoiceId = await _invoiceAllocationService
+            .GetRemainingByInvoiceIdAsync(customerIds, cancellationToken);
+
+        return rows.Select(row =>
+        {
+            if (row.Status != nameof(InvoiceStatus.Posted)
+                || row.InvoiceType == InvoiceType.CreditNote)
+            {
+                return row;
+            }
+
+            var remaining = remainingByInvoiceId.GetValueOrDefault(row.Id);
+            return row with { IsPaid = remaining < TradeInvoiceLayout.SalesListPaymentWholeRupee };
+        }).ToList();
     }
 
     public async Task<NextInvoiceNumberDto> GenerateNextInvoiceNumberAsync(CancellationToken cancellationToken = default)

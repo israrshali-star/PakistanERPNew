@@ -5,6 +5,7 @@
     var canEdit = false;
     var canDelete = false;
     var bulkPrintEnabled = false;
+    var showSalesListPaymentStatus = false;
     var bulkPrintItems = [];
 
     function escapeHtml(text) {
@@ -144,6 +145,23 @@
         loadBulkPrintInvoices();
     }
 
+    function initSalesListPaymentColumn(company) {
+        showSalesListPaymentStatus = !!(company && company.id === 3);
+        if (showSalesListPaymentStatus) {
+            $('#sales-invoices-table thead th').eq(5).text('FBR # / Payment');
+        }
+    }
+
+    function renderPaymentBadge(row) {
+        if (row.isPaid === true) {
+            return ' <span class="badge bg-success ms-1">Paid</span>';
+        }
+        if (row.isPaid === false) {
+            return ' <span class="badge bg-warning text-dark ms-1">Unpaid</span>';
+        }
+        return '';
+    }
+
     function runInvoiceAction(id, action, confirmText, successReload, method) {
         if (!confirm(confirmText)) {
             return;
@@ -243,11 +261,14 @@
                     data: 'fbrInvoiceNumber',
                     defaultContent: '—',
                     render: function (d, type, row) {
-                        if (!d) {
-                            return '—';
+                        var html = d ? '<code>' + escapeHtml(d) + '</code>' : '';
+                        if (showSalesListPaymentStatus) {
+                            html += renderPaymentBadge(row);
                         }
-                        var html = '<code>' + escapeHtml(d) + '</code>';
-                        if (row.canShareInvoice) {
+                        if (!html) {
+                            html = '—';
+                        }
+                        if (d && row.canShareInvoice) {
                             html += ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 btn-download-pdf" data-id="' + row.id + '" title="Download PDF"><i class="fa-solid fa-file-pdf text-danger"></i></button>';
                         }
                         return html;
@@ -352,6 +373,7 @@
 
         $.getJSON('/api/company/current')
             .done(function (company) {
+                initSalesListPaymentColumn(company);
                 initDataTable();
                 initBulkPrintPanel(company);
             })
