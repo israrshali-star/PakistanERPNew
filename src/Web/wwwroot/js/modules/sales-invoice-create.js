@@ -277,7 +277,7 @@
             '<td class="line-lot-cell"><select class="form-select form-select-sm line-lot" required>' + lotOptions + '</select></td>' +
             '<td><input type="hidden" class="line-item-id" />' +
             '<input type="text" class="form-control form-control-xs line-item-name" readonly placeholder="Lot" /></td>' +
-            '<td><input type="text" class="form-control form-control-xs line-desc" maxlength="500" /></td>' +
+            '<td class="col-desc"><input type="text" class="form-control form-control-xs line-desc" maxlength="500" /></td>' +
             '<td class="col-stack"><input type="text" class="form-control form-control-xs line-stack" maxlength="50" />' +
             '<div class="line-stock-hint small mt-1"></div></td>' +
             '<td class="col-ctn"><input type="number" class="form-control form-control-xs text-end line-cartons" min="0" step="0.01" value="' + ((prefill && prefill.cartons) || 0) + '" /></td>' +

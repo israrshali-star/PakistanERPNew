@@ -112,10 +112,10 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         {
             table.ColumnsDefinition(columns =>
             {
-                columns.RelativeColumn(1.4f);
+                columns.RelativeColumn(2.0f);
                 columns.ConstantColumn(32);
-                columns.ConstantColumn(40);
-                columns.RelativeColumn(2.2f);
+                columns.ConstantColumn(64);
+                columns.RelativeColumn(1.6f);
                 columns.ConstantColumn(40);
                 columns.ConstantColumn(40);
                 columns.ConstantColumn(54);
@@ -218,13 +218,13 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             table.ColumnsDefinition(columns =>
             {
                 columns.ConstantColumn(20);
-                columns.RelativeColumn(1.55f);
+                columns.RelativeColumn(1.7f);
                 columns.ConstantColumn(34);
-                columns.ConstantColumn(56);
+                columns.ConstantColumn(66);
                 columns.ConstantColumn(38);
                 columns.ConstantColumn(42);
                 columns.ConstantColumn(24);
-                columns.ConstantColumn(52);
+                columns.ConstantColumn(48);
             });
 
             table.Header(header =>

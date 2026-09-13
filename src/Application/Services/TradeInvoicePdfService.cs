@@ -83,8 +83,8 @@ public class TradeInvoicePdfService : ITradeInvoicePdfService
         {
             table.ColumnsDefinition(columns =>
             {
-                columns.RelativeColumn(2.2f);
-                columns.RelativeColumn(3.4f);
+                columns.RelativeColumn(3.6f);
+                columns.RelativeColumn(2.0f);
                 columns.ConstantColumn(40);
                 columns.ConstantColumn(42);
                 columns.ConstantColumn(48);

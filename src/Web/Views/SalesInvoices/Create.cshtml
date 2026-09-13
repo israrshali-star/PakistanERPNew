@@ -100,7 +100,7 @@
                     <tr>
                         <th>Lot</th>
                         <th>Item</th>
-                        <th>Description</th>
+                        <th class="col-desc">Description</th>
                         <th class="col-stack">Stack</th>
                         <th class="text-end col-ctn">Ctn</th>
                         <th class="col-carton-desc">Carton Desc</th>
@@ -201,15 +201,16 @@
             width: 7.5rem;
         }
 
-        .invoice-create-compact .table-compact th:nth-child(3),
-        .invoice-create-compact .table-compact td:nth-child(3) {
-            white-space: normal;
-            min-width: 6.5rem;
+        .invoice-create-compact .table-compact .col-desc {
+            white-space: nowrap;
+            min-width: 16rem;
+            width: 28%;
         }
 
         .invoice-create-compact .table-compact .col-stack {
-            width: 5.5rem;
-            max-width: 5.5rem;
+            width: 7.5rem;
+            min-width: 7.5rem;
+            max-width: 7.5rem;
         }
 
         .invoice-create-compact .table-compact .col-ctn,
@@ -250,6 +251,11 @@
             min-width: 12rem;
             width: 22%;
             white-space: normal !important;
+        }
+
+        .invoice-create-compact .table-compact .col-desc .form-control {
+            width: 100%;
+            min-width: 0;
         }
 
         .invoice-create-compact .table-compact .col-stack .form-control,

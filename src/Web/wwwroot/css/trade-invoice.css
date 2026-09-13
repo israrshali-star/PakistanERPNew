@@ -65,13 +65,12 @@
 }
 
 .trade-invoice-table .trade-col-desc {
-    width: 26%;
-    white-space: normal;
-    word-break: break-word;
+    width: 40%;
+    white-space: nowrap;
 }
 
 .trade-invoice-table .trade-col-ctn-desc {
-    width: 34%;
+    width: 24%;
     white-space: normal;
     word-break: break-word;
 }
