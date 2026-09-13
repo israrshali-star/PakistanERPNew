@@ -54,6 +54,8 @@ public static class RomanUrduTransliterator
         ("abdul malik", "عبدالمالک"),
         ("wasi ud din", "وصی الدین"),
         ("wasi-ud-din", "وصی الدین"),
+        ("self lifting", "سیلف لفٹنگ"),
+        ("self lifing", "سیلف لفٹنگ"),
     ];
 
     // Longest-first phonetic tokens (Roman Urdu / English names).

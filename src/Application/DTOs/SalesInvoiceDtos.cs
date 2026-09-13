@@ -55,6 +55,7 @@ public record SalesInvoiceDetailDto(
     string? ScenarioCode,
     string? BuyerAddress,
     string ShippingAddress,
+    string? ShippingAddressUrdu,
     string? BuyerProvince,
     string? BuyerNTN,
     string? BuyerCNIC,
@@ -146,6 +147,7 @@ public class SalesInvoiceSaveRequest
     public int? ProvinceId { get; set; }
     public string? BuyerAddress { get; set; }
     public string ShippingAddress { get; set; } = string.Empty;
+    public string? ShippingAddressUrdu { get; set; }
     public string? BuyerNTN { get; set; }
     public string? BuyerCNIC { get; set; }
     public decimal? FurtherTaxRate { get; set; }

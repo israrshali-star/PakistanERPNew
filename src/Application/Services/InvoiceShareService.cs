@@ -258,6 +258,7 @@ public class InvoiceShareService : IInvoiceShareService
             .Append($"<strong>{labels.InvoiceNumber}</strong> {System.Net.WebUtility.HtmlEncode(challanData.InvoiceNumber)}<br/>")
             .Append($"<strong>{labels.Date}</strong> {challanData.InvoiceDate:dd/MM/yyyy}<br/>")
             .Append($"<strong>{labels.Customer}:</strong> {System.Net.WebUtility.HtmlEncode(challanData.BuyerName)}<br/>")
+            .Append($"<strong>{labels.ShippingAddress}</strong> {System.Net.WebUtility.HtmlEncode(challanData.BuyerAddress ?? "—")}<br/>")
             .Append($"<strong>{labels.TotalCartons}:</strong> {totalCartons.ToString("N2", CultureInfo.InvariantCulture)}<br/>")
             .Append($"<strong>{labels.TotalQuantity}:</strong> {totalQty.ToString("N2", CultureInfo.InvariantCulture)}")
             .Append($"<br/><br/>{labels.Regards},<br/>")
@@ -266,7 +267,7 @@ public class InvoiceShareService : IInvoiceShareService
             .ToString();
 
         var plain = string.IsNullOrWhiteSpace(request.Message)
-            ? $"{labels.PleaseFindChallan}\n{labels.InvoiceNumber} {challanData.InvoiceNumber}\n{labels.Date} {challanData.InvoiceDate:dd/MM/yyyy}\n{labels.Customer}: {challanData.BuyerName}\n{labels.TotalCartons}: {totalCartons:N2}\n{labels.TotalQuantity}: {totalQty:N2}"
+            ? $"{labels.PleaseFindChallan}\n{labels.InvoiceNumber} {challanData.InvoiceNumber}\n{labels.Date} {challanData.InvoiceDate:dd/MM/yyyy}\n{labels.Customer}: {challanData.BuyerName}\n{labels.ShippingAddress} {challanData.BuyerAddress}\n{labels.TotalCartons}: {totalCartons:N2}\n{labels.TotalQuantity}: {totalQty:N2}"
             : request.Message;
 
         var result = await _emailSender.SendAsync(

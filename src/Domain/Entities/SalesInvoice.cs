@@ -10,6 +10,7 @@ public class SalesInvoice : CompanyAuditableEntity
     public int CustomerId { get; set; }
     public string? BuyerAddress { get; set; }
     public string ShippingAddress { get; set; } = string.Empty;
+    public string? ShippingAddressUrdu { get; set; }
     public int? ProvinceId { get; set; }
     public string? BuyerNTN { get; set; }
     public string? BuyerCNIC { get; set; }

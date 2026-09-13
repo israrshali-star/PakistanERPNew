@@ -113,8 +113,8 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             table.ColumnsDefinition(columns =>
             {
                 columns.RelativeColumn(2.0f);
-                columns.ConstantColumn(32);
-                columns.ConstantColumn(64);
+                columns.ConstantColumn(model.UseUrdu ? 70 : 32);
+                columns.ConstantColumn(model.UseUrdu ? 78 : 64);
                 columns.RelativeColumn(1.6f);
                 columns.ConstantColumn(40);
                 columns.ConstantColumn(40);
@@ -135,8 +135,10 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
             foreach (var line in model.Lines)
             {
                 table.Cell().Element(TradeBodyCell).Text(line.ItemDescription);
-                table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.LotNo ?? "—"));
-                table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.StackNo ?? "—"));
+                table.Cell().Element(TradeBodyCell).Text(
+                    line.IsTransportation ? "—" : FormatLotNo(line.LotNo, model.UseUrdu));
+                table.Cell().Element(TradeBodyCell).Text(
+                    line.IsTransportation ? "—" : FormatStackNo(line.StackNo, model.UseUrdu));
                 table.Cell().Element(TradeBodyCell).Text(line.IsTransportation ? "—" : (line.CartonDescription ?? "—"));
                 table.Cell().Element(TradeBodyCell).AlignRight().Text(
                     line.IsTransportation ? "—" : FormatQty(line.Cartons, true));
@@ -304,4 +306,10 @@ public class DeliveryChallanPdfService : IDeliveryChallanPdfService
         wholeNumber
             ? value.ToString("N0", NumberCulture)
             : value.ToString("N2", NumberCulture);
+
+    private static string FormatLotNo(string? lotNo, bool useUrdu) =>
+        useUrdu ? UrduTradeFormat.Lot(lotNo) : (string.IsNullOrWhiteSpace(lotNo) ? "—" : lotNo);
+
+    private static string FormatStackNo(string? stackNo, bool useUrdu) =>
+        useUrdu ? UrduTradeFormat.Stack(stackNo) : (string.IsNullOrWhiteSpace(stackNo) ? "—" : stackNo);
 }

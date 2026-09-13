@@ -421,6 +421,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             CustomerId = customer.Id,
             BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address,
             ShippingAddress = request.ShippingAddress.Trim(),
+            ShippingAddressUrdu = ResolveShippingAddressUrdu(request.ShippingAddressUrdu, request.ShippingAddress, companyId),
             ProvinceId = request.ProvinceId ?? customer.ProvinceId,
             BuyerNTN = formattedBuyerNtn,
             BuyerCNIC = formattedBuyerCnic,
@@ -614,6 +615,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         entity.CustomerId = customer.Id;
         entity.BuyerAddress = request.BuyerAddress?.Trim() ?? customer.Address;
         entity.ShippingAddress = request.ShippingAddress.Trim();
+        entity.ShippingAddressUrdu = ResolveShippingAddressUrdu(request.ShippingAddressUrdu, request.ShippingAddress, companyId);
         entity.ProvinceId = request.ProvinceId ?? customer.ProvinceId;
         entity.BuyerNTN = formattedBuyerNtn;
         entity.BuyerCNIC = formattedBuyerCnic;
@@ -905,6 +907,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 ScenarioCode = i.ScenarioType != null ? i.ScenarioType.Code : null,
                 i.BuyerAddress,
                 i.ShippingAddress,
+                i.ShippingAddressUrdu,
                 BuyerProvince = i.Province != null
                     ? i.Province.Name
                     : i.Customer.Province != null
@@ -984,6 +987,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.ScenarioCode,
             invoice.BuyerAddress,
             invoice.ShippingAddress,
+            invoice.ShippingAddressUrdu,
             invoice.BuyerProvince,
             invoice.BuyerNTN,
             invoice.BuyerCNIC,
@@ -1794,6 +1798,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 BuyerNtn = i.BuyerNTN ?? i.Customer.NTN,
                 BuyerCnic = i.BuyerCNIC ?? i.Customer.CNIC,
                 BuyerAddress = i.ShippingAddress,
+                BuyerAddressUrdu = i.ShippingAddressUrdu,
                 BuyerProvince = i.Province != null
                     ? i.Province.Name
                     : (i.Customer.Province != null ? i.Customer.Province.Name : null),
@@ -1873,6 +1878,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.BuyerName,
             invoice.BuyerNameUrdu,
             useUrdu);
+        var buyerAddress = RomanUrduTransliterator.ResolveDisplayName(
+            invoice.BuyerAddress ?? string.Empty,
+            invoice.BuyerAddressUrdu,
+            useUrdu);
 
         return new DeliveryChallanPrintDto(
             invoice.InvoiceNumber,
@@ -1881,8 +1890,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             invoice.SellerAddress,
             invoice.SellerPhone,
             buyerName,
-            invoice.BuyerAddress,
-            invoice.BuyerProvince,
+            string.IsNullOrWhiteSpace(buyerAddress) ? invoice.BuyerAddress : buyerAddress,
+            MaybeUrduOptional(invoice.BuyerProvince, useUrdu),
             invoice.BuyerNtn,
             invoice.BuyerCnic,
             DateTime.Now,
@@ -2008,6 +2017,21 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         string.IsNullOrWhiteSpace(text)
             ? text
             : MaybeUrduText(text, useUrdu);
+
+    private static string? ResolveShippingAddressUrdu(string? explicitUrdu, string shippingAddress, int companyId)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitUrdu))
+        {
+            return explicitUrdu.Trim();
+        }
+
+        if (!TradeInvoiceLayout.SupportsUrduLedger(companyId))
+        {
+            return null;
+        }
+
+        return RomanUrduTransliterator.SuggestUrduName(shippingAddress);
+    }
 
     public async Task<IReadOnlyList<SubmittedInvoicePrintListItemDto>> GetSubmittedInvoicesForPrintAsync(
         string? buyerName,

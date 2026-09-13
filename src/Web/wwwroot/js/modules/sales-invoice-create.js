@@ -21,6 +21,7 @@
     var CREDIT_NOTE_TYPE = 3;
     var suppressCustomerDefaults = false;
     var lastAppliedCustomerId = null;
+    var shippingAddressUrduSuggest = null;
 
     function lineOptions() {
         return {
@@ -149,6 +150,11 @@
             supportsBillLevelTaxSplit = true;
         }
         updatePriceColumnForCompany();
+        toggleShippingAddressUrdu();
+    }
+
+    function toggleShippingAddressUrdu() {
+        $('#shipping-address-urdu-wrap').toggleClass('d-none', !isTradeInvoiceCompany());
     }
 
     function isTradeInvoiceCompany() {
@@ -384,6 +390,10 @@
             $('#buyer-address').val('');
             if (!$('#shipping-address').data('userEdited')) {
                 $('#shipping-address').val('');
+                $('#shipping-address-urdu').val('');
+                if (shippingAddressUrduSuggest) {
+                    shippingAddressUrduSuggest.markPristine();
+                }
             }
             $('#province-id').val('');
             $('#buyer-ntn').val('');
@@ -394,6 +404,10 @@
         $('#buyer-address').val(pickCustomerField(customer, 'address', 'Address'));
         if (!$('#shipping-address').data('userEdited')) {
             $('#shipping-address').val(pickCustomerField(customer, 'address', 'Address'));
+            if (shippingAddressUrduSuggest) {
+                shippingAddressUrduSuggest.markPristine();
+                shippingAddressUrduSuggest.suggest();
+            }
         }
         $('#province-id').val(pickCustomerField(customer, 'provinceId', 'ProvinceId'));
         $('#buyer-ntn').val(pickCustomerField(customer, 'ntn', 'NTN'));
@@ -513,6 +527,9 @@
 
         if (customerId !== lastAppliedCustomerId) {
             $('#shipping-address').data('userEdited', false);
+            if (shippingAddressUrduSuggest) {
+                shippingAddressUrduSuggest.markPristine();
+            }
             lastAppliedCustomerId = customerId;
         }
 
@@ -599,6 +616,10 @@
         if (invoice.shippingAddress || invoice.ShippingAddress) {
             $('#shipping-address').val(invoice.shippingAddress || invoice.ShippingAddress);
             $('#shipping-address').data('userEdited', true);
+        }
+        $('#shipping-address-urdu').val(invoice.shippingAddressUrdu || invoice.ShippingAddressUrdu || '');
+        if (shippingAddressUrduSuggest) {
+            shippingAddressUrduSuggest.markTouchedIfFilled();
         }
         if (invoice.buyerNTN || invoice.BuyerNTN) {
             $('#buyer-ntn').val(invoice.buyerNTN || invoice.BuyerNTN);
@@ -922,6 +943,7 @@
             provinceId: provinceVal ? parseInt(provinceVal, 10) : null,
             buyerAddress: $('#buyer-address').val().trim() || null,
             shippingAddress: shippingAddress,
+            shippingAddressUrdu: $('#shipping-address-urdu').val().trim() || null,
             buyerNTN: $('#buyer-ntn').val().trim() || null,
             buyerCNIC: $('#buyer-cnic').val().trim() || null,
             furtherTaxRate: usesBillLevelTaxSplit() ? getFurtherTaxRateInput() : null,
@@ -1057,6 +1079,14 @@
         $('#btn-add-line').on('click', function () {
             addLine();
         });
+
+        if (window.UrduSuggest) {
+            shippingAddressUrduSuggest = window.UrduSuggest.bindAutoFill({
+                englishSelector: '#shipping-address',
+                urduSelector: '#shipping-address-urdu',
+                getCompanyId: function () { return currentCompanyId; }
+            });
+        }
 
         $('#sales-invoice-form').on('submit', saveInvoice);
         $('#shipping-address').on('input', function () {

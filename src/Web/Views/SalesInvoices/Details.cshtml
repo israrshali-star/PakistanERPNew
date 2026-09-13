@@ -148,6 +148,10 @@ else
                 <div><span class="fw-semibold">Name:</span> @Model.CustomerName</div>
                 <div><span class="fw-semibold">Address:</span> @(Model.BuyerAddress ?? "—")</div>
                 <div><span class="fw-semibold">Shipping Address:</span> @(Model.ShippingAddress ?? "—")</div>
+                @if (!string.IsNullOrWhiteSpace(Model.ShippingAddressUrdu))
+                {
+                    <div dir="rtl" lang="ur"><span class="fw-semibold">Shipping Address (Urdu):</span> @Model.ShippingAddressUrdu</div>
+                }
                 @if (!string.IsNullOrWhiteSpace(Model.BuyerProvince))
                 {
                     <div><span class="fw-semibold">Province:</span> @Model.BuyerProvince.ToUpperInvariant()</div>
