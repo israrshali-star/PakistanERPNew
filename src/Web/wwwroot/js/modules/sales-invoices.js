@@ -6,6 +6,7 @@
     var canDelete = false;
     var bulkPrintEnabled = false;
     var showSalesListPaymentStatus = false;
+    var showGodownChallanEmail = false;
     var bulkPrintItems = [];
 
     function escapeHtml(text) {
@@ -152,6 +153,24 @@
         }
     }
 
+    function initGodownChallanColumn(company) {
+        showGodownChallanEmail = !!(company && company.id === 3);
+        if (showGodownChallanEmail) {
+            $('#th-godown-challan').removeClass('d-none');
+        }
+    }
+
+    function renderGodownChallanBadge(row) {
+        if (row.deliveryChallanEmailedAt) {
+            var emailedAt = formatInvoiceDate(row.deliveryChallanEmailedAt);
+            return '<span class="badge bg-success" title="Emailed ' + escapeHtml(emailedAt) + '">Emailed</span>';
+        }
+        if (row.status === 'Posted') {
+            return '<span class="badge bg-warning text-dark">Not emailed</span>';
+        }
+        return '—';
+    }
+
     function renderPaymentBadge(row) {
         if (row.isPaid === true) {
             return ' <span class="badge bg-success ms-1">Paid</span>';
@@ -275,6 +294,14 @@
                     }
                 },
                 {
+                    data: 'deliveryChallanEmailedAt',
+                    defaultContent: '—',
+                    visible: showGodownChallanEmail,
+                    render: function (d, type, row) {
+                        return renderGodownChallanBadge(row);
+                    }
+                },
+                {
                     data: 'id',
                     orderable: false,
                     className: 'text-end',
@@ -374,6 +401,7 @@
         $.getJSON('/api/company/current')
             .done(function (company) {
                 initSalesListPaymentColumn(company);
+                initGodownChallanColumn(company);
                 initDataTable();
                 initBulkPrintPanel(company);
             })

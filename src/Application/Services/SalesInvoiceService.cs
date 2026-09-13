@@ -141,7 +141,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                     && (i.FbrSubmittedAt != null
                         || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId),
                 i.InvoiceType,
-                null))
+                null,
+                i.DeliveryChallanEmailedAt))
             .ToListAsync(cancellationToken);
 
         if (TradeInvoiceLayout.ShowsSalesListPaymentStatus(companyId) && rows.Count > 0)
@@ -2419,6 +2420,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             1 => desc ? query.OrderByDescending(i => i.Customer.BuyerName) : query.OrderBy(i => i.Customer.BuyerName),
             2 => desc ? query.OrderByDescending(i => i.InvoiceDate) : query.OrderBy(i => i.InvoiceDate),
             4 => desc ? query.OrderByDescending(i => i.NetTotal) : query.OrderBy(i => i.NetTotal),
+            6 => desc ? query.OrderByDescending(i => i.DeliveryChallanEmailedAt) : query.OrderBy(i => i.DeliveryChallanEmailedAt),
             _ => desc ? query.OrderByDescending(i => i.InvoiceDate) : query.OrderBy(i => i.InvoiceDate)
         };
     }

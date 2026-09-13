@@ -19,7 +19,8 @@ public record SalesInvoiceListItemDto(
     bool IsActive,
     bool CanShareInvoice,
     InvoiceType InvoiceType = InvoiceType.SalesInvoice,
-    bool? IsPaid = null);
+    bool? IsPaid = null,
+    DateTime? DeliveryChallanEmailedAt = null);
 
 public record SalesInvoiceLineDto(
     int Id,

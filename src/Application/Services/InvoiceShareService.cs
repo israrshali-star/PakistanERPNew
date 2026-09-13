@@ -278,7 +278,29 @@ public class InvoiceShareService : IInvoiceShareService
                 [new EmailAttachment(fileName, pdfBytes, "application/pdf")]),
             cancellationToken);
 
+        if (result.Success)
+        {
+            await MarkDeliveryChallanEmailedAsync(invoiceId, cancellationToken);
+        }
+
         return new SalesInvoiceShareActionResult(result.Success, result.Message);
+    }
+
+    private async Task MarkDeliveryChallanEmailedAsync(int invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await _unitOfWork.Repository<Domain.Entities.SalesInvoice>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        if (invoice is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        invoice.DeliveryChallanEmailedAt = now;
+        invoice.UpdatedAt = now;
+        _unitOfWork.Repository<Domain.Entities.SalesInvoice>().Update(invoice);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private bool ResolveUseUrdu(bool requested) =>

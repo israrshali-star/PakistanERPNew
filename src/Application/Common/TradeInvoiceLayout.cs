@@ -39,6 +39,10 @@ public static class TradeInvoiceLayout
     public static bool ShowsSalesListPaymentStatus(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) shows whether the delivery challan was emailed to godown.</summary>
+    public static bool ShowsSalesListGodownChallanEmail(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     /// <summary>Paisa on bills is ignored when deciding Paid/Unpaid (outstanding under 1 rupee is paid).</summary>
     public const decimal SalesListPaymentWholeRupee = 1m;
 

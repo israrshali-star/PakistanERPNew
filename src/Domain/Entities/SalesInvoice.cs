@@ -29,6 +29,7 @@ public class SalesInvoice : CompanyAuditableEntity
     public string? FbrInvoiceNumber { get; set; }
     public string? FbrResponseJson { get; set; }
     public DateTime? FbrSubmittedAt { get; set; }
+    public DateTime? DeliveryChallanEmailedAt { get; set; }
 
     public Customer Customer { get; set; } = null!;
     public Province? Province { get; set; }

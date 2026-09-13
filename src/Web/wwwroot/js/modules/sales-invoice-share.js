@@ -12,6 +12,13 @@
         return body.message || body.Message || fallback;
     }
 
+    function reloadSalesListIfPresent() {
+        var $table = $('#sales-invoices-table');
+        if ($table.length && $.fn.DataTable && $.fn.DataTable.isDataTable($table)) {
+            $table.DataTable().ajax.reload(null, false);
+        }
+    }
+
     function ensureModal() {
         if (shareModal) {
             return shareModal;
@@ -266,6 +273,7 @@
         })
             .done(function (result) {
                 showShareAlert('success', result.message || 'Delivery challan emailed to godown.');
+                reloadSalesListIfPresent();
             })
             .fail(function (xhr) {
                 showShareAlert('danger', getApiErrorMessage(xhr, 'Failed to email delivery challan.'));
@@ -360,6 +368,7 @@
                     })
                         .done(function (result) {
                             alert(result.message || 'Delivery challan emailed to godown.');
+                            reloadSalesListIfPresent();
                         })
                         .fail(function (xhr) {
                             alert(getApiErrorMessage(xhr, 'Failed to email delivery challan.'));
