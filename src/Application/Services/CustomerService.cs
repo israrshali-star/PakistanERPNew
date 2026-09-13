@@ -197,7 +197,7 @@ public partial class CustomerService : ICustomerService
             CompanyId = companyId,
             BuyerId = request.BuyerId.Trim(),
             BuyerName = request.BuyerName.Trim(),
-            BuyerNameUrdu = NormalizeOptionalName(request.BuyerNameUrdu),
+            BuyerNameUrdu = ResolvePartyNameUrdu(request.BuyerNameUrdu, request.BuyerName, companyId),
             OpeningBalance = request.OpeningBalance,
             Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim()),
             ProvinceId = request.ProvinceId,
@@ -302,7 +302,7 @@ public partial class CustomerService : ICustomerService
 
         entity.BuyerId = request.BuyerId.Trim();
         entity.BuyerName = request.BuyerName.Trim();
-        entity.BuyerNameUrdu = NormalizeOptionalName(request.BuyerNameUrdu);
+        entity.BuyerNameUrdu = ResolvePartyNameUrdu(request.BuyerNameUrdu, request.BuyerName, companyId);
         entity.OpeningBalance = request.OpeningBalance;
         entity.Address = CustomerAddressHelper.RemoveLeadingBuyerName(request.BuyerName.Trim(), request.Address?.Trim());
         entity.ProvinceId = request.ProvinceId;
@@ -893,6 +893,17 @@ public partial class CustomerService : ICustomerService
 
     private static string? NormalizeOptionalName(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? ResolvePartyNameUrdu(string? explicitUrdu, string englishName, int companyId)
+    {
+        var typed = NormalizeOptionalName(explicitUrdu);
+        if (typed is not null || !TradeInvoiceLayout.SupportsUrduLedger(companyId))
+        {
+            return typed;
+        }
+
+        return RomanUrduTransliterator.SuggestUrduName(englishName);
+    }
 
     [GeneratedRegex(@"^CUST-(\d+)$", RegexOptions.IgnoreCase)]
     private static partial Regex BuyerIdRegex();

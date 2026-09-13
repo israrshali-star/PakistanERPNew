@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
@@ -135,7 +136,7 @@ public partial class VendorService : IVendorService
             CompanyId = companyId,
             VendorCode = request.VendorCode.Trim(),
             VendorName = request.VendorName.Trim(),
-            VendorNameUrdu = string.IsNullOrWhiteSpace(request.VendorNameUrdu) ? null : request.VendorNameUrdu.Trim(),
+            VendorNameUrdu = ResolvePartyNameUrdu(request.VendorNameUrdu, request.VendorName, companyId),
             OpeningBalance = request.OpeningBalance,
             Address = request.Address?.Trim(),
             ProvinceId = request.ProvinceId,
@@ -233,7 +234,7 @@ public partial class VendorService : IVendorService
 
         entity.VendorCode = request.VendorCode.Trim();
         entity.VendorName = request.VendorName.Trim();
-        entity.VendorNameUrdu = string.IsNullOrWhiteSpace(request.VendorNameUrdu) ? null : request.VendorNameUrdu.Trim();
+        entity.VendorNameUrdu = ResolvePartyNameUrdu(request.VendorNameUrdu, request.VendorName, companyId);
         entity.OpeningBalance = request.OpeningBalance;
         entity.Address = request.Address?.Trim();
         entity.ProvinceId = request.ProvinceId;
@@ -733,6 +734,21 @@ public partial class VendorService : IVendorService
         }
 
         return new VendorSaveResult(true, null, null);
+    }
+
+    private static string? ResolvePartyNameUrdu(string? explicitUrdu, string englishName, int companyId)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitUrdu))
+        {
+            return explicitUrdu.Trim();
+        }
+
+        if (!TradeInvoiceLayout.SupportsUrduLedger(companyId))
+        {
+            return null;
+        }
+
+        return RomanUrduTransliterator.SuggestUrduName(englishName);
     }
 
     private static IQueryable<Vendor> ApplyOrdering(IQueryable<Vendor> query, DataTableRequest request)

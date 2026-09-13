@@ -602,11 +602,12 @@ public class LedgerShareService : ILedgerShareService
             true,
             entries.Select(e =>
             {
-                var description = e.Description;
+                var description = ResolveLedgerDescription(e.Description, useUrdu);
                 if (e.Attachments is { Count: > 0 })
                 {
                     var names = string.Join(", ", e.Attachments.Select(a => a.FileName));
-                    description = $"{description} [Docs: {names}]";
+                    var docsLabel = useUrdu ? "دستاویزات" : "Docs";
+                    description = $"{description} [{docsLabel}: {names}]";
                 }
 
                 return new PartyLedgerPdfLineDto(
@@ -643,11 +644,12 @@ public class LedgerShareService : ILedgerShareService
             false,
             entries.Select(e =>
             {
-                var description = e.Description;
+                var description = ResolveLedgerDescription(e.Description, useUrdu);
                 if (e.Attachments is { Count: > 0 })
                 {
                     var names = string.Join(", ", e.Attachments.Select(a => a.FileName));
-                    description = $"{description} [Docs: {names}]";
+                    var docsLabel = useUrdu ? "دستاویزات" : "Docs";
+                    description = $"{description} [{docsLabel}: {names}]";
                 }
 
                 return new PartyLedgerPdfLineDto(
@@ -662,6 +664,9 @@ public class LedgerShareService : ILedgerShareService
 
     private static string ResolvePartyName(string partyName, string? partyNameUrdu, bool useUrdu) =>
         RomanUrduTransliterator.ResolveDisplayName(partyName, partyNameUrdu, useUrdu);
+
+    private static string ResolveLedgerDescription(string? description, bool useUrdu) =>
+        useUrdu ? RomanUrduTransliterator.ToUrduScript(description) : (description ?? string.Empty);
 
     private static string BuildWhatsAppMessage(
         LedgerPdfLabels labels,

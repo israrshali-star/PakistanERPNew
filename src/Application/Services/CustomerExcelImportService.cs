@@ -132,6 +132,11 @@ public class CustomerExcelImportService : ICustomerExcelImportService
                 existing.IsActive = true;
                 existing.UpdatedAt = now;
                 existing.UpdatedBy = ImportUser;
+                if (string.IsNullOrWhiteSpace(existing.BuyerNameUrdu)
+                    && TradeInvoiceLayout.SupportsUrduLedger(companyId))
+                {
+                    existing.BuyerNameUrdu = RomanUrduTransliterator.SuggestUrduName(existing.BuyerName);
+                }
                 updated++;
                 continue;
             }
@@ -141,6 +146,9 @@ public class CustomerExcelImportService : ICustomerExcelImportService
                 CompanyId = companyId,
                 BuyerId = $"{AppConstants.CustomerIdPrefix}{nextBuyerNumber:D4}",
                 BuyerName = buyerName.Trim(),
+                BuyerNameUrdu = TradeInvoiceLayout.SupportsUrduLedger(companyId)
+                    ? RomanUrduTransliterator.SuggestUrduName(buyerName)
+                    : null,
                 OpeningBalance = 0m,
                 Address = address,
                 ProvinceId = provinceId,

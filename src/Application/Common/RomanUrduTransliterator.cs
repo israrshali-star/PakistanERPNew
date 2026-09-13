@@ -11,108 +11,50 @@ namespace PakistanAccountingERP.Application.Common;
 /// </summary>
 public static class RomanUrduTransliterator
 {
+    private static readonly Dictionary<string, string> WordMap = RomanUrduExactMatchDictionary.Words;
+    private static readonly HashSet<string> KeepLatin = RomanUrduExactMatchDictionary.KeepLatin;
+
     private static readonly Regex TokenRegex = new(
         @"c\s*/\s*o|[A-Za-z]+|[0-9]+|[^\sA-Za-z0-9]+|\s+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    private static readonly Dictionary<string, string> WordMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["and"] = "اینڈ",
-        ["c/o"] = "کیئر آف",
-        ["co"] = "کمپنی",
-        ["company"] = "کمپنی",
-        ["ltd"] = "لمیٹڈ",
-        ["limited"] = "لمیٹڈ",
-        ["pvt"] = "پرائیویٹ",
-        ["private"] = "پرائیویٹ",
-        ["factory"] = "فیکٹری",
-        ["factroy"] = "فیکٹری",
-        ["mill"] = "مل",
-        ["mills"] = "ملز",
-        ["silk"] = "سلک",
-        ["textile"] = "ٹیکسٹائل",
-        ["textiles"] = "ٹیکسٹائل",
-        ["trading"] = "ٹریڈنگ",
-        ["traders"] = "ٹریڈرز",
-        ["trader"] = "ٹریڈر",
-        ["merchants"] = "مرچنٹس",
-        ["merchant"] = "مرچنٹ",
-        ["carpet"] = "کارپٹ",
-        ["carpets"] = "کارپٹ",
-        ["hosiery"] = "ہوزیئری",
-        ["hoisery"] = "ہوزیئری",
-        ["elastic"] = "ایلاسٹک",
-        ["dyeing"] = "ڈائینگ",
-        ["dying"] = "ڈائینگ",
-        ["communication"] = "کمیونیکیشن",
-        ["communications"] = "کمیونیکیشن",
-        ["industry"] = "انڈسٹری",
-        ["industries"] = "انڈسٹریز",
-        ["enterprises"] = "انٹرپرائزز",
-        ["enterprise"] = "انٹرپرائز",
-        ["stores"] = "اسٹورز",
-        ["store"] = "اسٹور",
-        ["center"] = "سینٹر",
-        ["centre"] = "سینٹر",
-        ["brothers"] = "برادرز",
-        ["bros"] = "برادرز",
-        ["son"] = "سن",
-        ["sons"] = "سنز",
-        ["mark"] = "مارک",
-        ["add"] = "ایڈ",
-        ["general"] = "جنرل",
-        ["order"] = "آرڈر",
-        ["supplier"] = "سپلائر",
-        ["suppliers"] = "سپلائرز",
-        ["yarn"] = "یارن",
-        ["polyester"] = "پالیسٹر",
-        ["cotton"] = "کاٹن",
-        ["sports"] = "سپورٹس",
-        ["star"] = "اسٹار",
-        ["six"] = "سکس",
-        ["normal"] = "نارمل",
-        ["account"] = "اکاؤنٹ",
-        ["al"] = "ال",
-        ["the"] = "دی",
-        ["of"] = "آف",
-        ["for"] = "فار",
-        ["with"] = "ودھ",
-        // Common party-name tokens (company 3 samples)
-        ["aamir"] = "عامر",
-        ["habib"] = "حبیب",
-        ["abbas"] = "عباس",
-        ["abdul"] = "عبدال",
-        ["hameed"] = "حمید",
-        ["mateen"] = "متین",
-        ["rehman"] = "رحمان",
-        ["sattar"] = "ستار",
-        ["abdullah"] = "عبداللہ",
-        ["nawaz"] = "نواز",
-        ["ahmad"] = "احمد",
-        ["ahmed"] = "احمد",
-        ["gilani"] = "گیلانی",
-        ["majeed"] = "مجید",
-        ["wahhab"] = "وہاب",
-        ["wahab"] = "وہاب",
-        ["baasit"] = "باسط",
-        ["basit"] = "باسط",
-        ["arian"] = "آریان",
-        ["aziz"] = "عزیز",
-        ["kashaf"] = "کشاف",
-        ["mia"] = "ایم آئی اے",
-        ["usman"] = "عثمان",
-        ["rupali"] = "روپالی",
-        ["ashraf"] = "اشرف",
-        ["wali"] = "ولی",
-        ["mushtaq"] = "مشتاق",
-        ["saleem"] = "سلیم",
-        ["younus"] = "یونس",
-        ["waqar"] = "وقار",
-        ["maqsood"] = "مقصود",
-        ["arshad"] = "ارشد",
-        ["hasnain"] = "حسنین",
-        ["gulshan"] = "گلشن",
-    };
+    private static readonly Regex CamelCaseRegex = new(
+        @"[A-Z]?[a-z]+|[A-Z]+(?![a-z])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly (string Phrase, string Urdu)[] Phrases =
+    [
+        ("transportation charges receive", "ٹرانسپورٹیشن چارجز وصول"),
+        ("balance brought forward", "بیلنس برات فارورڈ"),
+        ("cheque in clearing", "چیک کلیئرنگ میں"),
+        ("cheque returned", "چیک واپس"),
+        ("cheque payment", "چیک ادائیگی"),
+        ("customer receipt", "کسٹمر رسید"),
+        ("bank transfer", "بینک ٹرانسفر"),
+        ("cash payment", "نقد ادائیگی"),
+        ("opening balance", "اوپننگ بیلنس"),
+        ("opening stock", "اوپننگ اسٹاک"),
+        ("sales invoice", "سیلز انوائس"),
+        ("debit note", "ڈیبٹ نوٹ"),
+        ("credit note", "کریڈٹ نوٹ"),
+        ("sales tax", "سیلز ٹیکس"),
+        ("used tax", "یوزڈ ٹیکس"),
+        ("low grade", "لو گریڈ"),
+        ("jai namaz", "جائے نماز"),
+        ("flat bright", "فلیٹ برائٹ"),
+        ("baby lemon", "بےبی لیمون"),
+        ("habib ur rehman", "حبیب الرحمن"),
+        ("habib-ur-rehman", "حبیب الرحمن"),
+        ("abdul rehman", "عبدالرحمان"),
+        ("abdul rahman", "عبدالرحمان"),
+        ("abdul hameed", "عبدالحمید"),
+        ("abdul sattar", "عبدالستار"),
+        ("abdul waheed", "عبدالوحید"),
+        ("abdul mateen", "عبدالمتین"),
+        ("abdul malik", "عبدالمالک"),
+        ("wasi ud din", "وصی الدین"),
+        ("wasi-ud-din", "وصی الدین"),
+    ];
 
     // Longest-first phonetic tokens (Roman Urdu / English names).
     private static readonly (string Roman, string Urdu)[] Phonemes =
@@ -199,6 +141,33 @@ public static class RomanUrduTransliterator
         return ToUrduScript(englishName);
     }
 
+    /// <summary>
+    /// Exact-match glossary (plus phonetic fallback) for a new party name.
+    /// </summary>
+    public static string? SuggestUrduName(string? englishName)
+    {
+        if (string.IsNullOrWhiteSpace(englishName))
+        {
+            return null;
+        }
+
+        var urdu = ToUrduScript(englishName);
+        return string.IsNullOrWhiteSpace(urdu) ? null : urdu;
+    }
+
+    /// <summary>
+    /// Keep a typed Urdu name; otherwise suggest from the English/Roman name.
+    /// </summary>
+    public static string? CoalescePartyNameUrdu(string? explicitUrdu, string? englishName)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitUrdu))
+        {
+            return explicitUrdu.Trim();
+        }
+
+        return SuggestUrduName(englishName);
+    }
+
     public static string ToUrduScript(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -214,6 +183,7 @@ public static class RomanUrduTransliterator
 
         // Normalize common abbreviations before tokenizing.
         trimmed = Regex.Replace(trimmed, @"\bc\s*/\s*o\b", "c/o", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        trimmed = ApplyPhrases(trimmed);
 
         var sb = new StringBuilder(trimmed.Length * 2);
         foreach (Match match in TokenRegex.Matches(trimmed))
@@ -224,8 +194,7 @@ public static class RomanUrduTransliterator
                 continue;
             }
 
-            if (string.Equals(token, "c/o", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(token, "C/O", StringComparison.Ordinal))
+            if (string.Equals(token, "c/o", StringComparison.OrdinalIgnoreCase))
             {
                 sb.Append(WordMap["c/o"]);
                 continue;
@@ -233,38 +202,105 @@ public static class RomanUrduTransliterator
 
             if (char.IsWhiteSpace(token[0]) || char.IsDigit(token[0]) || !char.IsLetter(token[0]))
             {
-                // Keep slash groups that form c/o handled above; other punctuation as-is.
                 sb.Append(token);
                 continue;
             }
 
-            if (WordMap.TryGetValue(token, out var mapped))
-            {
-                sb.Append(mapped);
-                continue;
-            }
-
-            // Hyphenated compound like Al-Wahhab
-            if (token.Contains('-', StringComparison.Ordinal))
-            {
-                var parts = token.Split('-');
-                for (var i = 0; i < parts.Length; i++)
-                {
-                    if (i > 0)
-                    {
-                        sb.Append('-');
-                    }
-
-                    sb.Append(TransliterateWord(parts[i]));
-                }
-
-                continue;
-            }
-
-            sb.Append(TransliterateWord(token));
+            sb.Append(MapToken(token));
         }
 
         return sb.ToString().Trim();
+    }
+
+    private static string ApplyPhrases(string text)
+    {
+        var result = text;
+        foreach (var (phrase, urdu) in Phrases)
+        {
+            result = Regex.Replace(
+                result,
+                $@"\b{Regex.Escape(phrase)}\b",
+                urdu,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        return result;
+    }
+
+    private static string MapToken(string token)
+    {
+        if (WordMap.TryGetValue(token, out var mapped))
+        {
+            return mapped;
+        }
+
+        if (KeepLatin.Contains(token))
+        {
+            return token;
+        }
+
+        if (token.Contains('-', StringComparison.Ordinal))
+        {
+            var parts = token.Split('-');
+            var joined = new StringBuilder();
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (i > 0)
+                {
+                    joined.Append('-');
+                }
+
+                joined.Append(string.IsNullOrEmpty(parts[i]) ? parts[i] : MapToken(parts[i]));
+            }
+
+            return joined.ToString();
+        }
+
+        if (HasMixedCamelCase(token))
+        {
+            var parts = CamelCaseRegex.Matches(token);
+            if (parts.Count > 1)
+            {
+                var joined = new StringBuilder();
+                for (var i = 0; i < parts.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        joined.Append(' ');
+                    }
+
+                    joined.Append(MapToken(parts[i].Value));
+                }
+
+                return joined.ToString();
+            }
+        }
+
+        return TransliterateWord(token);
+    }
+
+    private static bool HasMixedCamelCase(string token)
+    {
+        var hasLower = false;
+        var hasUpper = false;
+        foreach (var ch in token)
+        {
+            if (char.IsLower(ch))
+            {
+                hasLower = true;
+            }
+            else if (char.IsUpper(ch))
+            {
+                hasUpper = true;
+            }
+
+            if (hasLower && hasUpper)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string TransliterateWord(string word)
@@ -277,6 +313,11 @@ public static class RomanUrduTransliterator
         if (WordMap.TryGetValue(word, out var mapped))
         {
             return mapped;
+        }
+
+        if (KeepLatin.Contains(word))
+        {
+            return word;
         }
 
         var lower = word.ToLowerInvariant();

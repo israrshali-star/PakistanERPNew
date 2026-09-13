@@ -53,6 +53,12 @@ public class LookupController : Controller
         return Ok(new { text = PakistanAccountingERP.Application.Common.AmountInWords.ToPakistaniRupees(amount) });
     }
 
+    [HttpGet("urdu-script")]
+    public IActionResult UrduScript([FromQuery] string? text)
+    {
+        return Ok(new { text = RomanUrduTransliterator.ToUrduScript(text) });
+    }
+
     [HttpGet("account-types")]
     public async Task<IActionResult> AccountTypes(CancellationToken cancellationToken)
     {

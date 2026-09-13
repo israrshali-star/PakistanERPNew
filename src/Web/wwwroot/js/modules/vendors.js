@@ -6,6 +6,8 @@
     var canCreate = false;
     var canEdit = false;
     var canDelete = false;
+    var currentCompanyId = 0;
+    var vendorNameUrduSuggest = null;
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -103,6 +105,9 @@
         $('#default-tax-rate').val('18');
         $('#province-id').val('').trigger('change');
         generateVendorCode();
+        if (vendorNameUrduSuggest) {
+            vendorNameUrduSuggest.markPristine();
+        }
         vendorModal.show();
     }
 
@@ -123,6 +128,9 @@
                 $('#email').val(v.email || '');
                 $('#address').val(v.address || '');
                 $('#vendor-active').prop('checked', v.isActive);
+                if (vendorNameUrduSuggest) {
+                    vendorNameUrduSuggest.markTouchedIfFilled();
+                }
                 vendorModal.show();
             })
             .fail(function () {
@@ -212,7 +220,21 @@
 
         vendorModal = new bootstrap.Modal(document.getElementById('vendorModal'));
 
-        loadProvinces().always(initDataTable);
+        if (window.UrduSuggest) {
+            vendorNameUrduSuggest = window.UrduSuggest.bindAutoFill({
+                englishSelector: '#vendor-name',
+                urduSelector: '#vendor-name-urdu',
+                getCompanyId: function () { return currentCompanyId; }
+            });
+        }
+
+        loadProvinces().always(function () {
+            $.getJSON('/api/company/current')
+                .done(function (company) {
+                    currentCompanyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                })
+                .always(initDataTable);
+        });
 
         $('#btn-add-vendor').on('click', openCreateModal);
         $('#btn-generate-vendor-code').on('click', generateVendorCode);

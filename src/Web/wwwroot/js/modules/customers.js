@@ -7,6 +7,7 @@
     var canEdit = false;
     var canDelete = false;
     var currentCompanyId = 0;
+    var buyerNameUrduSuggest = null;
     var HYPHENATED_TAX_ID_COMPANY_IDS = [2, 4, 5, 6, 7];
 
     function escapeHtml(text) {
@@ -170,6 +171,9 @@
         $('#customer-active').prop('checked', true);
         $('#province-id').val('').trigger('change');
         selectDefaultScenario();
+        if (buyerNameUrduSuggest) {
+            buyerNameUrduSuggest.markPristine();
+        }
     }
 
     function showCompanyWarning(message) {
@@ -321,6 +325,9 @@
                 $('#email').val(c.email || '');
                 $('#address').val(c.address || '');
                 $('#customer-active').prop('checked', c.isActive);
+                if (buyerNameUrduSuggest) {
+                    buyerNameUrduSuggest.markTouchedIfFilled();
+                }
                 customerModal.show();
             })
             .fail(function () {
@@ -432,6 +439,14 @@
         canDelete = $perms.attr('data-can-delete') === 'true';
 
         customerModal = new bootstrap.Modal(document.getElementById('customerModal'));
+
+        if (window.UrduSuggest) {
+            buyerNameUrduSuggest = window.UrduSuggest.bindAutoFill({
+                englishSelector: '#buyer-name',
+                urduSelector: '#buyer-name-urdu',
+                getCompanyId: function () { return currentCompanyId; }
+            });
+        }
 
         loadLookups().always(function () {
             ensureCompanySelected()
