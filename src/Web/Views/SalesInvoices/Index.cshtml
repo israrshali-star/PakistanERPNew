@@ -118,6 +118,19 @@
 <partial name="_FbrPayloadModal" />
 <partial name="_InvoiceShareModal" />
 
+<style>
+    #sales-invoices-table td.text-nowrap .btn-link {
+        line-height: 1;
+        vertical-align: middle;
+    }
+
+    #sales-invoices-table .sales-list-actions > .btn {
+        line-height: 1.15;
+        padding-top: 0.15rem;
+        padding-bottom: 0.15rem;
+    }
+</style>
+
 @section Scripts {
     <script src="~/js/modules/sales-invoice-fbr.js" asp-append-version="true"></script>
     <script src="~/js/modules/sales-invoice-share.js" asp-append-version="true"></script>

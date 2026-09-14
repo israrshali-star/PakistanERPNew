@@ -7,6 +7,7 @@
     var bulkPrintEnabled = false;
     var showSalesListPaymentStatus = false;
     var showGodownChallanEmail = false;
+    var useCompactSalesActions = false;
     var bulkPrintItems = [];
 
     function escapeHtml(text) {
@@ -160,6 +161,39 @@
         }
     }
 
+    function initCompactSalesActions(company) {
+        useCompactSalesActions = !!(company && company.id === 3);
+    }
+
+    function renderActionControl(spec) {
+        var icon = '<i class="' + spec.icon + '"></i>';
+        var actionClass = spec.actionClass || '';
+        if (useCompactSalesActions) {
+            var cls = ('btn btn-sm px-1 btn-' + (spec.variant || 'outline-secondary') + ' ' + actionClass).trim();
+            if (spec.href) {
+                return '<a href="' + spec.href + '" class="' + cls + '" title="' + spec.title + '">' + icon + '</a>';
+            }
+            return '<button type="button" class="' + cls + '" data-id="' + spec.id + '" title="' + spec.title + '">' + icon + '</button>';
+        }
+
+        var extra = spec.extraClass ? ' ' + spec.extraClass : '';
+        var cls = ('btn btn-link btn-sm p-0 me-1' + extra + ' ' + actionClass).trim();
+        if (spec.href) {
+            return '<a href="' + spec.href + '" class="' + cls + '" title="' + spec.title + '">' + icon + '</a>';
+        }
+        return '<button type="button" class="' + cls + '" data-id="' + spec.id + '" title="' + spec.title + '">' + icon + '</button>';
+    }
+
+    function wrapSalesActions(parts) {
+        if (!parts.length) {
+            return '—';
+        }
+        if (useCompactSalesActions) {
+            return '<div class="btn-group btn-group-sm sales-list-actions" role="group">' + parts.join('') + '</div>';
+        }
+        return parts.join('');
+    }
+
     function renderGodownChallanBadge(row) {
         if (row.deliveryChallanEmailedAt) {
             var emailedAt = formatInvoiceDate(row.deliveryChallanEmailedAt);
@@ -287,7 +321,7 @@
                         if (!html) {
                             html = '—';
                         }
-                        if (d && row.canShareInvoice) {
+                        if (d && row.canShareInvoice && !useCompactSalesActions) {
                             html += ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 btn-download-pdf" data-id="' + row.id + '" title="Download PDF"><i class="fa-solid fa-file-pdf text-danger"></i></button>';
                         }
                         return html;
@@ -304,36 +338,93 @@
                 {
                     data: 'id',
                     orderable: false,
-                    className: 'text-end',
+                    className: 'text-end text-nowrap',
+                    width: '1%',
                     render: function (id, type, row) {
-                        var actions =
-                            '<a href="/SalesInvoices/Details/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="View"><i class="fa-solid fa-eye"></i></a>';
+                        var parts = [
+                            renderActionControl({
+                                href: '/SalesInvoices/Details/' + id,
+                                title: 'View',
+                                icon: 'fa-solid fa-eye'
+                            })
+                        ];
 
-                        if (row.customerId) {
-                            actions += '<a href="/Customers/Ledger/' + row.customerId + '" class="btn btn-link btn-sm p-0 me-1" title="Customer ledger"><i class="fa-solid fa-book"></i></a>';
+                        if (row.customerId && !useCompactSalesActions) {
+                            parts.push(renderActionControl({
+                                href: '/Customers/Ledger/' + row.customerId,
+                                title: 'Customer ledger',
+                                icon: 'fa-solid fa-book'
+                            }));
                         }
 
                         if (canEdit && row.canEdit) {
-                            actions += '<a href="/SalesInvoices/Edit/' + id + '" class="btn btn-link btn-sm p-0 me-1" title="Edit draft"><i class="fa-solid fa-pen"></i></a>';
+                            parts.push(renderActionControl({
+                                href: '/SalesInvoices/Edit/' + id,
+                                title: 'Edit draft',
+                                icon: 'fa-solid fa-pen',
+                                variant: 'outline-primary'
+                            }));
                         }
                         if (canEdit && row.canPost) {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-post-invoice" data-id="' + id + '" title="Post to GL"><i class="fa-solid fa-book"></i></button>';
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Post to GL',
+                                icon: 'fa-solid fa-book',
+                                actionClass: 'btn-post-invoice',
+                                extraClass: 'text-success',
+                                variant: 'outline-success'
+                            }));
                         }
                         if (canEdit && row.canSubmitFbr) {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-primary btn-submit-fbr" data-id="' + id + '" title="Submit to FBR"><i class="fa-solid fa-paper-plane"></i></button>';
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Submit to FBR',
+                                icon: 'fa-solid fa-paper-plane',
+                                actionClass: 'btn-submit-fbr',
+                                extraClass: 'text-primary',
+                                variant: 'outline-primary'
+                            }));
                         }
                         if (row.canShareInvoice) {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-danger btn-download-pdf" data-id="' + id + '" title="Download PDF"><i class="fa-solid fa-file-pdf"></i></button>';
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 me-1 text-success btn-share-invoice" data-id="' + id + '" title="Email or WhatsApp"><i class="fa-solid fa-share-nodes"></i></button>';
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Download PDF',
+                                icon: 'fa-solid fa-file-pdf',
+                                actionClass: 'btn-download-pdf',
+                                extraClass: 'text-danger',
+                                variant: 'outline-danger'
+                            }));
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Email or WhatsApp',
+                                icon: 'fa-solid fa-share-nodes',
+                                actionClass: 'btn-share-invoice',
+                                extraClass: 'text-success',
+                                variant: 'outline-success'
+                            }));
                         }
                         if (canEdit && row.status === 'Draft') {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-cancel-invoice" data-id="' + id + '" title="Cancel"><i class="fa-solid fa-ban"></i></button>';
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Cancel',
+                                icon: 'fa-solid fa-ban',
+                                actionClass: 'btn-cancel-invoice',
+                                extraClass: 'text-danger',
+                                variant: 'outline-danger'
+                            }));
                         }
                         if (canDelete && row.canDelete) {
-                            actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger btn-delete-invoice" data-id="' + id + '" title="Delete"><i class="fa-solid fa-trash"></i></button>';
+                            parts.push(renderActionControl({
+                                id: id,
+                                title: 'Delete',
+                                icon: 'fa-solid fa-trash',
+                                actionClass: 'btn-delete-invoice',
+                                extraClass: 'text-danger',
+                                variant: 'outline-danger'
+                            }));
                         }
 
-                        return actions;
+                        return wrapSalesActions(parts);
                     }
                 }
             ],
@@ -402,6 +493,7 @@
             .done(function (company) {
                 initSalesListPaymentColumn(company);
                 initGodownChallanColumn(company);
+                initCompactSalesActions(company);
                 initDataTable();
                 initBulkPrintPanel(company);
             })
