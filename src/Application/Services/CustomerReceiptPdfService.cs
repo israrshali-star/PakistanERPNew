@@ -91,7 +91,7 @@ public class CustomerReceiptPdfService : ICustomerReceiptPdfService
             AddDetailRow(
                 table,
                 labels.AmountInWords,
-                AmountInWords.ToPakistaniRupees(model.Amount),
+                AmountInWords.ToRupeesInMillions(model.Amount),
                 valueFontSize: 8);
         });
     }

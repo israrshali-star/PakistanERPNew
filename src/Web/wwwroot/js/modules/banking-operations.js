@@ -58,11 +58,49 @@
     }
 
     function showFormError(message) {
+        $('#bank-op-form-success').addClass('d-none').text('');
         $('#bank-op-form-error').removeClass('d-none').text(message);
     }
 
     function clearFormError() {
         $('#bank-op-form-error').addClass('d-none').text('');
+    }
+
+    function showFormSuccess(message) {
+        $('#bank-op-form-error').addClass('d-none').text('');
+        $('#bank-op-form-success').removeClass('d-none').text(message);
+    }
+
+    function clearFormSuccess() {
+        $('#bank-op-form-success').addClass('d-none').text('');
+    }
+
+    function postedSuccessMessage(paymentMethod, chequeNumber) {
+        if (transactionType === 1) {
+            return 'Cheque(s) deposited.';
+        }
+
+        if (transactionType === 3) {
+            return 'Transfer posted.';
+        }
+
+        if (paymentMethod === 2) {
+            return chequeNumber
+                ? 'Cheque ' + chequeNumber + ' posted.'
+                : 'Cheque posted.';
+        }
+
+        if (paymentMethod === 3) {
+            return 'Bank transfer posted.';
+        }
+
+        if (paymentMethod === 4) {
+            return chequeNumber
+                ? 'Cash withdrawal posted (cheque ' + chequeNumber + ').'
+                : 'Cash withdrawal posted.';
+        }
+
+        return 'Payment posted.';
     }
 
     var amountWordsTimer = null;
@@ -790,6 +828,7 @@
         e.preventDefault();
         if (!canCreate) return;
         clearFormError();
+        clearFormSuccess();
 
         var selectedParty = null;
         var paymentMethod = transactionType === 2 ? getPaymentMethod() : null;
@@ -878,6 +917,8 @@
             .done(function (result) {
                 var selectedBankId = parseInt($('#op-bank-account-id').val(), 10) || 0;
                 var selectedMethod = getPaymentMethod();
+                var postedChequeNumber = payload.chequeNumber || '';
+                showFormSuccess(postedSuccessMessage(selectedMethod, postedChequeNumber));
                 $('#bank-op-form')[0].reset();
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
                 $('#op-party-balance').text('');

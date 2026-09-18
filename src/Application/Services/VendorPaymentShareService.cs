@@ -131,7 +131,7 @@ public class VendorPaymentShareService : IVendorPaymentShareService
     private static string BuildWhatsAppMessage(PaymentShareModel model)
     {
         var amount = model.Amount.ToString("N2", CultureInfo.GetCultureInfo("en-PK"));
-        var amountWords = AmountInWords.ToPakistaniRupees(model.Amount);
+        var amountWords = AmountInWords.ToRupeesInMillions(model.Amount);
         var message =
             $"Dear {model.VendorName},\n\n" +
             $"Payment: {model.PaymentNumber}\n" +

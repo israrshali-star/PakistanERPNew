@@ -45,7 +45,7 @@ public class VendorPaymentPdfService : IVendorPaymentPdfService
                         });
                     });
 
-                    column.Item().PaddingTop(8).Text($"Amount in words: {AmountInWords.ToPakistaniRupees(model.Amount)}")
+                    column.Item().PaddingTop(8).Text($"Amount in words: {AmountInWords.ToRupeesInMillions(model.Amount)}")
                         .Italic().FontSize(8);
 
                     column.Item().PaddingTop(12).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);

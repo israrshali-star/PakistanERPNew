@@ -50,7 +50,7 @@ public class LookupController : Controller
     [HttpGet("amount-in-words")]
     public IActionResult AmountInWords([FromQuery] decimal amount)
     {
-        return Ok(new { text = PakistanAccountingERP.Application.Common.AmountInWords.ToPakistaniRupees(amount) });
+        return Ok(new { text = PakistanAccountingERP.Application.Common.AmountInWords.ToRupeesInMillions(amount) });
     }
 
     [HttpGet("urdu-script")]
