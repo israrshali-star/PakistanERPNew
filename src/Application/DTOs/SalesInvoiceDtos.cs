@@ -20,7 +20,8 @@ public record SalesInvoiceListItemDto(
     bool CanShareInvoice,
     InvoiceType InvoiceType = InvoiceType.SalesInvoice,
     bool? IsPaid = null,
-    DateTime? DeliveryChallanEmailedAt = null);
+    DateTime? DeliveryChallanEmailedAt = null,
+    decimal? CustomerNetBalance = null);
 
 public record SalesInvoiceLineDto(
     int Id,

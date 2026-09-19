@@ -142,12 +142,18 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                         || companyId == TradeInvoiceLayout.TradeInvoiceCompanyId),
                 i.InvoiceType,
                 null,
-                i.DeliveryChallanEmailedAt))
+                i.DeliveryChallanEmailedAt,
+                null))
             .ToListAsync(cancellationToken);
 
         if (TradeInvoiceLayout.ShowsSalesListPaymentStatus(companyId) && rows.Count > 0)
         {
             rows = await AttachPaymentStatusAsync(rows, cancellationToken);
+        }
+
+        if (TradeInvoiceLayout.ShowsSalesListCustomerBalance(companyId) && rows.Count > 0)
+        {
+            rows = await AttachCustomerNetBalancesAsync(rows, cancellationToken);
         }
 
         return new DataTableResponse<SalesInvoiceListItemDto>(
@@ -187,6 +193,46 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             var remaining = remainingByInvoiceId.GetValueOrDefault(row.Id);
             return row with { IsPaid = remaining < TradeInvoiceLayout.SalesListPaymentWholeRupee };
         }).ToList();
+    }
+
+    private async Task<List<SalesInvoiceListItemDto>> AttachCustomerNetBalancesAsync(
+        List<SalesInvoiceListItemDto> rows,
+        CancellationToken cancellationToken)
+    {
+        var customerIds = rows.Select(r => r.CustomerId).Distinct().ToList();
+        if (customerIds.Count == 0)
+        {
+            return rows;
+        }
+
+        var balances = await _unitOfWork.Repository<Customer>()
+            .Query()
+            .Where(c => customerIds.Contains(c.Id))
+            .Select(c => new
+            {
+                c.Id,
+                Balance = c.OpeningBalance
+                    + c.SalesInvoices
+                        .Where(si => si.Status == InvoiceStatus.Posted)
+                        .Sum(si => si.InvoiceType == InvoiceType.CreditNote ? -si.NetTotal : si.NetTotal)
+                    - c.CustomerReceipts
+                        .Where(r => r.PaymentMethod != PaymentMethod.Cheque
+                                    || (r.Status == CustomerReceiptStatus.Cleared && r.ClearedAt != null))
+                        .Sum(r => r.Amount)
+                    + c.WriteChequePayments
+                        .Where(bt =>
+                            bt.TransactionType == BankTransactionType.Withdrawal
+                            && !bt.IsDeleted
+                            && bt.JournalEntryId != null)
+                        .Sum(bt => bt.CustomerBalanceEffect)
+            })
+            .ToDictionaryAsync(c => c.Id, c => c.Balance, cancellationToken);
+
+        return rows.Select(row =>
+            balances.TryGetValue(row.CustomerId, out var balance)
+                ? row with { CustomerNetBalance = balance }
+                : row)
+            .ToList();
     }
 
     public async Task<NextInvoiceNumberDto> GenerateNextInvoiceNumberAsync(CancellationToken cancellationToken = default)
@@ -2443,8 +2489,8 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             0 => desc ? query.OrderByDescending(i => i.InvoiceNumber) : query.OrderBy(i => i.InvoiceNumber),
             1 => desc ? query.OrderByDescending(i => i.Customer.BuyerName) : query.OrderBy(i => i.Customer.BuyerName),
             2 => desc ? query.OrderByDescending(i => i.InvoiceDate) : query.OrderBy(i => i.InvoiceDate),
-            4 => desc ? query.OrderByDescending(i => i.NetTotal) : query.OrderBy(i => i.NetTotal),
-            6 => desc ? query.OrderByDescending(i => i.DeliveryChallanEmailedAt) : query.OrderBy(i => i.DeliveryChallanEmailedAt),
+            3 => desc ? query.OrderByDescending(i => i.NetTotal) : query.OrderBy(i => i.NetTotal),
+            7 => desc ? query.OrderByDescending(i => i.DeliveryChallanEmailedAt) : query.OrderBy(i => i.DeliveryChallanEmailedAt),
             _ => desc ? query.OrderByDescending(i => i.InvoiceDate) : query.OrderBy(i => i.InvoiceDate)
         };
     }

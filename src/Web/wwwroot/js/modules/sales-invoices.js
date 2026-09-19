@@ -7,6 +7,7 @@
     var bulkPrintEnabled = false;
     var showSalesListPaymentStatus = false;
     var showGodownChallanEmail = false;
+    var showCustomerBalance = false;
     var useCompactSalesActions = false;
     var bulkPrintItems = [];
 
@@ -150,7 +151,15 @@
     function initSalesListPaymentColumn(company) {
         showSalesListPaymentStatus = !!(company && company.id === 3);
         if (showSalesListPaymentStatus) {
-            $('#sales-invoices-table thead th').eq(5).text('FBR # / Payment');
+            $('#th-fbr').text('FBR # / Payment');
+        }
+    }
+
+    function initSalesListCustomerBalanceColumn(company) {
+        showCustomerBalance = !!(company && company.id === 3);
+        if (showCustomerBalance) {
+            $('#th-net-total').text('Bill Amount');
+            $('#th-customer-balance').removeClass('d-none');
         }
     }
 
@@ -302,6 +311,19 @@
                     data: 'netTotal',
                     className: 'text-end text-currency',
                     render: function (d) { return formatCurrency(d); }
+                },
+                {
+                    data: 'customerNetBalance',
+                    className: 'text-end text-currency fw-semibold',
+                    defaultContent: '—',
+                    visible: showCustomerBalance,
+                    orderable: false,
+                    render: function (d) {
+                        if (d === null || d === undefined || d === '') {
+                            return '—';
+                        }
+                        return formatCurrency(d);
+                    }
                 },
                 {
                     data: 'status',
@@ -492,6 +514,7 @@
         $.getJSON('/api/company/current')
             .done(function (company) {
                 initSalesListPaymentColumn(company);
+                initSalesListCustomerBalanceColumn(company);
                 initGodownChallanColumn(company);
                 initCompactSalesActions(company);
                 initDataTable();
