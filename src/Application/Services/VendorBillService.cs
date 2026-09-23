@@ -113,14 +113,63 @@ public partial class VendorBillService : IVendorBillService
                 b.Status == BillStatus.Draft,
                 b.Status == BillStatus.Draft,
                 b.Status == BillStatus.Draft,
-                b.Status != BillStatus.Cancelled))
+                b.Status != BillStatus.Cancelled,
+                b.VendorId,
+                null))
             .ToListAsync(cancellationToken);
+
+        if (TradeInvoiceLayout.ShowsVendorBillListVendorBalance(companyId) && rows.Count > 0)
+        {
+            rows = await AttachVendorRemainingBalancesAsync(rows, cancellationToken);
+        }
 
         return new DataTableResponse<VendorBillListItemDto>(
             request.Draw,
             recordsTotal,
             recordsFiltered,
             rows);
+    }
+
+    private async Task<List<VendorBillListItemDto>> AttachVendorRemainingBalancesAsync(
+        List<VendorBillListItemDto> rows,
+        CancellationToken cancellationToken)
+    {
+        var vendorIds = rows
+            .Select(r => r.VendorId)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (vendorIds.Count == 0)
+        {
+            return rows;
+        }
+
+        var balances = await _unitOfWork.Repository<Vendor>()
+            .Query()
+            .Where(v => vendorIds.Contains(v.Id))
+            .Select(v => new
+            {
+                v.Id,
+                Balance = v.OpeningBalance
+                    + v.VendorBills
+                        .Where(b => b.Status == BillStatus.Approved)
+                        .Sum(b => b.NetAmount)
+                    - v.VendorPayments.Sum(p => p.Amount)
+                    - v.WriteChequePayments
+                        .Where(bt =>
+                            bt.TransactionType == BankTransactionType.Withdrawal
+                            && !bt.IsDeleted
+                            && bt.JournalEntryId != null)
+                        .Sum(bt => bt.Amount)
+            })
+            .ToDictionaryAsync(v => v.Id, v => v.Balance, cancellationToken);
+
+        return rows.Select(row =>
+            balances.TryGetValue(row.VendorId, out var balance)
+                ? row with { VendorRemainingBalance = Math.Round(balance, 2) }
+                : row)
+            .ToList();
     }
 
     public async Task<VendorBillDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default)
@@ -1628,7 +1677,8 @@ public partial class VendorBillService : IVendorBillService
             2 => desc ? query.OrderByDescending(b => b.Vendor.VendorName) : query.OrderBy(b => b.Vendor.VendorName),
             3 => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate),
             4 => desc ? query.OrderByDescending(b => b.NetAmount) : query.OrderBy(b => b.NetAmount),
-            5 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
+            5 => query.OrderBy(b => b.BillDate),
+            6 => desc ? query.OrderByDescending(b => b.Status) : query.OrderBy(b => b.Status),
             _ => desc ? query.OrderByDescending(b => b.BillDate) : query.OrderBy(b => b.BillDate)
         };
     }

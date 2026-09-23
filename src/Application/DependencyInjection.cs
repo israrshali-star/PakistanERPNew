@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IBankGlPostingService, BankGlPostingService>();
         services.AddScoped<IBankService, BankService>();
         services.AddScoped<IBankTransactionService, BankTransactionService>();
+        services.AddScoped<IChequePrintPdfService, ChequePrintPdfService>();
         services.AddScoped<IBankReconciliationService, BankReconciliationService>();
         services.AddScoped<IVendorService, VendorService>();
         services.AddScoped<IQuickBooksIifImportService, QuickBooksIifImportService>();

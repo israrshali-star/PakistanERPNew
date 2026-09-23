@@ -4,6 +4,7 @@
     var dataTable = null;
     var canEdit = false;
     var canDelete = false;
+    var showVendorBalance = false;
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -108,6 +109,19 @@
                     render: function (d) { return formatCurrency(d); }
                 },
                 {
+                    data: 'vendorRemainingBalance',
+                    className: 'text-end text-currency fw-semibold',
+                    defaultContent: '—',
+                    visible: showVendorBalance,
+                    orderable: false,
+                    render: function (d) {
+                        if (d === null || d === undefined || d === '') {
+                            return '—';
+                        }
+                        return formatCurrency(d);
+                    }
+                },
+                {
                     data: 'status',
                     render: function (d) {
                         var cls = d === 'Approved' ? 'bg-success' : d === 'Cancelled' ? 'bg-danger' : 'bg-secondary';
@@ -169,7 +183,13 @@
         }
 
         $.getJSON('/api/company/current')
-            .done(initDataTable)
+            .done(function (company) {
+                showVendorBalance = !!(company && company.id === 3);
+                if (showVendorBalance) {
+                    $('#th-vendor-balance').removeClass('d-none');
+                }
+                initDataTable();
+            })
             .fail(function () {
                 $('#bill-company-warning')
                     .removeClass('d-none')

@@ -13,7 +13,9 @@ public record VendorBillListItemDto(
     bool CanEdit,
     bool CanApprove,
     bool CanDelete,
-    bool IsActive);
+    bool IsActive,
+    int VendorId = 0,
+    decimal? VendorRemainingBalance = null);
 
 public record VendorBillLineDto(
     int Id,

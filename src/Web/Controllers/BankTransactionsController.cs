@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using PakistanAccountingERP.Domain.Enums;
@@ -44,10 +45,14 @@ public class BankTransactionsController : Controller
 public class BankTransactionsApiController : ControllerBase
 {
     private readonly IBankTransactionService _bankTransactionService;
+    private readonly IChequePrintPdfService _chequePrintPdfService;
 
-    public BankTransactionsApiController(IBankTransactionService bankTransactionService)
+    public BankTransactionsApiController(
+        IBankTransactionService bankTransactionService,
+        IChequePrintPdfService chequePrintPdfService)
     {
         _bankTransactionService = bankTransactionService;
+        _chequePrintPdfService = chequePrintPdfService;
     }
 
     [HttpGet("datatable")]
@@ -231,6 +236,57 @@ public class BankTransactionsApiController : ControllerBase
         catch (Exception ex)
         {
             return BadRequest(new BankTransactionSaveResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpGet("{id:int}/cheque-pdf")]
+    [RequirePermission("Banking.View")]
+    public async Task<IActionResult> ChequePdf(
+        int id,
+        [FromQuery] string? payee,
+        [FromQuery] string? orientation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var transaction = await _bankTransactionService.GetByIdAsync(id, cancellationToken);
+            if (transaction is null)
+            {
+                return NotFound();
+            }
+
+            if (transaction.TransactionType != BankTransactionType.Withdrawal
+                || transaction.PaymentMethod is not (PaymentMethod.Cheque or PaymentMethod.CashWithdrawal))
+            {
+                return BadRequest(new { message = "Only posted cheques can be printed." });
+            }
+
+            var useCash = string.Equals(payee, "cash", StringComparison.OrdinalIgnoreCase);
+            var payeeName = useCash
+                ? "Cash"
+                : (string.IsNullOrWhiteSpace(transaction.PartyName) ? "Cash" : transaction.PartyName.Trim());
+
+            var chequeDate = transaction.ChequeDate ?? transaction.TransactionDate;
+            var pageOrientation = string.Equals(orientation, "portrait", StringComparison.OrdinalIgnoreCase)
+                ? ChequePageOrientation.Portrait
+                : ChequePageOrientation.Landscape;
+            var pdf = _chequePrintPdfService.GeneratePdf(new ChequePrintDto(
+                payeeName,
+                chequeDate,
+                transaction.Amount,
+                AmountInWords.ToChequeLeafWords(transaction.Amount),
+                AmountInWords.ToChequeFigures(transaction.Amount),
+                transaction.ChequeNumber,
+                pageOrientation));
+
+            var safeNumber = string.IsNullOrWhiteSpace(transaction.ChequeNumber)
+                ? id.ToString()
+                : transaction.ChequeNumber.Replace(" ", string.Empty);
+            return File(pdf, "application/pdf", $"cheque-{safeNumber}.pdf");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 }

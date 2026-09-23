@@ -209,6 +209,10 @@
                     }
                     <th class="text-end">Amount</th>
                     <th>Description</th>
+                    @if (transactionType == BankTransactionType.Withdrawal)
+                    {
+                        <th class="text-end">Print</th>
+                    }
                 </tr>
             </thead>
             <tbody></tbody>
@@ -216,6 +220,52 @@
     </div>
 </div>
 
+@if (transactionType == BankTransactionType.Withdrawal)
+{
+    <div class="modal fade" id="chequePrintModal" tabindex="-1" aria-labelledby="chequePrintModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-primary" id="chequePrintModalLabel">Print cheque</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="cheque-print-summary"></p>
+                    <p class="text-muted small mb-3">Load the blank cheque in the printer. Print at 100% (actual size). The ERP fills date, payee, and amount only — you still sign it.</p>
+                    <div class="mb-2 fw-semibold">Write on cheque</div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-party" value="party" checked />
+                        <label class="form-check-label" for="cheque-payee-party" id="cheque-payee-party-label">Party name</label>
+                    </div>
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-cash" value="cash" />
+                        <label class="form-check-label" for="cheque-payee-cash">Cash</label>
+                    </div>
+                    <div class="mb-2 mt-3 fw-semibold">Page layout</div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-landscape" value="landscape" checked />
+                        <label class="form-check-label" for="cheque-orientation-landscape">Landscape — cheque as you write it (recommended)</label>
+                    </div>
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-portrait" value="portrait" />
+                        <label class="form-check-label" for="cheque-orientation-portrait">Portrait — cheque fed short-edge first</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Skip</button>
+                    <button type="button" class="btn btn-primary" id="btn-print-cheque-leaf">
+                        <i class="fa-solid fa-print me-1"></i>Print cheque
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @section Scripts {
+    @if (transactionType == BankTransactionType.Withdrawal)
+    {
+        <script src="~/js/modules/print-choice.js" asp-append-version="true"></script>
+    }
     <script src="~/js/modules/banking-operations.js" asp-append-version="true"></script>
 }

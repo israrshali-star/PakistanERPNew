@@ -10,6 +10,8 @@
     var cashAccount = null;
     var undepositedCheques = [];
     var selectedPartyCache = null;
+    var chequePrintModal = null;
+    var chequePrintTransactionId = 0;
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -252,6 +254,64 @@
             CashWithdrawal: 'Cash Withdrawal'
         };
         return labels[value] || value;
+    }
+
+    function isPrintableCheque(paymentMethod) {
+        return paymentMethod === 'Cheque' || paymentMethod === 'CashWithdrawal' || paymentMethod === 2 || paymentMethod === 4;
+    }
+
+    function chequePdfUrl(transactionId, payeeMode, orientation) {
+        return '/api/bank-transactions/' + encodeURIComponent(transactionId) +
+            '/cheque-pdf?payee=' + encodeURIComponent(payeeMode || 'party') +
+            '&orientation=' + encodeURIComponent(orientation || 'landscape');
+    }
+
+    function printChequePdf(transactionId, payeeMode, orientation) {
+        var url = chequePdfUrl(transactionId, payeeMode, orientation);
+        if (window.PrintChoice && typeof window.PrintChoice.printPdfUrl === 'function') {
+            window.PrintChoice.printPdfUrl(url);
+            return;
+        }
+        window.open(url, '_blank');
+    }
+
+    function openChequePrintModal(transaction) {
+        if (!transaction || !transaction.id || !isPrintableCheque(transaction.paymentMethod)) {
+            return;
+        }
+
+        chequePrintTransactionId = transaction.id;
+        var partyName = (transaction.partyName || '').trim() || 'Party name';
+        var chequeNumber = transaction.chequeNumber ? 'Cheque ' + transaction.chequeNumber : 'Cheque';
+        var amountText = 'PKR ' + formatMoney(transaction.amount);
+        $('#cheque-print-summary').text(chequeNumber + ' · ' + amountText);
+        $('#cheque-payee-party-label').text('Party name — ' + partyName);
+
+        var defaultCash = transaction.paymentMethod === 'CashWithdrawal' || transaction.paymentMethod === 4;
+        $('#cheque-payee-cash').prop('checked', defaultCash);
+        $('#cheque-payee-party').prop('checked', !defaultCash);
+
+        var savedOrientation = 'landscape';
+        try {
+            savedOrientation = localStorage.getItem('pa-erp-cheque-orientation') || 'landscape';
+        } catch (e) {
+            savedOrientation = 'landscape';
+        }
+        if (savedOrientation !== 'portrait') {
+            savedOrientation = 'landscape';
+        }
+        $('#cheque-orientation-landscape').prop('checked', savedOrientation === 'landscape');
+        $('#cheque-orientation-portrait').prop('checked', savedOrientation === 'portrait');
+
+        if (!chequePrintModal) {
+            var el = document.getElementById('chequePrintModal');
+            if (!el || !window.bootstrap) {
+                printChequePdf(transaction.id, defaultCash ? 'cash' : 'party', savedOrientation);
+                return;
+            }
+            chequePrintModal = new bootstrap.Modal(el);
+        }
+        chequePrintModal.show();
     }
 
     function buildPartyOptions($select, list) {
@@ -803,6 +863,27 @@
             { data: 'description', defaultContent: '—', render: function (d) { return d ? escapeHtml(d) : '—'; } }
         );
 
+        if (transactionType === 2) {
+            columns.push({
+                data: null,
+                orderable: false,
+                searchable: false,
+                className: 'text-end',
+                render: function (row) {
+                    if (!row || !isPrintableCheque(row.paymentMethod)) {
+                        return '<span class="text-muted">—</span>';
+                    }
+                    return '<button type="button" class="btn btn-outline-primary btn-sm js-print-cheque" title="Print cheque"' +
+                        ' data-id="' + row.id + '"' +
+                        ' data-party="' + escapeHtml(row.partyName || '') + '"' +
+                        ' data-amount="' + (row.amount || 0) + '"' +
+                        ' data-cheque="' + escapeHtml(row.chequeNumber || '') + '"' +
+                        ' data-method="' + escapeHtml(row.paymentMethod || '') + '">' +
+                        '<i class="fa-solid fa-print"></i></button>';
+                }
+            });
+        }
+
         dataTable = $('#bank-op-table').DataTable({
             processing: true,
             serverSide: true,
@@ -919,6 +1000,10 @@
                 var selectedMethod = getPaymentMethod();
                 var postedChequeNumber = payload.chequeNumber || '';
                 showFormSuccess(postedSuccessMessage(selectedMethod, postedChequeNumber));
+                var postedTransaction = result && (result.transaction || result.Transaction);
+                if (postedTransaction && usesChequeNumber(selectedMethod)) {
+                    openChequePrintModal(postedTransaction);
+                }
                 $('#bank-op-form')[0].reset();
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
                 $('#op-party-balance').text('');
@@ -1016,5 +1101,32 @@
             );
             $('#btn-save-starting-cheque').on('click', saveStartingChequeNumber);
         }
+
+        $('#btn-print-cheque-leaf').on('click', function () {
+            if (!chequePrintTransactionId) {
+                return;
+            }
+            var payeeMode = $('input[name="cheque-payee-mode"]:checked').val() || 'party';
+            var orientation = $('input[name="cheque-orientation"]:checked').val() || 'landscape';
+            try {
+                localStorage.setItem('pa-erp-cheque-orientation', orientation);
+            } catch (e) {
+                // Ignore private-mode storage failures.
+            }
+            if (chequePrintModal) {
+                chequePrintModal.hide();
+            }
+            printChequePdf(chequePrintTransactionId, payeeMode, orientation);
+        });
+
+        $(document).on('click', '.js-print-cheque', function () {
+            openChequePrintModal({
+                id: parseInt($(this).data('id'), 10) || 0,
+                partyName: $(this).data('party') || '',
+                amount: parseFloat($(this).data('amount')) || 0,
+                chequeNumber: $(this).data('cheque') || '',
+                paymentMethod: $(this).data('method') || ''
+            });
+        });
     });
 })();

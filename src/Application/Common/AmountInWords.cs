@@ -1,7 +1,11 @@
+using System.Globalization;
+
 namespace PakistanAccountingERP.Application.Common;
 
 public static class AmountInWords
 {
+    private static readonly CultureInfo NumberCulture = CultureInfo.GetCultureInfo("en-PK");
+
     private static readonly string[] Ones =
     [
         "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
@@ -20,6 +24,22 @@ public static class AmountInWords
     /// <summary>Amount in words using million/billion (not lakh/crore), e.g. 2,500,000 → Two Million Five Hundred Thousand Rupees Only.</summary>
     public static string ToRupeesInMillions(decimal amount) =>
         FormatRupees(amount, useMillionScale: true);
+
+    /// <summary>Cheque leaf wording — the printed cheque already says Rupees, e.g. One Million Only.</summary>
+    public static string ToChequeLeafWords(decimal amount) =>
+        ToRupeesInMillions(amount).Replace(" Rupees", string.Empty, StringComparison.Ordinal).Trim();
+
+    /// <summary>Cheque amount box, e.g. 1,000,000/-</summary>
+    public static string ToChequeFigures(decimal amount)
+    {
+        var rounded = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+        if (rounded == Math.Truncate(rounded))
+        {
+            return ((long)rounded).ToString("#,0", NumberCulture) + "/-";
+        }
+
+        return rounded.ToString("#,0.00", NumberCulture) + "/-";
+    }
 
     private static string FormatRupees(decimal amount, bool useMillionScale)
     {

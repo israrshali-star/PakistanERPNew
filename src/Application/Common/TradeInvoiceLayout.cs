@@ -47,6 +47,10 @@ public static class TradeInvoiceLayout
     public static bool ShowsSalesListCustomerBalance(int companyId) =>
         companyId == TradeInvoiceCompanyId;
 
+    /// <summary>Company 3 (MIA) shows each vendor's remaining payable on the vendor bill list.</summary>
+    public static bool ShowsVendorBillListVendorBalance(int companyId) =>
+        companyId == TradeInvoiceCompanyId;
+
     /// <summary>Paisa on bills is ignored when deciding Paid/Unpaid (outstanding under 1 rupee is paid).</summary>
     public const decimal SalesListPaymentWholeRupee = 1m;
 
