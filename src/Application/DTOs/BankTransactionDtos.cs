@@ -30,7 +30,8 @@ public record BankTransactionListItemDto(
     string? PartyName,
     string? PaymentMethod,
     string? ChequeNumber,
-    bool IsReconciled);
+    bool IsReconciled,
+    DateTime? ChequeDate = null);
 
 public class BankTransactionSaveRequest
 {

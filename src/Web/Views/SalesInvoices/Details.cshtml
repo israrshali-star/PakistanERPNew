@@ -1,12 +1,16 @@
 @using PakistanAccountingERP.Application.Common
 @using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Application.Interfaces
 @using PakistanAccountingERP.Application.Interfaces.Services
 @using PakistanAccountingERP.Domain.Enums
 @inject IPermissionService PermissionService
+@inject ICurrentUserService CurrentUser
 @model SalesInvoiceDetailDto
 @{
     ViewData["Title"] = "Invoice " + Model.InvoiceNumber;
     var canEdit = await PermissionService.HasPermissionAsync("Sales.Edit");
+    var isSuperAdmin = CurrentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+    var canEditPosted = isSuperAdmin && Model.Status == InvoiceStatus.Posted;
     var canPost = canEdit && Model.Status == InvoiceStatus.Draft;
     var canCancel = canEdit && Model.Status == InvoiceStatus.Draft;
     var canSubmitFbr = canEdit && Model.Status == InvoiceStatus.Posted && Model.FbrSubmittedAt is null;
@@ -59,6 +63,12 @@
                 <i class="fa-solid fa-book me-1"></i>Post to GL
             </button>
         }
+        @if (canEditPosted)
+        {
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-warning btn-sm">
+                <i class="fa-solid fa-pen me-1"></i>Edit Posted Invoice
+            </a>
+        }
         @if (canSubmitFbr)
         {
             <button type="button" class="btn btn-primary btn-sm" id="btn-submit-fbr">
@@ -99,6 +109,12 @@
         {
             <button type="button" class="btn btn-danger btn-sm" id="btn-delete-invoice">
                 <i class="fa-solid fa-trash me-1"></i>Delete Invoice
+            </button>
+        }
+        @if (Model.Status != InvoiceStatus.Cancelled)
+        {
+            <button type="button" class="btn btn-warning btn-sm" id="btn-save-stacks">
+                <i class="fa-solid fa-floppy-disk me-1"></i>Save stack numbers
             </button>
         }
         <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
@@ -210,7 +226,15 @@ else
                         line.StackNo);
                     <tr>
                         <td>@sr</td>
-                        <td>@product</td>
+                        <td>
+                            @product
+                            @if (line.ItemType != ItemType.Service)
+                            {
+                                <div class="mt-1 no-print">
+                                    <input type="text" class="form-control form-control-sm line-stack-edit" maxlength="50" data-line-id="@line.Id" data-original="@line.StackNo" value="@line.StackNo" placeholder="Stack #" />
+                                </div>
+                            }
+                        </td>
                         <td>@(line.HsCode ?? "—")</td>
                         <td>@saleType</td>
                         <td class="text-end">@line.Quantity.ToString("N2")</td>
@@ -315,4 +339,81 @@ else
     <script src="~/js/modules/sales-invoice-fbr.js" asp-append-version="true"></script>
     <script src="~/js/modules/sales-invoice-share.js" asp-append-version="true"></script>
     <script src="~/js/modules/sales-invoice-details.js" asp-append-version="true"></script>
+    <script>
+        (function () {
+            var apiBase = '@Url.Content("~/api/sales-invoices/")';
+
+            function showStackMessage(type, text) {
+                $('#invoice-action-message')
+                    .removeClass('d-none alert-success alert-danger alert-info')
+                    .addClass('alert-' + type)
+                    .text(text);
+            }
+
+            function readError(xhr) {
+                var body = xhr && xhr.responseJSON;
+                var message = body && (body.message || body.Message);
+                if (message) {
+                    return message;
+                }
+                if (xhr && xhr.status === 404) {
+                    return 'Stack save was not found on this site. Publish PakistanAccountingERP.Web again, then open this invoice once more.';
+                }
+                if (xhr && (xhr.status === 401 || xhr.status === 403)) {
+                    return 'You do not have permission to change this stack number. Sign in again.';
+                }
+                return 'Could not update the stack number.';
+            }
+
+            function saveNext($button, changes, index) {
+                if (index >= changes.length) {
+                    showStackMessage('success', 'Stack number saved.');
+                    window.location.reload();
+                    return;
+                }
+
+                var change = changes[index];
+                $.ajax({
+                    url: apiBase + change.invoiceId + '/lines/' + change.lineId + '/stack',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ stackNo: change.stackNo })
+                }).done(function () {
+                    saveNext($button, changes, index + 1);
+                }).fail(function (xhr) {
+                    $button.prop('disabled', false);
+                    showStackMessage('danger', readError(xhr));
+                });
+            }
+
+            $(function () {
+                $('#btn-save-stacks').off('click').on('click', function () {
+                    var $button = $(this);
+                    var invoiceId = $('#invoice-detail').data('id');
+                    var changes = [];
+                    $('.line-stack-edit').each(function () {
+                        var $input = $(this);
+                        var stackNo = $.trim($input.val() || '');
+                        var original = $.trim($input.attr('data-original') || '');
+                        if (!stackNo || stackNo === original) {
+                            return;
+                        }
+                        changes.push({
+                            invoiceId: invoiceId,
+                            lineId: $input.attr('data-line-id'),
+                            stackNo: stackNo
+                        });
+                    });
+
+                    if (!changes.length) {
+                        showStackMessage('info', 'Change the stack number in the Stack # box, then click Save stack numbers.');
+                        return;
+                    }
+
+                    $button.prop('disabled', true);
+                    saveNext($button, changes, 0);
+                });
+            });
+        })();
+    </script>
 }

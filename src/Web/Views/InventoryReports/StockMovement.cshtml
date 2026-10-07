@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
     <div>
         <h4 class="text-primary mb-1">Stock Movement</h4>
-        <p class="text-muted small mb-0">Stock in, out, and adjustments for a date range</p>
+        <p class="text-muted small mb-0">Stock in, out, and remaining weight and cartons for a date range</p>
     </div>
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
@@ -54,6 +54,7 @@
         <h5 class="text-primary mb-1">Stock Movement Report</h5>
         <p class="text-muted small mb-0" id="report-period">Select a date range and click Load</p>
         <p class="text-muted small mb-0" id="report-filters"></p>
+        <p class="text-muted small mb-0">Remaining weight and cartons run by item, stack, and lot and include stock on hand at the start of the period.</p>
     </div>
 
     <div class="table-responsive">
@@ -72,8 +73,8 @@
                     <th class="text-end">Qty Out</th>
                     <th class="text-end">Ctn In</th>
                     <th class="text-end">Ctn Out</th>
-                    <th class="text-end">Adj</th>
-                    <th class="text-end">Cost</th>
+                    <th class="text-end">Remaining Weight</th>
+                    <th class="text-end">Remaining Ctn</th>
                 </tr>
             </thead>
             <tbody id="report-lines">
@@ -86,7 +87,8 @@
                     <th class="text-end" id="report-total-out">0.00</th>
                     <th class="text-end" id="report-total-ctn-in">0</th>
                     <th class="text-end" id="report-total-ctn-out">0</th>
-                    <th colspan="2"></th>
+                    <th class="text-end" id="report-total-remaining-weight">0.00</th>
+                    <th class="text-end" id="report-total-remaining-ctn">0</th>
                 </tr>
             </tfoot>
         </table>

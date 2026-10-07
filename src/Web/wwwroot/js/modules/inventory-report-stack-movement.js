@@ -22,6 +22,36 @@
         });
     }
 
+    function round2(value) {
+        return Math.round(toNumber(value) * 100) / 100;
+    }
+
+    function hasGap(value) {
+        return Math.abs(round2(value)) >= 0.01;
+    }
+
+    function ledgerBalance(line) {
+        var qty = toNumber(readValue(line, 'openingQty', 'OpeningQty'));
+        var ctn = toNumber(readValue(line, 'openingCartons', 'OpeningCartons'));
+        (line.movements || line.Movements || []).forEach(function (movement) {
+            qty += toNumber(readValue(movement, 'qtyIn', 'QtyIn'))
+                - toNumber(readValue(movement, 'qtyOut', 'QtyOut'))
+                + toNumber(readValue(movement, 'adjustmentQty', 'AdjustmentQty'));
+            ctn += toNumber(readValue(movement, 'cartonsIn', 'CartonsIn'))
+                - toNumber(readValue(movement, 'cartonsOut', 'CartonsOut'));
+        });
+        return { qty: round2(qty), ctn: round2(ctn) };
+    }
+
+    function remainingCell(amount, gap, isCarton) {
+        var css = 'text-end fw-semibold' + (toNumber(amount) < 0 || hasGap(gap) ? ' text-danger' : '');
+        var html = '<td class="' + css + '">' + formatQty(amount, isCarton);
+        if (hasGap(gap)) {
+            html += '<div class="small">Diff ' + formatQty(gap, false) + '</div>';
+        }
+        return html + '</td>';
+    }
+
     function formatDate(value) {
         var d = new Date(value);
         if (Number.isNaN(d.getTime())) {
@@ -103,8 +133,10 @@
                 var ctnIn = toNumber(readValue(m, 'cartonsIn', 'CartonsIn'));
                 var ctnOut = toNumber(readValue(m, 'cartonsOut', 'CartonsOut'));
                 var adj = toNumber(readValue(m, 'adjustmentQty', 'AdjustmentQty'));
-                runningQty = runningQty + qtyIn - qtyOut + adj;
-                runningCtn = runningCtn + ctnIn - ctnOut;
+                runningQty = round2(runningQty + qtyIn - qtyOut + adj);
+                runningCtn = round2(runningCtn + ctnIn - ctnOut);
+                var weightClass = 'text-end fw-semibold' + (runningQty < 0 ? ' text-danger' : '');
+                var cartonClass = 'text-end fw-semibold' + (runningCtn < 0 ? ' text-danger' : '');
                 rows += '<tr>' +
                     '<td>' + formatDate(readValue(m, 'transactionDate', 'TransactionDate')) + '</td>' +
                     '<td>' + escapeHtml(readValue(m, 'transactionType', 'TransactionType') || '') + '</td>' +
@@ -116,10 +148,22 @@
                     '<td class="text-end text-danger">' + (qtyOut ? formatQty(qtyOut, false) : '—') + '</td>' +
                     '<td class="text-end text-success">' + (ctnIn ? formatQty(ctnIn, true) : '—') + '</td>' +
                     '<td class="text-end text-danger">' + (ctnOut ? formatQty(ctnOut, true) : '—') + '</td>' +
-                    '<td class="text-end">' + formatQty(runningQty, false) + '</td>' +
-                    '<td class="text-end">' + formatQty(runningCtn, true) + '</td>' +
+                    '<td class="' + weightClass + '">' + formatQty(runningQty, false) + '</td>' +
+                    '<td class="' + cartonClass + '">' + formatQty(runningCtn, true) + '</td>' +
                     '</tr>';
             });
+
+            var closingQty = toNumber(readValue(line, 'closingQty', 'ClosingQty'));
+            var closingCtn = toNumber(readValue(line, 'closingCartons', 'ClosingCartons'));
+            var weightGap = round2(runningQty - closingQty);
+            var ctnGap = round2(runningCtn - closingCtn);
+            if (hasGap(weightGap) || hasGap(ctnGap)) {
+                rows += '<tr class="table-warning">' +
+                    '<td colspan="8" class="text-end">Difference to reconcile</td>' +
+                    '<td class="text-end text-danger fw-semibold">' + formatQty(weightGap, false) + '</td>' +
+                    '<td class="text-end text-danger fw-semibold">' + formatQty(ctnGap, false) + '</td>' +
+                    '</tr>';
+            }
 
             $container.append(
                 '<div class="mb-4">' +
@@ -131,7 +175,7 @@
                 '<th>Date</th><th>Type</th><th>Ref #</th><th>Vendor Ref #</th>' +
                 '<th class="text-end">Qty In</th><th class="text-end">Qty Out</th>' +
                 '<th class="text-end">Ctn In</th><th class="text-end">Ctn Out</th>' +
-                '<th class="text-end">Balance Qty</th><th class="text-end">Balance Ctn</th>' +
+                '<th class="text-end">Remaining Weight</th><th class="text-end">Remaining Ctn</th>' +
                 '</tr></thead><tbody>' + rows + '</tbody></table></div></div>'
             );
         });
@@ -173,6 +217,9 @@
         lines.forEach(function (line) {
             var closingQty = toNumber(readValue(line, 'closingQty', 'ClosingQty'));
             var closingCtn = toNumber(readValue(line, 'closingCartons', 'ClosingCartons'));
+            var ledger = ledgerBalance(line);
+            var weightGap = round2(ledger.qty - closingQty);
+            var ctnGap = round2(ledger.ctn - closingCtn);
             $tbody.append(
                 '<tr>' +
                 '<td>' + escapeHtml(readValue(line, 'stackNo', 'StackNo') || '—') + '</td>' +
@@ -186,10 +233,8 @@
                 '<td class="text-end text-danger">' + formatQty(readValue(line, 'qtyOut', 'QtyOut'), false) + '</td>' +
                 '<td class="text-end text-success">' + formatQty(readValue(line, 'cartonsIn', 'CartonsIn'), true) + '</td>' +
                 '<td class="text-end text-danger">' + formatQty(readValue(line, 'cartonsOut', 'CartonsOut'), true) + '</td>' +
-                '<td class="text-end fw-semibold' + (closingQty < 0 ? ' text-danger' : '') + '">' +
-                    formatQty(closingQty, false) + '</td>' +
-                '<td class="text-end fw-semibold' + (closingCtn < 0 ? ' text-danger' : '') + '">' +
-                    formatQty(closingCtn, true) + '</td>' +
+                remainingCell(closingQty, weightGap, false) +
+                remainingCell(closingCtn, ctnGap, true) +
                 '</tr>'
             );
         });

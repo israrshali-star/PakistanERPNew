@@ -153,6 +153,73 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-12 d-none" id="cheque-live">
+                    <div class="border rounded p-3">
+                        <div class="fw-semibold mb-1">On the cheque</div>
+                        <p class="small mb-2">Tick one name. Cash writes Cash. Party name writes the account selected in Pay To. Other name writes the text you type.</p>
+                        <div class="d-flex flex-wrap gap-4 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="cheque-payee-cash" value="cash" />
+                                <label class="form-check-label" for="cheque-payee-cash">Cash</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="cheque-payee-party" value="party" checked />
+                                <label class="form-check-label" for="cheque-payee-party" id="cheque-payee-party-label">Party name</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="cheque-payee-text" value="text" />
+                                <label class="form-check-label" for="cheque-payee-text">Other name</label>
+                            </div>
+                            <div class="w-100 d-none" id="cheque-payee-text-wrap">
+                                <label class="form-label small mb-1" for="cheque-payee-text-input">Name written on the cheque</label>
+                                <input type="text" class="form-control" id="cheque-payee-text-input" maxlength="80" autocomplete="off" />
+                            </div>
+                        </div>
+                        <p class="small mb-2" id="cheque-live-effect">The name, date, amount, and words appear on the Meezan cheque as you type.</p>
+                        <div class="cheque-preview-wrap mb-3">
+                            <div class="cheque-preview-leaf">
+                                <div class="cheque-preview-cross">A/C PAYEE ONLY</div>
+                                <div class="cheque-preview-dates"></div>
+                                <div class="cheque-preview-rule cheque-preview-pay-rule"></div>
+                                <div class="cheque-preview-rule cheque-preview-word-rule-1"></div>
+                                <div class="cheque-preview-rule cheque-preview-word-rule-2"></div>
+                                <div class="cheque-preview-box cheque-preview-amount-box"></div>
+                                <div class="cheque-preview-payee"></div>
+                                <div class="cheque-preview-words cheque-preview-words-1"></div>
+                                <div class="cheque-preview-words cheque-preview-words-2"></div>
+                                <div class="cheque-preview-figures"></div>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-6 col-lg-3">
+                                <label class="form-label small mb-1" for="cheque-date-x">Date right (mm)</label>
+                                <input type="number" class="form-control form-control-sm" id="cheque-date-x" step="0.5" min="-60" max="60" value="0" />
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <label class="form-label small mb-1" for="cheque-date-y">Date down (mm)</label>
+                                <input type="number" class="form-control form-control-sm" id="cheque-date-y" step="0.5" min="-60" max="60" value="0" />
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <label class="form-label small mb-1" for="cheque-pay-x">Pay and words right (mm)</label>
+                                <input type="number" class="form-control form-control-sm" id="cheque-pay-x" step="0.5" min="-60" max="60" value="0" />
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <label class="form-label small mb-1" for="cheque-pay-y">Pay and words down (mm)</label>
+                                <input type="number" class="form-control form-control-sm" id="cheque-pay-y" step="0.5" min="-60" max="60" value="0" />
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 mt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-landscape" value="landscape" checked />
+                                <label class="form-check-label" for="cheque-orientation-landscape">Landscape</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-portrait" value="portrait" />
+                                <label class="form-check-label" for="cheque-orientation-portrait">Portrait</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             }
 
             @if (transactionType == BankTransactionType.Deposit)
@@ -223,7 +290,7 @@
 @if (transactionType == BankTransactionType.Withdrawal)
 {
     <div class="modal fade" id="chequePrintModal" tabindex="-1" aria-labelledby="chequePrintModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title text-primary" id="chequePrintModalLabel">Print cheque</h5>
@@ -231,25 +298,41 @@
                 </div>
                 <div class="modal-body">
                     <p class="mb-2" id="cheque-print-summary"></p>
-                    <p class="text-muted small mb-3">Load the blank cheque in the printer. Print at 100% (actual size). The ERP fills date, payee, and amount only — you still sign it.</p>
-                    <div class="mb-2 fw-semibold">Write on cheque</div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-party" value="party" checked />
-                        <label class="form-check-label" for="cheque-payee-party" id="cheque-payee-party-label">Party name</label>
+                    <p class="text-muted small mb-2">Tick Cash, the party name, or Other name. The date goes in the eight boxes, that name on the Pay line, the amount in the PKR box, and the words on the Rupees lines. You still sign it.</p>
+                    <div class="d-flex flex-wrap gap-4 mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-cash" value="cash" />
+                            <label class="form-check-label" for="modal-cheque-payee-cash">Cash</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-party" value="party" checked />
+                            <label class="form-check-label" for="modal-cheque-payee-party" id="modal-cheque-payee-party-label">Party name</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-text" value="text" />
+                            <label class="form-check-label" for="modal-cheque-payee-text">Other name</label>
+                        </div>
+                        <div class="w-100 d-none" id="modal-cheque-payee-text-wrap">
+                            <label class="form-label small mb-1" for="modal-cheque-payee-text-input">Name written on the cheque</label>
+                            <input type="text" class="form-control" id="modal-cheque-payee-text-input" maxlength="80" autocomplete="off" />
+                        </div>
                     </div>
-                    <div class="form-check mt-1">
-                        <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-cash" value="cash" />
-                        <label class="form-check-label" for="cheque-payee-cash">Cash</label>
+                    <div class="cheque-preview-wrap mb-2" id="cheque-preview-wrap">
+                        <div class="cheque-preview-leaf" id="cheque-preview-leaf">
+                            <div class="cheque-preview-cross">A/C PAYEE ONLY</div>
+                            <div class="cheque-preview-dates"></div>
+                            <div class="cheque-preview-rule cheque-preview-pay-rule"></div>
+                            <div class="cheque-preview-rule cheque-preview-word-rule-1"></div>
+                            <div class="cheque-preview-rule cheque-preview-word-rule-2"></div>
+                            <div class="cheque-preview-box cheque-preview-amount-box"></div>
+                            <div class="cheque-preview-payee"></div>
+                            <div class="cheque-preview-words cheque-preview-words-1"></div>
+                            <div class="cheque-preview-words cheque-preview-words-2"></div>
+                            <div class="cheque-preview-figures"></div>
+                        </div>
                     </div>
-                    <div class="mb-2 mt-3 fw-semibold">Page layout</div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-landscape" value="landscape" checked />
-                        <label class="form-check-label" for="cheque-orientation-landscape">Landscape — cheque as you write it (recommended)</label>
-                    </div>
-                    <div class="form-check mt-1">
-                        <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-portrait" value="portrait" />
-                        <label class="form-check-label" for="cheque-orientation-portrait">Portrait — cheque fed short-edge first</label>
-                    </div>
+                    <p class="small mb-2" id="cheque-modal-effect"></p>
+                    <p class="text-muted small mb-0">Paper A4, same landscape or portrait, margins None, scale 100. The positions are the ones on the Write Cheque page.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Skip</button>

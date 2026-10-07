@@ -45,6 +45,7 @@ public record SalesInvoiceLineDto(
     decimal LineTotal);
 
 public record SalesInvoiceDetailDto(
+
     int Id,
     string InvoiceNumber,
     int CustomerId,
@@ -82,7 +83,7 @@ public record SalesInvoiceDetailDto(
     int CompanyId = 0,
     decimal CustomerTotalBalance = 0m,
     bool CanDownloadInvoicePdf = false);
-
+public record CorrectInvoiceLineStackRequest(string StackNo);
 public record SalesInvoiceActionResult(
     bool Success,
     string? Message,

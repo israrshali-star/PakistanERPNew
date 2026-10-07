@@ -12,6 +12,34 @@
     var selectedPartyCache = null;
     var chequePrintModal = null;
     var chequePrintTransactionId = 0;
+    var chequePrintPreview = { partyName: '', amount: 0, dateIso: '', words: '' };
+    var chequePreviewFromTransaction = false;
+
+    // Keep in sync with ChequeLeafLayout (millimetres on a 190.5 × 88.9 leaf).
+    var chequeLeaf = {
+        width: 190.5,
+        height: 88.9,
+        dateLeft: 134.7,
+        dateTop: 13.7,
+        dateHeight: 8.3,
+        datePitch: 6.41,
+        payeeLine: 36.2,
+        payeeLeft: 16,
+        payeeWidth: 92,
+        wordsLine1: 43.6,
+        wordsLine2: 51.2,
+        wordsLeft: 20,
+        wordsWidth: 88,
+        figuresLeft: 134.3,
+        figuresTop: 36.7,
+        figuresWidth: 52.6,
+        figuresHeight: 7.5,
+        figuresInset: 11,
+        crossingLeft: 58,
+        crossingTop: 26,
+        crossingWidth: 42,
+        crossingHeight: 5.4
+    };
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -114,6 +142,10 @@
         var amount = parseFloat($('#op-amount').val());
         if (!amount || amount <= 0) {
             $words.text('');
+            if (!chequePreviewFromTransaction) {
+                chequePrintPreview.words = '';
+                refreshLiveCheque();
+            }
             return;
         }
 
@@ -121,7 +153,12 @@
         amountWordsTimer = setTimeout(function () {
             $.getJSON('/api/lookup/amount-in-words', { amount: amount })
                 .done(function (res) {
-                    $words.text(res && res.text ? res.text : '');
+                    var text = res && res.text ? res.text : '';
+                    $words.text(text);
+                    if (!chequePreviewFromTransaction) {
+                        chequePrintPreview.words = text;
+                        refreshLiveCheque();
+                    }
                 })
                 .fail(function () {
                     $words.text('');
@@ -260,36 +297,411 @@
         return paymentMethod === 'Cheque' || paymentMethod === 'CashWithdrawal' || paymentMethod === 2 || paymentMethod === 4;
     }
 
-    function chequePdfUrl(transactionId, payeeMode, orientation) {
-        return '/api/bank-transactions/' + encodeURIComponent(transactionId) +
-            '/cheque-pdf?payee=' + encodeURIComponent(payeeMode || 'party') +
-            '&orientation=' + encodeURIComponent(orientation || 'landscape');
+    function clampChequeShift(value) {
+        var n = parseFloat(value);
+        if (!isFinite(n)) {
+            return 0;
+        }
+        return Math.max(-60, Math.min(60, Math.round(n * 2) / 2));
     }
 
-    function printChequePdf(transactionId, payeeMode, orientation) {
-        var url = chequePdfUrl(transactionId, payeeMode, orientation);
-        if (window.PrintChoice && typeof window.PrintChoice.printPdfUrl === 'function') {
-            window.PrintChoice.printPdfUrl(url);
+    function storedChequeShift(storageKey, legacyKey) {
+        try {
+            var raw = localStorage.getItem(storageKey);
+            if (raw === null && legacyKey) {
+                raw = localStorage.getItem(legacyKey);
+            }
+            return clampChequeShift(raw);
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function currentChequeShift(inputId) {
+        return clampChequeShift($('#' + inputId).val());
+    }
+
+    function chequePdfUrl(transactionId, payeeChoice, orientation, align) {
+        align = align || {};
+        payeeChoice = payeeChoice || { mode: 'party', text: '' };
+        var mode = payeeChoice.mode || 'party';
+        var url = '/api/bank-transactions/' + encodeURIComponent(transactionId) +
+            '/cheque-print?payee=' + encodeURIComponent(mode) +
+            '&orientation=' + encodeURIComponent(orientation || 'landscape') +
+            '&dateX=' + encodeURIComponent(String(align.dateX || 0)) +
+            '&dateY=' + encodeURIComponent(String(align.dateY || 0)) +
+            '&payX=' + encodeURIComponent(String(align.payX || 0)) +
+            '&payY=' + encodeURIComponent(String(align.payY || 0)) +
+            '&t=' + Date.now();
+        if (mode === 'text') {
+            url += '&payeeText=' + encodeURIComponent(payeeChoice.text || '');
+        }
+        return url;
+    }
+
+    function readChequeAlign() {
+        return {
+            dateX: currentChequeShift('cheque-date-x'),
+            dateY: currentChequeShift('cheque-date-y'),
+            payX: currentChequeShift('cheque-pay-x'),
+            payY: currentChequeShift('cheque-pay-y')
+        };
+    }
+
+    function printChequePdf(transactionId, payeeChoice, orientation, align) {
+        var url = chequePdfUrl(transactionId, payeeChoice, orientation, align);
+        var printWindow = window.open(url, '_blank');
+        if (!printWindow) {
+            alert('Allow pop-ups to print this cheque.');
             return;
         }
-        window.open(url, '_blank');
+        var printed = false;
+        var attempts = 0;
+        var timer = setInterval(function () {
+            attempts += 1;
+            if (printed || printWindow.closed || attempts > 40) {
+                clearInterval(timer);
+                return;
+            }
+            try {
+                if (printWindow.__chequePrinted) {
+                    printed = true;
+                    clearInterval(timer);
+                    return;
+                }
+                var doc = printWindow.document;
+                if (!doc || doc.readyState !== 'complete' || !doc.querySelector('.leaf')) {
+                    return;
+                }
+                printed = true;
+                clearInterval(timer);
+                if (typeof printWindow.__chequePrint === 'function') {
+                    printWindow.__chequePrint();
+                } else {
+                    printWindow.focus();
+                    printWindow.print();
+                }
+            } catch (e) {
+                // Keep retrying until the cheque page is the document in the tab.
+            }
+        }, 150);
     }
 
-    function openChequePrintModal(transaction) {
+    var chequePointsPerMm = 72 / 25.4;
+
+    function chequeEmMm(fontSize) {
+        return fontSize / chequePointsPerMm;
+    }
+
+    function maxChequeChars(widthMm, fontSize) {
+        var charMm = fontSize / chequePointsPerMm * 0.55;
+        return Math.max(8, Math.floor(widthMm / charMm));
+    }
+
+    function fitChequeFont(text, widthMm, lines, maxSize, minSize) {
+        var size = maxSize;
+        var length = String(text || '').trim().length;
+        while (size > minSize && length > maxChequeChars(widthMm, size) * lines) {
+            size -= 0.5;
+        }
+        return size;
+    }
+
+    function splitChequeWordsExact(text) {
+        var source = String(text || '').trim();
+        var fontSize = 10;
+        var lines = [];
+        while (fontSize >= 7.5) {
+            lines = splitChequeWords(source, maxChequeChars(chequeLeaf.wordsWidth, fontSize));
+            if (lines.join(' ') === source || fontSize <= 7.5) {
+                break;
+            }
+            fontSize -= 0.5;
+        }
+        return { lines: lines, fontSize: fontSize };
+    }
+
+    function placeChequeInkOnRule(el, leftMm, ruleMm, widthMm, fontSize, shiftX, shiftY) {
+        var em = chequeEmMm(fontSize);
+        placeChequePreview(el, leftMm + shiftX, ruleMm - em - 0.4 + shiftY, widthMm, em);
+        var leaf = el && el.closest ? el.closest('.cheque-preview-leaf') : null;
+        var pxPerMm = leaf && leaf.clientWidth ? leaf.clientWidth / chequeLeaf.width : 3.78;
+        el.style.fontSize = (em * pxPerMm) + 'px';
+        el.style.lineHeight = '1';
+        el.style.display = 'flex';
+        el.style.alignItems = 'flex-end';
+    }
+
+    function chequeLeafPctX(mm) {
+        return (mm / chequeLeaf.width) * 100;
+    }
+
+    function chequeLeafPctY(mm) {
+        return (mm / chequeLeaf.height) * 100;
+    }
+
+    function placeChequePreview(el, leftMm, topMm, widthMm, heightMm) {
+        if (!el) return;
+        el.style.left = chequeLeafPctX(leftMm) + '%';
+        el.style.top = chequeLeafPctY(topMm) + '%';
+        if (widthMm != null) el.style.width = chequeLeafPctX(widthMm) + '%';
+        if (heightMm != null) el.style.height = chequeLeafPctY(heightMm) + '%';
+    }
+
+    function chequeDateDigits(iso) {
+        var parts = String(iso || '').slice(0, 10).split('-');
+        if (parts.length !== 3 || parts[0].length !== 4) {
+            return '';
+        }
+        var day = parts[2].padStart(2, '0');
+        var month = parts[1].padStart(2, '0');
+        return (day + month + parts[0]).slice(0, 8);
+    }
+
+    function chequeFigures(amount) {
+        var n = Math.round((parseFloat(amount) || 0) * 100) / 100;
+        if (Math.abs(n - Math.trunc(n)) < 0.001) {
+            return Math.trunc(n).toLocaleString('en-PK') + '/-';
+        }
+        return n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '/-';
+    }
+
+    function splitChequeWords(text, maxChars) {
+        var words = String(text || '').trim().split(/\s+/).filter(Boolean);
+        var lines = [];
+        var current = '';
+        words.forEach(function (word) {
+            if (lines.length >= 2) return;
+            var next = current ? current + ' ' + word : word;
+            if (current && next.length > maxChars) {
+                lines.push(current);
+                current = lines.length >= 2 ? '' : word;
+                return;
+            }
+            current = next;
+        });
+        if (current && lines.length < 2) lines.push(current);
+        return lines;
+    }
+
+    function describeChequeMove(mm, positive, negative) {
+        var n = Math.round((mm || 0) * 10) / 10;
+        if (!n) {
+            return 'on the printed line';
+        }
+        return Math.abs(n) + ' mm ' + (n > 0 ? positive : negative);
+    }
+
+    function chequeEffectText(dateX, dateY, payX, payY, payee, figures) {
+        return 'Date is ' + describeChequeMove(dateX, 'right', 'left') + ' and ' + describeChequeMove(dateY, 'down', 'up')
+            + '. Pay and words are ' + describeChequeMove(payX, 'right', 'left') + ' and ' + describeChequeMove(payY, 'down', 'up')
+            + '. Showing ' + (payee || 'the name') + ' and ' + (figures || 'the amount') + '.';
+    }
+
+    function chequePartyCaption(name) {
+        var party = (name || '').trim();
+        return party ? ('Party name — ' + party) : 'Party name';
+    }
+
+    function applyChequePayeeMode(mode) {
+        $('#cheque-payee-cash, #modal-cheque-payee-cash').prop('checked', mode === 'cash');
+        $('#cheque-payee-party, #modal-cheque-payee-party').prop('checked', mode === 'party');
+        $('#cheque-payee-text, #modal-cheque-payee-text').prop('checked', mode === 'text');
+        $('#cheque-payee-text-wrap, #modal-cheque-payee-text-wrap').toggleClass('d-none', mode !== 'text');
+    }
+
+    function readPayeeChoice() {
+        var fromPrint = chequePreviewFromTransaction;
+        var cash = $(fromPrint ? '#modal-cheque-payee-cash' : '#cheque-payee-cash').is(':checked');
+        var text = $(fromPrint ? '#modal-cheque-payee-text' : '#cheque-payee-text').is(':checked');
+        var typed = ($(fromPrint ? '#modal-cheque-payee-text-input' : '#cheque-payee-text-input').val() || '').trim();
+        if (typed.length > 80) {
+            typed = typed.slice(0, 80);
+        }
+        return {
+            mode: cash ? 'cash' : (text ? 'text' : 'party'),
+            text: typed
+        };
+    }
+
+    function payeeNameForChoice(choice) {
+        if (choice.mode === 'cash') {
+            return 'Cash';
+        }
+        if (choice.mode === 'text') {
+            return choice.text || '';
+        }
+        return (chequePrintPreview.partyName || '').trim();
+    }
+
+    function renderChequePreview() {
+        var leaves = document.querySelectorAll('.cheque-preview-leaf');
+        if (!leaves.length) return;
+
+        var portrait = $('#cheque-orientation-portrait').is(':checked');
+        var dateX = currentChequeShift('cheque-date-x');
+        var dateY = currentChequeShift('cheque-date-y') + (portrait ? 3 : 0);
+        var payX = currentChequeShift('cheque-pay-x') + (portrait ? 6 : 0);
+        var payY = currentChequeShift('cheque-pay-y');
+        var payeeChoice = readPayeeChoice();
+        var payee = payeeNameForChoice(payeeChoice);
+        var cash = payee.trim().toLowerCase() === 'cash';
+        var digits = chequeDateDigits(chequePrintPreview.dateIso);
+        var figures = chequeFigures(chequePrintPreview.amount);
+        var wordLayout = splitChequeWordsExact(
+            (chequePrintPreview.words || '').replace(' Rupees', '')
+        );
+        var wordLines = wordLayout.lines;
+        var effect = chequeEffectText(dateX, dateY, payX, payY, payee, figures);
+        $('#cheque-live-effect, #cheque-modal-effect').text(effect);
+
+        leaves.forEach(function (leaf) {
+            placeChequePreview(
+                leaf.querySelector('.cheque-preview-cross'),
+                chequeLeaf.crossingLeft,
+                chequeLeaf.crossingTop,
+                chequeLeaf.crossingWidth,
+                chequeLeaf.crossingHeight
+            );
+            $(leaf).find('.cheque-preview-cross').toggleClass('d-none', cash);
+
+            var dates = leaf.querySelector('.cheque-preview-dates');
+            if (dates) {
+                dates.innerHTML = '';
+                for (var i = 0; i < 8; i++) {
+                    var boxLeft = chequeLeaf.dateLeft + (i * chequeLeaf.datePitch);
+                    var box = document.createElement('div');
+                    box.className = 'cheque-preview-digit';
+                    dates.appendChild(box);
+                    placeChequePreview(box, boxLeft, chequeLeaf.dateTop, chequeLeaf.datePitch, chequeLeaf.dateHeight);
+
+                    var ink = document.createElement('div');
+                    ink.className = 'cheque-preview-digit cheque-preview-digit-ink';
+                    ink.textContent = digits.charAt(i) || '';
+                    dates.appendChild(ink);
+                    placeChequePreview(
+                        ink,
+                        boxLeft + dateX,
+                        chequeLeaf.dateTop + dateY,
+                        chequeLeaf.datePitch,
+                        chequeLeaf.dateHeight
+                    );
+                }
+            }
+
+            placeChequePreview(leaf.querySelector('.cheque-preview-pay-rule'), chequeLeaf.payeeLeft, chequeLeaf.payeeLine, chequeLeaf.payeeWidth, null);
+            placeChequePreview(leaf.querySelector('.cheque-preview-word-rule-1'), chequeLeaf.wordsLeft, chequeLeaf.wordsLine1, chequeLeaf.wordsWidth, null);
+            placeChequePreview(leaf.querySelector('.cheque-preview-word-rule-2'), chequeLeaf.wordsLeft, chequeLeaf.wordsLine2, chequeLeaf.wordsWidth, null);
+            placeChequePreview(
+                leaf.querySelector('.cheque-preview-amount-box'),
+                chequeLeaf.figuresLeft,
+                chequeLeaf.figuresTop,
+                chequeLeaf.figuresWidth,
+                chequeLeaf.figuresHeight
+            );
+
+            var payeeEl = leaf.querySelector('.cheque-preview-payee');
+            if (payeeEl) {
+                payeeEl.textContent = payee;
+                placeChequeInkOnRule(
+                    payeeEl,
+                    chequeLeaf.payeeLeft,
+                    chequeLeaf.payeeLine,
+                    chequeLeaf.payeeWidth,
+                    fitChequeFont(payee, chequeLeaf.payeeWidth, 1, 11, 8),
+                    payX,
+                    payY
+                );
+            }
+
+            var words1 = leaf.querySelector('.cheque-preview-words-1');
+            var words2 = leaf.querySelector('.cheque-preview-words-2');
+            if (words1) {
+                words1.textContent = wordLines[0] || '';
+                placeChequeInkOnRule(words1, chequeLeaf.wordsLeft, chequeLeaf.wordsLine1, chequeLeaf.wordsWidth, wordLayout.fontSize, payX, payY);
+            }
+            if (words2) {
+                words2.textContent = wordLines[1] || '';
+                placeChequeInkOnRule(words2, chequeLeaf.wordsLeft, chequeLeaf.wordsLine2, chequeLeaf.wordsWidth, wordLayout.fontSize, payX, payY);
+            }
+
+            var figuresEl = leaf.querySelector('.cheque-preview-figures');
+            if (figuresEl) {
+                figuresEl.textContent = figures;
+                placeChequePreview(
+                    figuresEl,
+                    chequeLeaf.figuresLeft + chequeLeaf.figuresInset,
+                    chequeLeaf.figuresTop,
+                    chequeLeaf.figuresWidth - chequeLeaf.figuresInset - 2,
+                    chequeLeaf.figuresHeight
+                );
+            }
+        });
+    }
+
+    function refreshLiveCheque() {
+        if (transactionType !== 2) {
+            return;
+        }
+        if (!chequePreviewFromTransaction) {
+            var method = getPaymentMethod();
+            var lockCash = method === 4;
+            $('#cheque-payee-cash, #cheque-payee-party, #cheque-payee-text, #cheque-payee-text-input').prop('disabled', lockCash);
+            if (lockCash) {
+                applyChequePayeeMode('cash');
+            } else if (!$('#cheque-payee-cash').is(':checked') && !$('#cheque-payee-party').is(':checked') && !$('#cheque-payee-text').is(':checked')) {
+                applyChequePayeeMode('party');
+            } else {
+                applyChequePayeeMode($('#cheque-payee-text').is(':checked') ? 'text' : ($('#cheque-payee-cash').is(':checked') ? 'cash' : 'party'));
+            }
+            var cash = $('#cheque-payee-cash').is(':checked');
+            var party = '';
+            if (!cash) {
+                var selected = getSelectedParty();
+                party = selected && selected.partyName ? selected.partyName : '';
+            }
+            chequePrintPreview.partyName = party;
+            chequePrintPreview.amount = parseFloat($('#op-amount').val()) || 0;
+            chequePrintPreview.dateIso = $('#op-cheque-date').val() || $('#op-date').val() || '';
+            $('#cheque-payee-party-label, #modal-cheque-payee-party-label').text(chequePartyCaption(party));
+        }
+        renderChequePreview();
+    }
+
+    function openChequePrintModal(transaction, payeeChoice) {
         if (!transaction || !transaction.id || !isPrintableCheque(transaction.paymentMethod)) {
             return;
         }
 
+        chequePreviewFromTransaction = true;
         chequePrintTransactionId = transaction.id;
-        var partyName = (transaction.partyName || '').trim() || 'Party name';
+        var partyName = (transaction.partyName || '').trim();
         var chequeNumber = transaction.chequeNumber ? 'Cheque ' + transaction.chequeNumber : 'Cheque';
         var amountText = 'PKR ' + formatMoney(transaction.amount);
         $('#cheque-print-summary').text(chequeNumber + ' · ' + amountText);
-        $('#cheque-payee-party-label').text('Party name — ' + partyName);
+        $('#cheque-payee-party-label, #modal-cheque-payee-party-label').text(chequePartyCaption(partyName));
+        chequePrintPreview.partyName = (transaction.partyName || '').trim();
+        chequePrintPreview.amount = transaction.amount || 0;
+        chequePrintPreview.dateIso = String(transaction.chequeDate || transaction.transactionDate || '').slice(0, 10);
+        chequePrintPreview.words = '';
 
         var defaultCash = transaction.paymentMethod === 'CashWithdrawal' || transaction.paymentMethod === 4;
-        $('#cheque-payee-cash').prop('checked', defaultCash);
-        $('#cheque-payee-party').prop('checked', !defaultCash);
+        var chosenMode = defaultCash ? 'cash' : ((payeeChoice && payeeChoice.mode) || 'party');
+        if (chosenMode !== 'cash' && chosenMode !== 'text') {
+            chosenMode = 'party';
+        }
+        $('#cheque-payee-text-input, #modal-cheque-payee-text-input').val((payeeChoice && payeeChoice.text) || '');
+        applyChequePayeeMode(chosenMode);
+        $('#cheque-date-x').val(storedChequeShift('pa-erp-cheque-date-x', 'pa-erp-cheque-shift-x'));
+        $('#cheque-date-y').val(storedChequeShift('pa-erp-cheque-date-y', 'pa-erp-cheque-shift-y'));
+        $('#cheque-pay-x').val(storedChequeShift('pa-erp-cheque-pay-x', 'pa-erp-cheque-shift-x'));
+        $('#cheque-pay-y').val(storedChequeShift('pa-erp-cheque-pay-y', 'pa-erp-cheque-shift-y'));
+        renderChequePreview();
+        $.getJSON('/api/lookup/amount-in-words', { amount: chequePrintPreview.amount })
+            .done(function (res) {
+                chequePrintPreview.words = (res && res.text) || '';
+                renderChequePreview();
+            });
 
         var savedOrientation = 'landscape';
         try {
@@ -302,11 +714,22 @@
         }
         $('#cheque-orientation-landscape').prop('checked', savedOrientation === 'landscape');
         $('#cheque-orientation-portrait').prop('checked', savedOrientation === 'portrait');
+        renderChequePreview();
 
         if (!chequePrintModal) {
             var el = document.getElementById('chequePrintModal');
-            if (!el || !window.bootstrap) {
-                printChequePdf(transaction.id, defaultCash ? 'cash' : 'party', savedOrientation);
+                if (!el || !window.bootstrap) {
+                printChequePdf(
+                    transaction.id,
+                    defaultCash ? 'cash' : 'party',
+                    savedOrientation,
+                    {
+                        dateX: storedChequeShift('pa-erp-cheque-date-x', 'pa-erp-cheque-shift-x'),
+                        dateY: storedChequeShift('pa-erp-cheque-date-y', 'pa-erp-cheque-shift-y'),
+                        payX: storedChequeShift('pa-erp-cheque-pay-x', 'pa-erp-cheque-shift-x'),
+                        payY: storedChequeShift('pa-erp-cheque-pay-y', 'pa-erp-cheque-shift-y')
+                    }
+                );
                 return;
             }
             chequePrintModal = new bootstrap.Modal(el);
@@ -667,6 +1090,12 @@
             $bankLabel.text('Pay From — Bank Account (COA)');
             refreshPayFromOptions();
         }
+
+        var showCheque = method === 2 || method === 4;
+        $('#cheque-live').toggleClass('d-none', !showCheque);
+        if (showCheque) {
+            refreshLiveCheque();
+        }
     }
 
     function resolveCashAccount() {
@@ -878,6 +1307,7 @@
                         ' data-party="' + escapeHtml(row.partyName || '') + '"' +
                         ' data-amount="' + (row.amount || 0) + '"' +
                         ' data-cheque="' + escapeHtml(row.chequeNumber || '') + '"' +
+                        ' data-date="' + escapeHtml(String(row.chequeDate || row.transactionDate || '').slice(0, 10)) + '"' +
                         ' data-method="' + escapeHtml(row.paymentMethod || '') + '">' +
                         '<i class="fa-solid fa-print"></i></button>';
                 }
@@ -1002,7 +1432,7 @@
                 showFormSuccess(postedSuccessMessage(selectedMethod, postedChequeNumber));
                 var postedTransaction = result && (result.transaction || result.Transaction);
                 if (postedTransaction && usesChequeNumber(selectedMethod)) {
-                    openChequePrintModal(postedTransaction);
+                    openChequePrintModal(postedTransaction, readPayeeChoice());
                 }
                 $('#bank-op-form')[0].reset();
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
@@ -1082,7 +1512,16 @@
 
         $('#bank-op-form').on('submit', saveOperation);
 
-        $('#op-amount').on('input change', updateAmountInWords);
+        $('#op-amount').on('input change', function () {
+            updateAmountInWords();
+            refreshLiveCheque();
+        });
+        $('#op-date, #op-cheque-date').on('change input', refreshLiveCheque);
+        $('#op-counter-account-id').on('change select2:select select2:clear', refreshLiveCheque);
+        $('#chequePrintModal').on('hidden.bs.modal', function () {
+            chequePreviewFromTransaction = false;
+            refreshLiveCheque();
+        });
 
         $(document).on('change', '.deposit-cheque-checkbox', updateDepositSelectedTotal);
         $('#deposit-select-all').on('change', function () {
@@ -1093,6 +1532,13 @@
 
         if (transactionType === 1) {
             $('#op-date').on('change', renderUndepositedCheques);
+        }
+
+        if (transactionType === 2) {
+            $('#cheque-date-x').val(storedChequeShift('pa-erp-cheque-date-x', 'pa-erp-cheque-shift-x'));
+            $('#cheque-date-y').val(storedChequeShift('pa-erp-cheque-date-y', 'pa-erp-cheque-shift-y'));
+            $('#cheque-pay-x').val(storedChequeShift('pa-erp-cheque-pay-x', 'pa-erp-cheque-shift-x'));
+            $('#cheque-pay-y').val(storedChequeShift('pa-erp-cheque-pay-y', 'pa-erp-cheque-shift-y'));
         }
 
         if (transactionType === 2 && canCreate) {
@@ -1106,18 +1552,53 @@
             if (!chequePrintTransactionId) {
                 return;
             }
-            var payeeMode = $('input[name="cheque-payee-mode"]:checked').val() || 'party';
+            var payeeChoice = readPayeeChoice();
             var orientation = $('input[name="cheque-orientation"]:checked').val() || 'landscape';
+            var align = readChequeAlign();
+            $('#cheque-date-x').val(align.dateX);
+            $('#cheque-date-y').val(align.dateY);
+            $('#cheque-pay-x').val(align.payX);
+            $('#cheque-pay-y').val(align.payY);
             try {
                 localStorage.setItem('pa-erp-cheque-orientation', orientation);
+                localStorage.setItem('pa-erp-cheque-date-x', String(align.dateX));
+                localStorage.setItem('pa-erp-cheque-date-y', String(align.dateY));
+                localStorage.setItem('pa-erp-cheque-pay-x', String(align.payX));
+                localStorage.setItem('pa-erp-cheque-pay-y', String(align.payY));
             } catch (e) {
                 // Ignore private-mode storage failures.
             }
             if (chequePrintModal) {
                 chequePrintModal.hide();
             }
-            printChequePdf(chequePrintTransactionId, payeeMode, orientation);
+            printChequePdf(chequePrintTransactionId, payeeChoice, orientation, align);
         });
+
+        $(document).on('change', '#cheque-payee-cash, #modal-cheque-payee-cash, #cheque-payee-party, #modal-cheque-payee-party, #cheque-payee-text, #modal-cheque-payee-text', function () {
+            if (!this.checked) {
+                $(this).prop('checked', true);
+                return;
+            }
+            var mode = 'party';
+            if (this.id.indexOf('cash') !== -1) {
+                mode = 'cash';
+            } else if (this.id.indexOf('text') !== -1) {
+                mode = 'text';
+            }
+            applyChequePayeeMode(mode);
+            if (mode === 'text') {
+                $(this.id.indexOf('modal') === 0 ? '#modal-cheque-payee-text-input' : '#cheque-payee-text-input').trigger('focus');
+            }
+            refreshLiveCheque();
+        });
+
+        $(document).on('input', '#cheque-payee-text-input, #modal-cheque-payee-text-input', function () {
+            var value = $(this).val();
+            $('#cheque-payee-text-input, #modal-cheque-payee-text-input').not(this).val(value);
+            refreshLiveCheque();
+        });
+
+        $(document).on('change input', 'input[name="cheque-orientation"], #cheque-date-x, #cheque-date-y, #cheque-pay-x, #cheque-pay-y', renderChequePreview);
 
         $(document).on('click', '.js-print-cheque', function () {
             openChequePrintModal({
@@ -1125,6 +1606,7 @@
                 partyName: $(this).data('party') || '',
                 amount: parseFloat($(this).data('amount')) || 0,
                 chequeNumber: $(this).data('cheque') || '',
+                chequeDate: $(this).attr('data-date') || '',
                 paymentMethod: $(this).data('method') || ''
             });
         });

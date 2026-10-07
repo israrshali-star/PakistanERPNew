@@ -101,7 +101,8 @@ public class BankTransactionService : IBankTransactionService
                 t.PartyName,
                 t.PaymentMethod,
                 t.ChequeNumber,
-                t.IsReconciled
+                t.IsReconciled,
+                t.ChequeDate
             })
             .ToListAsync(cancellationToken);
 
@@ -117,7 +118,8 @@ public class BankTransactionService : IBankTransactionService
                 t.PartyName,
                 t.PaymentMethod?.ToString(),
                 t.ChequeNumber,
-                t.IsReconciled))
+                t.IsReconciled,
+                t.ChequeDate))
             .ToList();
 
         return new DataTableResponse<BankTransactionListItemDto>(

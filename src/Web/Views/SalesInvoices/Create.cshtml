@@ -1,10 +1,12 @@
 @using System.Text.Json
 @using PakistanAccountingERP.Application.Common
 @using PakistanAccountingERP.Application.DTOs
+@using PakistanAccountingERP.Domain.Enums
 @model SalesInvoiceDetailDto?
 @{
     var isCopy = ViewData["IsCopy"] as bool? == true;
     var isEdit = Model != null && !isCopy;
+    var isPostedEdit = isEdit && Model!.Status == InvoiceStatus.Posted;
     ViewData["Title"] = isEdit ? "Edit Sales Invoice" : (isCopy ? "Recreate Sales Invoice" : "Create Sales Invoice");
     var invoiceJson = (isEdit || isCopy) && Model != null
         ? JsonSerializer.Serialize(Model, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
@@ -17,12 +19,24 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="text-primary mb-0">@(isEdit ? "Edit Sales Invoice" : (isCopy ? "Recreate Sales Invoice" : "Create Sales Invoice"))</h4>
-        <p class="text-muted small mb-0">@(isEdit ? "Update this draft before posting to GL" : (isCopy ? "New draft copied from " + copyFromNumber + " — review lines and save" : "Draft invoice with customer, FBR scenario, and line items"))</p>
+        <p class="text-muted small mb-0">@(isPostedEdit ? "SuperAdmin edit of a posted invoice. Saving updates the invoice, stock, and general ledger." : (isEdit ? "Update this draft before posting to GL" : (isCopy ? "New draft copied from " + copyFromNumber + " — review lines and save" : "Draft invoice with customer, FBR scenario, and line items")))</p>
     </div>
     <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
         <i class="fa-solid fa-arrow-left me-1"></i>Back to Sales List
     </a>
 </div>
+
+@if (isPostedEdit)
+{
+    <div class="alert alert-warning py-2 small mb-2">
+        <i class="fa-solid fa-user-shield me-1"></i>
+        This invoice is already posted. Change the weight or other lines, then save. Stock and the ledger update with the invoice.
+        @if (Model!.FbrSubmittedAt is not null)
+        {
+            <span> FBR was already submitted, so this does not resend the invoice to FBR.</span>
+        }
+    </div>
+}
 
 @if (isCopy)
 {
@@ -174,7 +188,7 @@
 
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary" id="btn-save-invoice">
-            <i class="fa-solid fa-floppy-disk me-1"></i>@(isEdit ? "Update Draft Invoice" : "Save Draft Invoice")
+            <i class="fa-solid fa-floppy-disk me-1"></i>@(isPostedEdit ? "Save Posted Invoice" : (isEdit ? "Update Draft Invoice" : "Save Draft Invoice"))
         </button>
         <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
     </div>

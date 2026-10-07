@@ -684,6 +684,13 @@ public class InventoryReportService : IInventoryReportService
                 lines,
                 cancellationToken);
         }
+        lines = await ApplyStockMovementRemainingAsync(
+            companyId,
+            from,
+            request.ItemId,
+            request.WarehouseId,
+            lines,
+            cancellationToken);
         return new StockMovementReportDto(
             request.FromDate.Date,
             request.ToDate.Date,
@@ -1317,6 +1324,123 @@ public class InventoryReportService : IInventoryReportService
         }
         return updated;
     }
+
+    private async Task<List<StockMovementLineDto>> ApplyStockMovementRemainingAsync(
+        int companyId,
+        DateTime from,
+        int? itemId,
+        int? warehouseId,
+        List<StockMovementLineDto> lines,
+        CancellationToken cancellationToken)
+    {
+        if (lines.Count == 0)
+        {
+            return lines;
+        }
+
+        var codes = lines
+            .Select(l => l.ItemCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var itemRows = await _unitOfWork.Repository<Item>()
+            .Query()
+            .Where(i => i.CompanyId == companyId && codes.Contains(i.ItemCode))
+            .Select(i => new { i.Id, i.ItemCode })
+            .ToListAsync(cancellationToken);
+        var itemIdByCode = itemRows
+            .GroupBy(i => i.ItemCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+        var itemIds = itemIdByCode.Values.Distinct().ToList();
+        if (itemId.HasValue && !itemIds.Contains(itemId.Value))
+        {
+            itemIds.Add(itemId.Value);
+        }
+
+        var openingQuery = _unitOfWork.Repository<InventoryTransaction>()
+            .Query()
+            .Where(t => t.CompanyId == companyId && t.TransactionDate < from);
+        if (itemIds.Count > 0)
+        {
+            openingQuery = openingQuery.Where(t => itemIds.Contains(t.ItemId));
+        }
+        else if (itemId.HasValue)
+        {
+            openingQuery = openingQuery.Where(t => t.ItemId == itemId.Value);
+        }
+        if (warehouseId.HasValue)
+        {
+            openingQuery = openingQuery.Where(t => t.WarehouseId == warehouseId.Value);
+        }
+
+        var openingRows = await openingQuery
+            .Select(t => new
+            {
+                t.Item.ItemCode,
+                t.StackNo,
+                t.LotNo,
+                SignedQty = t.TransactionType == InventoryTransactionType.StockOut
+                    ? -t.Quantity
+                    : t.Quantity
+            })
+            .ToListAsync(cancellationToken);
+        var openingWeight = openingRows
+            .GroupBy(
+                t => MovementBalanceKey(t.ItemCode, t.StackNo, t.LotNo),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(g.Sum(x => x.SignedQty), 2),
+                StringComparer.OrdinalIgnoreCase);
+        var openingCartons = await BuildStackCartonsAsOfAsync(
+            companyId,
+            itemIds,
+            from.AddTicks(-1),
+            null,
+            cancellationToken);
+
+        return AssignRunningRemaining(lines, from, openingWeight, openingCartons, itemIdByCode);
+    }
+
+    private static List<StockMovementLineDto> AssignRunningRemaining(
+        IReadOnlyList<StockMovementLineDto> lines,
+        DateTime from,
+        IReadOnlyDictionary<string, decimal> openingWeight,
+        IReadOnlyDictionary<string, decimal> openingCartons,
+        IReadOnlyDictionary<string, int> itemIdByCode)
+    {
+        var weight = new Dictionary<string, decimal>(openingWeight, StringComparer.OrdinalIgnoreCase);
+        var cartons = new Dictionary<string, decimal>(openingCartons, StringComparer.OrdinalIgnoreCase);
+        var result = new List<StockMovementLineDto>(lines.Count);
+        foreach (var line in lines)
+        {
+            var weightKey = MovementBalanceKey(line.ItemCode, line.StackNo, line.LotNo);
+            var itemId = itemIdByCode.TryGetValue(line.ItemCode ?? string.Empty, out var resolvedItemId)
+                ? resolvedItemId
+                : 0;
+            var cartonKey = StackCartonKey(itemId, line.StackNo);
+            if (line.TransactionDate.Date >= from.Date)
+            {
+                weight[weightKey] = Math.Round(
+                    weight.GetValueOrDefault(weightKey) + line.QtyIn - line.QtyOut + line.AdjustmentQty,
+                    2);
+                cartons[cartonKey] = Math.Round(
+                    cartons.GetValueOrDefault(cartonKey) + line.CartonsIn - line.CartonsOut,
+                    2);
+            }
+
+            result.Add(line with
+            {
+                RemainingWeight = weight.GetValueOrDefault(weightKey),
+                RemainingCartons = cartons.GetValueOrDefault(cartonKey)
+            });
+        }
+
+        return result;
+    }
+
+    private static string MovementBalanceKey(string? itemCode, string? stackNo, string? lotNo) =>
+        $"{(itemCode ?? string.Empty).Trim()}|{(stackNo ?? string.Empty).Trim()}|{(lotNo ?? string.Empty).Trim()}";
 
     private static string NormalizeMovementKeyPart(string? value) =>
         MovementCartonResolver.NormalizeKeyPart(value);

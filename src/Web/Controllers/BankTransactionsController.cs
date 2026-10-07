@@ -1,8 +1,11 @@
+using System.Globalization;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
+using PakistanAccountingERP.Application.Services;
 using PakistanAccountingERP.Domain.Enums;
 using PakistanAccountingERP.Web.Authorization;
 
@@ -244,49 +247,165 @@ public class BankTransactionsApiController : ControllerBase
     public async Task<IActionResult> ChequePdf(
         int id,
         [FromQuery] string? payee,
+        [FromQuery] string? payeeText,
         [FromQuery] string? orientation,
+        [FromQuery] string? shiftX,
+        [FromQuery] string? shiftY,
+        [FromQuery] string? dateX,
+        [FromQuery] string? dateY,
+        [FromQuery] string? payX,
+        [FromQuery] string? payY,
         CancellationToken cancellationToken)
     {
         try
         {
-            var transaction = await _bankTransactionService.GetByIdAsync(id, cancellationToken);
-            if (transaction is null)
+            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, cancellationToken);
+            if (built.Result is not null)
             {
-                return NotFound();
+                return built.Result;
             }
 
-            if (transaction.TransactionType != BankTransactionType.Withdrawal
-                || transaction.PaymentMethod is not (PaymentMethod.Cheque or PaymentMethod.CashWithdrawal))
-            {
-                return BadRequest(new { message = "Only posted cheques can be printed." });
-            }
-
-            var useCash = string.Equals(payee, "cash", StringComparison.OrdinalIgnoreCase);
-            var payeeName = useCash
-                ? "Cash"
-                : (string.IsNullOrWhiteSpace(transaction.PartyName) ? "Cash" : transaction.PartyName.Trim());
-
-            var chequeDate = transaction.ChequeDate ?? transaction.TransactionDate;
-            var pageOrientation = string.Equals(orientation, "portrait", StringComparison.OrdinalIgnoreCase)
-                ? ChequePageOrientation.Portrait
-                : ChequePageOrientation.Landscape;
-            var pdf = _chequePrintPdfService.GeneratePdf(new ChequePrintDto(
-                payeeName,
-                chequeDate,
-                transaction.Amount,
-                AmountInWords.ToChequeLeafWords(transaction.Amount),
-                AmountInWords.ToChequeFigures(transaction.Amount),
-                transaction.ChequeNumber,
-                pageOrientation));
-
-            var safeNumber = string.IsNullOrWhiteSpace(transaction.ChequeNumber)
+            var pdf = _chequePrintPdfService.GeneratePdf(built.Model!);
+            var chequeNumber = built.Model!.ChequeNumber;
+            var safeNumber = string.IsNullOrWhiteSpace(chequeNumber)
                 ? id.ToString()
-                : transaction.ChequeNumber.Replace(" ", string.Empty);
-            return File(pdf, "application/pdf", $"cheque-{safeNumber}.pdf");
+                : new string(chequeNumber.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
+            if (string.IsNullOrEmpty(safeNumber))
+            {
+                safeNumber = id.ToString();
+            }
+
+            Response.Headers.ContentDisposition = new ContentDispositionHeaderValue("inline")
+            {
+                FileName = $"cheque-{safeNumber}.pdf"
+            }.ToString();
+            SetChequeNoStore();
+            return File(pdf, "application/pdf");
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    [HttpGet("{id:int}/cheque-print")]
+    [RequirePermission("Banking.View")]
+    public async Task<IActionResult> ChequePrint(
+        int id,
+        [FromQuery] string? payee,
+        [FromQuery] string? payeeText,
+        [FromQuery] string? orientation,
+        [FromQuery] string? shiftX,
+        [FromQuery] string? shiftY,
+        [FromQuery] string? dateX,
+        [FromQuery] string? dateY,
+        [FromQuery] string? payX,
+        [FromQuery] string? payY,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, cancellationToken);
+            if (built.Result is not null)
+            {
+                return built.Result;
+            }
+
+            SetChequeNoStore();
+            return Content(ChequePrintHtml.Build(built.Model!), "text/html; charset=utf-8");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    private async Task<(IActionResult? Result, ChequePrintDto? Model)> BuildChequePrintAsync(
+        int id,
+        string? payee,
+        string? payeeText,
+        string? orientation,
+        string? shiftX,
+        string? shiftY,
+        string? dateX,
+        string? dateY,
+        string? payX,
+        string? payY,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await _bankTransactionService.GetByIdAsync(id, cancellationToken);
+        if (transaction is null)
+        {
+            return (NotFound(), null);
+        }
+
+        if (transaction.TransactionType != BankTransactionType.Withdrawal
+            || transaction.PaymentMethod is not (PaymentMethod.Cheque or PaymentMethod.CashWithdrawal))
+        {
+            return (BadRequest(new { message = "Only posted cheques can be printed." }), null);
+        }
+
+        var payeeName = ResolveChequePayeeName(payee, payeeText, transaction.PartyName);
+        var pageOrientation = string.Equals(orientation, "portrait", StringComparison.OrdinalIgnoreCase)
+            ? ChequePageOrientation.Portrait
+            : ChequePageOrientation.Landscape;
+
+        return (null, new ChequePrintDto(
+            payeeName,
+            transaction.ChequeDate ?? transaction.TransactionDate,
+            transaction.Amount,
+            AmountInWords.ToChequeLeafWords(transaction.Amount),
+            AmountInWords.ToChequeFigures(transaction.Amount),
+            transaction.ChequeNumber,
+            pageOrientation,
+            ParseChequeShift(shiftX),
+            ParseChequeShift(shiftY),
+            ParseChequeShift(dateX),
+            ParseChequeShift(dateY),
+            ParseChequeShift(payX),
+            ParseChequeShift(payY)));
+    }
+
+    private void SetChequeNoStore()
+    {
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["Expires"] = "0";
+    }
+
+    private static string ResolveChequePayeeName(string? payee, string? payeeText, string? partyName)
+    {
+        if (string.Equals(payee, "cash", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Cash";
+        }
+
+        if (string.Equals(payee, "text", StringComparison.OrdinalIgnoreCase))
+        {
+            return SanitizeChequePayeeText(payeeText);
+        }
+
+        return string.IsNullOrWhiteSpace(partyName) ? "Cash" : partyName.Trim();
+    }
+
+    private static string SanitizeChequePayeeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var cleaned = new string(value.Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+        return cleaned.Length <= 80 ? cleaned : cleaned[..80];
+    }
+
+    private static float ParseChequeShift(string? raw)
+    {
+        if (!float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            return 0;
+        }
+
+        return Math.Clamp(value, -ChequeLeafLayout.MaxShiftMm, ChequeLeafLayout.MaxShiftMm);
     }
 }

@@ -1,4 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <Content Include="logs\**\*" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Application\PakistanAccountingERP.Application.csproj" />
@@ -15,6 +19,11 @@
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
+
+  <Target Name="EnsurePublishFolders" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)logs;$(PublishDir)App_Data\Logs" />
+    <Delete Files="$(PublishDir)app_offline.htm" />
+  </Target>
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

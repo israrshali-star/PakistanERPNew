@@ -114,6 +114,7 @@ public partial class SalesInvoiceService : ISalesInvoiceService
         }
 
         var recordsFiltered = await query.CountAsync(cancellationToken);
+        var allowPostedEdit = IsSuperAdmin();
         query = ApplyOrdering(query, request);
 
         if (request.Length > 0)
@@ -131,7 +132,9 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 i.NetTotal,
                 i.Status.ToString(),
                 i.FbrInvoiceNumber,
-                i.Status == InvoiceStatus.Draft,
+                allowPostedEdit
+                    ? i.Status != InvoiceStatus.Cancelled
+                    : i.Status == InvoiceStatus.Draft,
                 i.Status == InvoiceStatus.Draft,
                 i.Status == InvoiceStatus.Posted && i.FbrSubmittedAt == null,
                 i.FbrSubmittedAt != null,
@@ -553,10 +556,23 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             return new SalesInvoiceSaveResult(false, "Invoice not found.", null);
         }
 
-        if (entity.Status != InvoiceStatus.Draft)
+        if (entity.Status == InvoiceStatus.Cancelled)
+        {
+            return new SalesInvoiceSaveResult(false, "Cancelled invoices cannot be edited.", null);
+        }
+
+        var editingPosted = entity.Status == InvoiceStatus.Posted;
+        if (!editingPosted && entity.Status != InvoiceStatus.Draft)
         {
             return new SalesInvoiceSaveResult(false, "Only draft invoices can be edited.", null);
         }
+
+        if (editingPosted && !IsSuperAdmin())
+        {
+            return new SalesInvoiceSaveResult(false, "Only a SuperAdmin can edit a posted invoice.", null);
+        }
+
+        var previousInvoiceNumber = entity.InvoiceNumber;
 
         var customer = await _unitOfWork.Repository<Customer>()
             .Query()
@@ -650,6 +666,11 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             _unitOfWork.Repository<SalesInvoiceLine>().Remove(existingLine);
         }
 
+        if (editingPosted)
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        }
+
         var now = DateTime.UtcNow;
         var netTotal = Math.Round(lineBuild.SubTotal - lineBuild.DiscountTotal + lineBuild.TaxTotal, 2);
         var (formattedBuyerNtn, formattedBuyerCnic) = TradeInvoiceLayout.FormatCustomerTaxIds(
@@ -687,14 +708,49 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
             await _unitOfWork.Repository<SalesInvoiceLine>().AddRangeAsync(lineBuild.Lines, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (editingPosted)
+            {
+                var refreshError = await RefreshPostedInvoiceAsync(
+                    entity,
+                    previousInvoiceNumber,
+                    lineBuild.Lines,
+                    cancellationToken);
+                if (refreshError is not null)
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return new SalesInvoiceSaveResult(false, refreshError, null);
+                }
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
+            if (editingPosted)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            }
+
             _logger.LogError(ex, "Failed to update sales invoice {InvoiceId}", entity.Id);
             return new SalesInvoiceSaveResult(false, "Could not update invoice.", null);
         }
+        catch
+        {
+            if (editingPosted)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            }
 
-        await TryAuditAsync("Update", entity.Id.ToString(), null, invoiceNumber, cancellationToken);
+            throw;
+        }
+
+        await TryAuditAsync(
+            editingPosted ? "UpdatePosted" : "Update",
+            entity.Id.ToString(),
+            null,
+            invoiceNumber,
+            cancellationToken);
 
         return new SalesInvoiceSaveResult(true, null, entity.Id);
     }
@@ -1408,6 +1464,101 @@ public partial class SalesInvoiceService : ISalesInvoiceService
 
         var detail = await GetDetailAsync(id, cancellationToken);
         return new SalesInvoiceActionResult(true, "Invoice posted to the general ledger.", detail);
+    }
+
+    public async Task<SalesInvoiceActionResult> CorrectLineStackAsync(
+        int invoiceId,
+        int lineId,
+        string stackNo,
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _currentCompany.GetRequiredCompanyId();
+        var newStack = (stackNo ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newStack))
+        {
+            return new SalesInvoiceActionResult(false, "Enter the stack number.", null);
+        }
+
+        if (newStack.Length > 50)
+        {
+            return new SalesInvoiceActionResult(false, "Stack number must be 50 characters or less.", null);
+        }
+
+        var invoice = await _unitOfWork.Repository<SalesInvoice>()
+            .Query()
+            .Where(i => i.Id == invoiceId && i.CompanyId == companyId && !i.IsDeleted)
+            .Select(i => new { i.Id, i.InvoiceNumber, i.Status })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (invoice is null)
+        {
+            return new SalesInvoiceActionResult(false, "Invoice not found.", null);
+        }
+
+        if (invoice.Status == InvoiceStatus.Cancelled)
+        {
+            return new SalesInvoiceActionResult(false, "Cancelled invoices cannot be changed.", null);
+        }
+
+        var line = await _unitOfWork.Repository<SalesInvoiceLine>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(l => l.Id == lineId && l.SalesInvoiceId == invoice.Id, cancellationToken);
+
+        if (line is null)
+        {
+            return new SalesInvoiceActionResult(false, "Invoice line not found.", null);
+        }
+
+        var oldStack = line.StackNo?.Trim();
+        if (string.Equals(oldStack, newStack, StringComparison.Ordinal))
+        {
+            return new SalesInvoiceActionResult(true, "Stack number is already " + newStack + ".", null);
+        }
+
+        line.StackNo = newStack;
+
+        if (invoice.Status == InvoiceStatus.Posted)
+        {
+            var transactions = await _unitOfWork.Repository<InventoryTransaction>()
+                .Query(asNoTracking: false)
+                .Where(t => t.CompanyId == companyId
+                    && !t.IsDeleted
+                    && t.ReferenceNo == invoice.InvoiceNumber
+                    && t.ItemId == line.ItemId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var transaction in transactions)
+            {
+                if (!string.Equals(transaction.StackNo?.Trim(), oldStack, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                transaction.StackNo = newStack;
+            }
+        }
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to correct stack on sales invoice {InvoiceId} line {LineId}", invoiceId, lineId);
+            return new SalesInvoiceActionResult(false, "Could not save the stack number.", null);
+        }
+        await TryAuditAsync(
+            "CorrectStack",
+            invoice.Id.ToString(),
+            oldStack,
+            newStack,
+            cancellationToken);
+
+        var detail = await GetDetailAsync(invoice.Id, cancellationToken);
+        return new SalesInvoiceActionResult(
+            true,
+            $"Stack number updated from {oldStack ?? "blank"} to {newStack}.",
+            detail);
     }
 
     public async Task<SalesInvoiceActionResult> CancelAsync(int id, CancellationToken cancellationToken = default)
@@ -2493,6 +2644,362 @@ public partial class SalesInvoiceService : ISalesInvoiceService
             7 => desc ? query.OrderByDescending(i => i.DeliveryChallanEmailedAt) : query.OrderBy(i => i.DeliveryChallanEmailedAt),
             _ => desc ? query.OrderByDescending(i => i.InvoiceDate) : query.OrderBy(i => i.InvoiceDate)
         };
+    }
+
+    private bool IsSuperAdmin() =>
+        _currentUser.Roles.Any(r => string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+
+    private async Task<string?> RefreshPostedInvoiceAsync(
+        SalesInvoice invoice,
+        string previousInvoiceNumber,
+        IReadOnlyList<SalesInvoiceLine> lines,
+        CancellationToken cancellationToken)
+    {
+        var companyId = invoice.CompanyId;
+        var now = DateTime.UtcNow;
+        var userName = _currentUser.UserName ?? "system";
+        var referenceNumbers = new List<string>
+        {
+            previousInvoiceNumber.Trim(),
+            invoice.InvoiceNumber.Trim()
+        };
+
+        var oldTransactions = await _unitOfWork.Repository<InventoryTransaction>()
+            .Query(asNoTracking: false)
+            .Where(t => t.CompanyId == companyId
+                && !t.IsDeleted
+                && t.ReferenceNo != null
+                && referenceNumbers.Contains(t.ReferenceNo))
+            .ToListAsync(cancellationToken);
+
+        var itemIds = lines.Select(l => l.ItemId)
+            .Concat(oldTransactions.Select(t => t.ItemId))
+            .Distinct()
+            .ToList();
+        var items = itemIds.Count == 0
+            ? new Dictionary<int, Item>()
+            : await _unitOfWork.Repository<Item>()
+                .Query(asNoTracking: false)
+                .Where(i => i.CompanyId == companyId && itemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+        foreach (var transaction in oldTransactions)
+        {
+            if (items.TryGetValue(transaction.ItemId, out var item))
+            {
+                item.CurrentStock = transaction.TransactionType == InventoryTransactionType.StockIn
+                    ? Math.Round(item.CurrentStock - transaction.Quantity, 2)
+                    : Math.Round(item.CurrentStock + transaction.Quantity, 2);
+                item.UpdatedAt = now;
+                item.UpdatedBy = userName;
+            }
+
+            _unitOfWork.Repository<InventoryTransaction>().Remove(transaction);
+        }
+
+        if (oldTransactions.Count > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        var cartageItemIds = items.Values
+            .Where(i => i.ItemCode == CartageItemCode)
+            .Select(i => i.Id)
+            .ToHashSet();
+
+        decimal goodsSalesAmount = 0m;
+        decimal lineTaxTotal = 0m;
+        decimal cartageAmount = 0m;
+        foreach (var line in lines)
+        {
+            if (cartageItemIds.Contains(line.ItemId))
+            {
+                cartageAmount += Math.Round(line.LineTotal, 2);
+                continue;
+            }
+
+            goodsSalesAmount += Math.Round(Math.Max(0m, line.Quantity * line.Price - line.Discount), 2);
+            lineTaxTotal += Math.Round(line.TaxAmount, 2);
+        }
+
+        goodsSalesAmount = Math.Round(goodsSalesAmount, 2);
+        lineTaxTotal = Math.Round(lineTaxTotal, 2);
+        cartageAmount = Math.Round(cartageAmount, 2);
+        var useSplitTaxGl = TradeInvoiceLayout.UsesSplitTaxSubAccounts(companyId);
+        decimal salesTaxAmount;
+        decimal furtherTaxAmount;
+        if (useSplitTaxGl && goodsSalesAmount > 0m)
+        {
+            salesTaxAmount = Math.Round(invoice.TaxAmount, 2);
+            furtherTaxAmount = Math.Round(invoice.FurtherTax, 2);
+        }
+        else
+        {
+            furtherTaxAmount = Math.Round(invoice.FurtherTax, 2);
+            salesTaxAmount = furtherTaxAmount > 0m
+                ? Math.Round(invoice.TaxAmount, 2)
+                : lineTaxTotal;
+        }
+
+        var netTotal = Math.Round(invoice.NetTotal, 2);
+        var accounts = await ResolvePostingAccountsAsync(companyId, invoice.InvoiceType, cancellationToken);
+        if (!accounts.Success)
+        {
+            return accounts.Message;
+        }
+
+        var inventoryItemIds = lines
+            .Where(l => !cartageItemIds.Contains(l.ItemId)
+                && items.TryGetValue(l.ItemId, out var item)
+                && item.ItemType != ItemType.Service)
+            .Select(l => l.ItemId)
+            .Distinct()
+            .ToList();
+        var costingBatch = await _inventoryCosting.CreateBatchAsync(companyId, inventoryItemIds, cancellationToken);
+        var lineCosts = new Dictionary<int, InventoryLineCostResult>();
+        decimal cogsAmount = 0m;
+        foreach (var line in lines)
+        {
+            if (cartageItemIds.Contains(line.ItemId)
+                || !items.TryGetValue(line.ItemId, out var item)
+                || item.ItemType == ItemType.Service)
+            {
+                continue;
+            }
+
+            var quantity = Math.Round(line.Quantity, 2);
+            if (quantity <= 0m)
+            {
+                continue;
+            }
+
+            var costResult = costingBatch.Calculate(new InventoryLineCostRequest(
+                item.Id,
+                line.StackNo,
+                line.LotNo,
+                item.StackNo,
+                item.LotNo,
+                quantity,
+                item.CostingMethod,
+                item.PurchaseRate));
+            if (!costResult.Success)
+            {
+                return costResult.Message;
+            }
+
+            lineCosts[line.Id] = costResult;
+            cogsAmount += costResult.TotalCost;
+        }
+
+        cogsAmount = Math.Round(cogsAmount, 2);
+        var journalError = await RewritePostedJournalAsync(
+            invoice,
+            accounts,
+            useSplitTaxGl && salesTaxAmount + furtherTaxAmount > 0m,
+            goodsSalesAmount,
+            salesTaxAmount,
+            furtherTaxAmount,
+            cartageAmount,
+            cogsAmount,
+            netTotal,
+            cancellationToken);
+        if (journalError is not null)
+        {
+            return journalError;
+        }
+
+        if (inventoryItemIds.Count > 0
+            && invoice.InvoiceType is InvoiceType.SalesInvoice or InvoiceType.CreditNote)
+        {
+            var warehouseId = oldTransactions.FirstOrDefault()?.WarehouseId
+                ?? await GetDefaultWarehouseIdAsync(companyId, cancellationToken);
+            if (!warehouseId.HasValue)
+            {
+                return "No active warehouse found. Add a warehouse before updating a posted invoice.";
+            }
+
+            var isCreditNote = invoice.InvoiceType == InvoiceType.CreditNote;
+            var inventoryTransactions = new List<InventoryTransaction>();
+            foreach (var line in lines)
+            {
+                if (cartageItemIds.Contains(line.ItemId)
+                    || !items.TryGetValue(line.ItemId, out var item)
+                    || item.ItemType == ItemType.Service)
+                {
+                    continue;
+                }
+
+                var quantity = Math.Round(line.Quantity, 2);
+                if (quantity <= 0m)
+                {
+                    continue;
+                }
+
+                if (!isCreditNote && item.CurrentStock < quantity)
+                {
+                    return $"Insufficient stock for {item.ItemCode}. Available: {item.CurrentStock:N2}";
+                }
+
+                var unitCost = lineCosts.TryGetValue(line.Id, out var lineCost)
+                    ? lineCost.UnitCost
+                    : Math.Round(item.PurchaseRate, 2);
+                var lineTotalCost = lineCosts.TryGetValue(line.Id, out var lineCostTotal)
+                    ? lineCostTotal.TotalCost
+                    : Math.Round(quantity * unitCost, 2);
+
+                inventoryTransactions.Add(new InventoryTransaction
+                {
+                    CompanyId = companyId,
+                    ItemId = item.Id,
+                    WarehouseId = warehouseId.Value,
+                    TransactionType = isCreditNote
+                        ? InventoryTransactionType.StockIn
+                        : InventoryTransactionType.StockOut,
+                    StackNo = string.IsNullOrWhiteSpace(line.StackNo) ? null : line.StackNo.Trim(),
+                    LotNo = string.IsNullOrWhiteSpace(line.LotNo) ? null : line.LotNo.Trim(),
+                    Quantity = quantity,
+                    UnitCost = unitCost,
+                    TotalCost = lineTotalCost,
+                    TransactionDate = invoice.InvoiceDate,
+                    ReferenceNo = invoice.InvoiceNumber,
+                    Notes = $"Sales invoice {invoice.InvoiceNumber}",
+                    CreatedAt = now,
+                    CreatedBy = userName
+                });
+
+                item.CurrentStock = isCreditNote
+                    ? Math.Round(item.CurrentStock + quantity, 2)
+                    : Math.Round(item.CurrentStock - quantity, 2);
+                item.UpdatedAt = now;
+                item.UpdatedBy = userName;
+            }
+
+            if (inventoryTransactions.Count > 0)
+            {
+                await _unitOfWork.Repository<InventoryTransaction>().AddRangeAsync(
+                    inventoryTransactions,
+                    cancellationToken);
+            }
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (itemIds.Count > 0)
+        {
+            await _itemCartonSyncService.SyncItemsAsync(companyId, itemIds, cancellationToken);
+        }
+
+        return null;
+    }
+
+    private async Task<string?> RewritePostedJournalAsync(
+        SalesInvoice invoice,
+        (bool Success, string? Message, int ArAccountId, int RevenueAccountId, int TaxAccountId, int? SalesTax18AccountId, int? FurtherTaxAccountId, int? CartageAccountId, int? CogsAccountId, int? InventoryAccountId) accounts,
+        bool useSplitTaxSubAccounts,
+        decimal goodsSalesAmount,
+        decimal salesTaxAmount,
+        decimal furtherTaxAmount,
+        decimal cartageAmount,
+        decimal cogsAmount,
+        decimal netTotal,
+        CancellationToken cancellationToken)
+    {
+        if (invoice.JournalEntryId is null)
+        {
+            return "This posted invoice has no journal entry to update.";
+        }
+
+        var journal = await _unitOfWork.Repository<JournalEntry>()
+            .Query(asNoTracking: false)
+            .FirstOrDefaultAsync(j => j.Id == invoice.JournalEntryId && j.CompanyId == invoice.CompanyId, cancellationToken);
+        if (journal is null)
+        {
+            return "This posted invoice has no journal entry to update.";
+        }
+
+        journal.EntryDate = invoice.InvoiceDate;
+        journal.Description = $"Sales invoice {invoice.InvoiceNumber}";
+        journal.UpdatedAt = DateTime.UtcNow;
+        journal.UpdatedBy = _currentUser.UserName ?? "system";
+
+        var existingLines = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query(asNoTracking: false)
+            .Where(l => l.JournalEntryId == journal.Id)
+            .ToListAsync(cancellationToken);
+
+        var rebuilt = BuildJournalLines(
+            invoice.InvoiceType,
+            accounts.ArAccountId,
+            accounts.RevenueAccountId,
+            accounts.TaxAccountId,
+            accounts.SalesTax18AccountId,
+            accounts.FurtherTaxAccountId,
+            useSplitTaxSubAccounts,
+            accounts.CartageAccountId,
+            accounts.CogsAccountId,
+            accounts.InventoryAccountId,
+            goodsSalesAmount,
+            salesTaxAmount,
+            furtherTaxAmount,
+            cartageAmount,
+            cogsAmount,
+            netTotal);
+
+        var used = new HashSet<int>();
+        var addedLines = new List<JournalEntryLine>();
+        foreach (var rebuiltLine in rebuilt)
+        {
+            rebuiltLine.Memo = JournalDocumentMemo.WithDocumentNumber(invoice.InvoiceNumber, rebuiltLine.Memo);
+            var token = JournalMemoToken(rebuiltLine.Memo);
+            var match = existingLines.FirstOrDefault(l =>
+                !used.Contains(l.Id) && JournalMemoToken(l.Memo) == token);
+            if (match is null)
+            {
+                rebuiltLine.JournalEntryId = journal.Id;
+                addedLines.Add(rebuiltLine);
+                await _unitOfWork.Repository<JournalEntryLine>().AddAsync(rebuiltLine, cancellationToken);
+                continue;
+            }
+
+            used.Add(match.Id);
+            match.ChartOfAccountId = rebuiltLine.ChartOfAccountId;
+            match.Debit = rebuiltLine.Debit;
+            match.Credit = rebuiltLine.Credit;
+            match.Memo = rebuiltLine.Memo;
+        }
+
+        foreach (var leftover in existingLines.Where(l => !used.Contains(l.Id)))
+        {
+            leftover.Debit = 0m;
+            leftover.Credit = 0m;
+        }
+
+        var debit = existingLines.Sum(l => l.Debit) + addedLines.Sum(l => l.Debit);
+        var credit = existingLines.Sum(l => l.Credit) + addedLines.Sum(l => l.Credit);
+        if (Math.Round(debit - credit, 2) != 0m)
+        {
+            return "The posted invoice journal would not balance after this change.";
+        }
+
+        return null;
+    }
+
+    private static string? JournalMemoToken(string? memo)
+    {
+        string[] tokens =
+        [
+            "Accounts Receivable",
+            "Sales Revenue",
+            "Sales Returns",
+            "Further Tax",
+            "Sales Tax Payable (18%)",
+            "Sales Tax Payable",
+            "Cartage Payable",
+            "Cost of Goods Sold",
+            "Inventory Asset"
+        ];
+
+        var text = memo ?? string.Empty;
+        return tokens.FirstOrDefault(token => text.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private bool TryGetCompanyId(out int companyId, out SalesInvoiceSaveResult? error)

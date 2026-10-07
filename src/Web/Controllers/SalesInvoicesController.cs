@@ -13,10 +13,14 @@ namespace PakistanAccountingERP.Web.Controllers;
 public class SalesInvoicesController : Controller
 {
     private readonly ISalesInvoiceService _salesInvoiceService;
+    private readonly ICurrentUserService _currentUser;
 
-    public SalesInvoicesController(ISalesInvoiceService salesInvoiceService)
+    public SalesInvoicesController(
+        ISalesInvoiceService salesInvoiceService,
+        ICurrentUserService currentUser)
     {
         _salesInvoiceService = salesInvoiceService;
+        _currentUser = currentUser;
     }
 
     public IActionResult Index()
@@ -72,9 +76,14 @@ public class SalesInvoicesController : Controller
                 return NotFound();
             }
 
-            if (invoice.Status != Domain.Enums.InvoiceStatus.Draft)
+            var isSuperAdmin = _currentUser.Roles.Any(r =>
+                string.Equals(r, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+            if (invoice.Status == Domain.Enums.InvoiceStatus.Cancelled
+                || (invoice.Status != Domain.Enums.InvoiceStatus.Draft && !isSuperAdmin))
             {
-                TempData["Error"] = "Only draft invoices can be edited.";
+                TempData["Error"] = invoice.Status == Domain.Enums.InvoiceStatus.Posted
+                    ? "Only a SuperAdmin can edit a posted invoice."
+                    : "Only draft invoices can be edited.";
                 return RedirectToAction(nameof(Details), new { id });
             }
 
@@ -102,6 +111,7 @@ public class SalesInvoicesController : Controller
 
             ViewData["BreadcrumbParent"] = "Sales";
             ViewData["BreadcrumbParentUrl"] = Url.Action(nameof(Index));
+            Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
             return View(invoice);
         }
         catch (InvalidOperationException ex)
@@ -358,6 +368,35 @@ public class SalesInvoicesApiController : ControllerBase
         try
         {
             var result = await _salesInvoiceService.PostAsync(id, cancellationToken);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new SalesInvoiceActionResult(false, ex.Message, null));
+        }
+    }
+
+    [HttpPost("{id:int}/lines/{lineId:int}/stack")]
+    [RequirePermission("Sales.View")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> CorrectLineStack(
+        int id,
+        int lineId,
+        [FromBody] CorrectInvoiceLineStackRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.StackNo))
+        {
+            return BadRequest(new SalesInvoiceActionResult(false, "Enter the stack number.", null));
+        }
+
+        try
+        {
+            var result = await _salesInvoiceService.CorrectLineStackAsync(
+                id,
+                lineId,
+                request.StackNo,
+                cancellationToken);
             return result.Success ? Ok(result) : BadRequest(result);
         }
         catch (InvalidOperationException ex)

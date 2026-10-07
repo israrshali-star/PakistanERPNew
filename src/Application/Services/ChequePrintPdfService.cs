@@ -1,4 +1,4 @@
-using System.Globalization;
+using PakistanAccountingERP.Application.Common;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces.Services;
 using QuestPDF.Fluent;
@@ -7,39 +7,42 @@ using QuestPDF.Infrastructure;
 namespace PakistanAccountingERP.Application.Services;
 
 /// <summary>
-/// Prints fill-in fields onto a standard Pakistani cheque leaf (SBP 175×82 mm),
-/// such as Meezan Bank Premium. Only date, payee, amount-in-words, and figures
-/// are drawn — bank pre-print, MICR, and signature stay blank.
+/// Prints fill-in fields onto a Meezan / SBP cheque leaf (7.5 × 3.5 in).
+/// Date digits are centered in the eight boxes, the payee sits on the Pay rule,
+/// the amount sits in the figures box, and the words sit on the rupees rules.
+/// Party cheques are crossed A/C Payee Only. MICR and the signature stay blank.
 /// Landscape matches the cheque as you write it. Portrait is the same artwork
 /// rotated for a printer that feeds the cheque short-edge first.
 /// </summary>
 public class ChequePrintPdfService : IChequePrintPdfService
 {
-    private const float LeafWidthMm = 175f;
-    private const float LeafHeightMm = 82f;
+    private static readonly string ChequeFontFamily = Initialize();
 
-    static ChequePrintPdfService()
+    private static string Initialize()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        return ResolveChequeFont();
     }
 
-    public byte[] GeneratePdf(ChequePrintDto model) =>
-        Document.Create(container =>
+    public byte[] GeneratePdf(ChequePrintDto model)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
                 var landscape = model.Orientation != ChequePageOrientation.Portrait;
                 if (landscape)
                 {
-                    page.Size(LeafWidthMm, LeafHeightMm, Unit.Millimetre);
+                    page.Size(ChequeLeafLayout.WidthMm, ChequeLeafLayout.HeightMm, Unit.Millimetre);
                 }
                 else
                 {
-                    page.Size(LeafHeightMm, LeafWidthMm, Unit.Millimetre);
+                    page.Size(ChequeLeafLayout.HeightMm, ChequeLeafLayout.WidthMm, Unit.Millimetre);
                 }
 
                 page.Margin(0);
-                page.DefaultTextStyle(x => x.FontFamily("Times New Roman").FontColor("#111111"));
+                page.DefaultTextStyle(style => style.FontFamily(ChequeFontFamily).FontColor("#111111").LineHeight(1));
 
                 page.Content().Element(content =>
                 {
@@ -51,59 +54,97 @@ public class ChequePrintPdfService : IChequePrintPdfService
 
                     content
                         .RotateLeft()
-                        .Width(LeafWidthMm, Unit.Millimetre)
-                        .Height(LeafHeightMm, Unit.Millimetre)
+                        .Width(ChequeLeafLayout.WidthMm, Unit.Millimetre)
+                        .Height(ChequeLeafLayout.HeightMm, Unit.Millimetre)
                         .Element(inner => ComposeLeaf(inner, model));
                 });
             });
         }).GeneratePdf();
+    }
 
     private static void ComposeLeaf(IContainer container, ChequePrintDto model)
     {
         container.Layers(layers =>
         {
-            layers.PrimaryLayer();
-            PlaceDateDigits(layers, model.ChequeDate);
-            PlaceText(layers, 22, 23, 98, model.PayeeName, 12, true);
-            PlaceText(layers, 28, 38, 88, model.AmountInWords, 10, false);
-            PlaceText(layers, 118, 36, 42, model.AmountFigures, 12, true);
+            layers.PrimaryLayer()
+                .Width(ChequeLeafLayout.WidthMm, Unit.Millimetre)
+                .Height(ChequeLeafLayout.HeightMm, Unit.Millimetre);
+
+            foreach (var ink in ChequeLeafFields.Place(model))
+            {
+                DrawInk(layers, ink);
+            }
         });
     }
 
-    private static void PlaceDateDigits(LayersDescriptor layers, DateTime date)
+    private static void DrawInk(LayersDescriptor layers, ChequeInk ink)
     {
-        var digits = date.ToString("ddMMyyyy", CultureInfo.InvariantCulture);
-        for (var i = 0; i < digits.Length; i++)
-        {
-            PlaceText(layers, 122.5f + (i * 5.9f), 7.2f, 6, digits[i].ToString(), 12, true);
-        }
-    }
-
-    private static void PlaceText(
-        LayersDescriptor layers,
-        float leftMm,
-        float topMm,
-        float widthMm,
-        string text,
-        float fontSize,
-        bool bold)
-    {
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(ink.Text))
         {
             return;
         }
 
-        var textBlock = layers.Layer()
+        var box = layers.Layer()
             .Unconstrained()
-            .TranslateX(leftMm, Unit.Millimetre)
-            .TranslateY(topMm, Unit.Millimetre)
-            .Width(widthMm, Unit.Millimetre)
-            .Text(text.Trim())
-            .FontSize(fontSize);
+            .TranslateX(ink.LeftMm, Unit.Millimetre)
+            .TranslateY(ink.TopMm, Unit.Millimetre)
+            .Width(ink.WidthMm, Unit.Millimetre)
+            .Height(ink.HeightMm, Unit.Millimetre);
 
-        if (bold)
+        if (ink.Align == ChequeInkAlign.Crossing)
         {
-            textBlock.Bold();
+            box = box.BorderTop(0.6f).BorderBottom(0.6f);
+        }
+
+        box = ink.Align switch
+        {
+            ChequeInkAlign.OnRule => box.AlignBottom().AlignLeft(),
+            ChequeInkAlign.MiddleLeft => box.AlignMiddle().AlignLeft(),
+            _ => box.AlignMiddle().AlignCenter()
+        };
+
+        var span = box
+            .Text(ink.Text)
+            .FontFamily(ChequeFontFamily)
+            .FontSize(ink.FontSizePt)
+            .LineHeight(1);
+
+        if (ink.Bold)
+        {
+            span.Bold();
+        }
+    }
+
+    private static string ResolveChequeFont()
+    {
+        foreach (var family in new[] { "Times New Roman", "Liberation Serif", "Noto Serif", "Lato" })
+        {
+            if (CanUseFont(family))
+            {
+                return family;
+            }
+        }
+
+        return "Lato";
+    }
+
+    private static bool CanUseFont(string family)
+    {
+        try
+        {
+            Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(20, 20);
+                    page.Content().Text("A").FontFamily(family).FontSize(8);
+                });
+            }).GeneratePdf();
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 }

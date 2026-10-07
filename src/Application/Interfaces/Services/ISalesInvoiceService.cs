@@ -33,6 +33,11 @@ public interface ISalesInvoiceService
     Task<SalesInvoiceDetailDto?> GetDetailAsync(int id, CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> PostAsync(int id, CancellationToken cancellationToken = default);
+    Task<SalesInvoiceActionResult> CorrectLineStackAsync(
+    int invoiceId,
+    int lineId,
+    string stackNo,
+    CancellationToken cancellationToken = default);
 
     Task<SalesInvoiceActionResult> CancelAsync(int id, CancellationToken cancellationToken = default);
 

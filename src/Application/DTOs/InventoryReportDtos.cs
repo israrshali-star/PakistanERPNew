@@ -77,7 +77,9 @@ public record StockMovementLineDto(
     string? StackNo,
     string? LotNo,
     string? Notes,
-    string? VendorRefNo);
+    string? VendorRefNo,
+    decimal RemainingWeight = 0m,
+    decimal RemainingCartons = 0m);
 
 public record StockMovementReportDto(
     DateTime FromDate,

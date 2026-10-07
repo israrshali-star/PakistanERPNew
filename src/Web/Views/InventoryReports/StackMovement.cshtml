@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 no-print">
     <div>
         <h4 class="text-primary mb-1">Stack Movement</h4>
-        <p class="text-muted small mb-0">Opening, in, out, and closing stock by stack number</p>
+        <p class="text-muted small mb-0">Opening, in, out, and remaining weight and cartons by stack number</p>
     </div>
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-report">
@@ -60,6 +60,7 @@
         <h5 class="text-primary mb-1">Stack Movement Report</h5>
         <p class="text-muted small mb-0" id="report-period">Select a date range and click Load</p>
         <p class="text-muted small mb-0" id="report-filters"></p>
+        <p class="text-muted small mb-0">Remaining weight and cartons are what is left on the stack. A red difference means the movement lines do not tie and can be reconciled here.</p>
     </div>
 
     <div class="table-responsive mb-4">
@@ -76,8 +77,8 @@
                     <th class="text-end">Qty Out</th>
                     <th class="text-end">Ctn In</th>
                     <th class="text-end">Ctn Out</th>
-                    <th class="text-end">Closing Qty</th>
-                    <th class="text-end">Closing Ctn</th>
+                    <th class="text-end">Remaining Weight</th>
+                    <th class="text-end">Remaining Ctn</th>
                 </tr>
             </thead>
             <tbody id="report-lines">

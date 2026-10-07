@@ -179,17 +179,26 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    var logDirectory = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Logs");
+    var canWriteLogs = CanWriteDirectory(logDirectory);
 
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console()
-        .WriteTo.File(
-            path: Path.Combine("App_Data", "Logs", "pa-erp-.log"),
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 30,
-            shared: true));
+    builder.Host.UseSerilog((context, services, configuration) =>
+    {
+        var logger = configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .WriteTo.Console();
+
+        if (canWriteLogs)
+        {
+            logger.WriteTo.File(
+                path: Path.Combine(logDirectory, "pa-erp-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 30,
+                shared: true);
+        }
+    });
 
     builder.Services.AddControllersWithViews()
         .AddJsonOptions(options =>
@@ -230,11 +239,22 @@ try
     if (!app.Environment.IsDevelopment())
     {
         app.UseExceptionHandler("/Home/Error");
-        app.UseHsts();
+    }
+
+    // A published IIS site is often HTTP-only. Redirecting every request to HTTPS
+    // makes the site look dead when no HTTPS binding exists.
+    var httpsPort = app.Configuration["ASPNETCORE_HTTPS_PORT"] ?? app.Configuration["HTTPS_PORT"];
+    if (!string.IsNullOrWhiteSpace(httpsPort))
+    {
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseHsts();
+        }
+
+        app.UseHttpsRedirection();
     }
 
     app.UseSerilogRequestLogging();
-    app.UseHttpsRedirection();
     app.UseStaticFiles();
     app.UseRouting();
     app.UseSession();
@@ -248,22 +268,57 @@ try
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}");
 
-    await DbInitializer.InitializeAsync(app.Services);
-    await EnsureSqlFinancialReportsAsync(app.Services);
-    await EnsureSalesTaxPaymentGlConventionsAsync(app.Services);
-    await EnsureOpeningBalanceEquityBalancedAsync(app.Services);
+    try
+    {
+        await DbInitializer.InitializeAsync(app.Services);
+        await EnsureSqlFinancialReportsAsync(app.Services);
+        await EnsureSalesTaxPaymentGlConventionsAsync(app.Services);
+        await EnsureOpeningBalanceEquityBalancedAsync(app.Services);
+    }
+    catch (Exception ex)
+    {
+        // Keep the process listening. A SQL or repair failure used to exit before
+        // app.Run(), so IIS reported that the published site would not start.
+        Log.Error(ex, "Database startup failed. The site will stay up; check SQL Server, the connection string, and the IIS app-pool login.");
+    }
 
     Log.Information("Pakistan Accounting ERP ready ({Environment})", app.Environment.EnvironmentName);
     app.Run();
 }
 catch (Exception ex)
 {
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Pakistan Accounting ERP failed to start:");
+    Console.Error.WriteLine(ex);
     Log.Fatal(ex, "Application terminated unexpectedly");
-    throw;
+    Environment.ExitCode = 1;
+    if (Environment.UserInteractive && !Console.IsInputRedirected)
+    {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Press Enter to close this window...");
+        Console.ReadLine();
+    }
 }
 finally
 {
     Log.CloseAndFlush();
+}
+
+static bool CanWriteDirectory(string directory)
+{
+    try
+    {
+        Directory.CreateDirectory(directory);
+        var probe = Path.Combine(directory, ".write-test");
+        File.WriteAllText(probe, "ok");
+        File.Delete(probe);
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Log folder is not writable at {directory}: {ex.Message}");
+        return false;
+    }
 }
 
 static bool TryRunCompanyPurge(string[] args, out int exitCode)

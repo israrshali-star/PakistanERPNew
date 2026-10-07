@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomReportService, CustomReportService>();
         services.AddScoped<IGlRepairService, GlRepairService>();
         services.AddScoped<IOpeningBalanceEquityService, OpeningBalanceEquityService>();
+        services.AddScoped<Invoice0347WeightCorrection>();
 
         return services;
     }

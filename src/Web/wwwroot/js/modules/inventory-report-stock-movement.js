@@ -21,6 +21,55 @@
         });
     }
 
+    function formatRemaining(value, isCarton) {
+        var num = parseFloat(value);
+        if (!Number.isFinite(num)) {
+            num = 0;
+        }
+        return num.toLocaleString('en-PK', {
+            minimumFractionDigits: isCarton ? 0 : 2,
+            maximumFractionDigits: isCarton ? 0 : 2
+        });
+    }
+
+    function readValue(obj, camelName, pascalName) {
+        if (!obj) {
+            return undefined;
+        }
+        if (obj[camelName] !== undefined && obj[camelName] !== null) {
+            return obj[camelName];
+        }
+        if (obj[pascalName] !== undefined && obj[pascalName] !== null) {
+            return obj[pascalName];
+        }
+        return undefined;
+    }
+
+    function dateKey(value) {
+        if (!value) {
+            return '';
+        }
+        if (typeof value === 'string' && value.length >= 10 && value.charAt(4) === '-') {
+            return value.slice(0, 10);
+        }
+        var d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+            return '';
+        }
+        return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+    }
+
+    function balanceKey(line, includeLot) {
+        var itemCode = readValue(line, 'itemCode', 'ItemCode') || '';
+        var stackNo = readValue(line, 'stackNo', 'StackNo') || '';
+        if (!includeLot) {
+            return itemCode + '|' + stackNo;
+        }
+        return itemCode + '|' + stackNo + '|' + (readValue(line, 'lotNo', 'LotNo') || '');
+    }
+
     function formatDate(value) {
         var d = new Date(value);
         if (Number.isNaN(d.getTime())) {
@@ -61,37 +110,65 @@
         var $tbody = $('#report-lines');
         $tbody.empty();
 
-        if (!data.lines || data.lines.length === 0) {
+        var lines = data.lines || data.Lines || [];
+        if (lines.length === 0) {
             $tbody.append('<tr><td colspan="14" class="text-muted text-center">No transactions in this period.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
 
-        data.lines.forEach(function (line) {
+        var periodFrom = dateKey(readValue(data, 'fromDate', 'FromDate'));
+        var lastWeight = {};
+        var lastCartons = {};
+
+        lines.forEach(function (line) {
+            var transactionDate = readValue(line, 'transactionDate', 'TransactionDate');
+            var referenceNo = readValue(line, 'referenceNo', 'ReferenceNo');
+            var vendorRefNo = readValue(line, 'vendorRefNo', 'VendorRefNo');
+            var inPeriod = !periodFrom || dateKey(transactionDate) >= periodFrom;
+            var remainingWeight = parseFloat(readValue(line, 'remainingWeight', 'RemainingWeight')) || 0;
+            var remainingCartons = parseFloat(readValue(line, 'remainingCartons', 'RemainingCartons')) || 0;
+            var weightClass = 'text-end fw-semibold' + (remainingWeight < 0 ? ' text-danger' : '');
+            var cartonClass = 'text-end fw-semibold' + (remainingCartons < 0 ? ' text-danger' : '');
+            if (inPeriod) {
+                lastWeight[balanceKey(line, true)] = remainingWeight;
+                lastCartons[balanceKey(line, false)] = remainingCartons;
+            }
+
             $tbody.append(
                 '<tr>' +
-                '<td>' + formatDate(line.transactionDate) + '</td>' +
-                '<td>' + (line.referenceNo ? '<code>' + escapeHtml(line.referenceNo) + '</code>' : '—') + '</td>' +
-                '<td>' + (line.vendorRefNo ? escapeHtml(line.vendorRefNo) : '—') + '</td>' +
-                '<td>' + escapeHtml(line.transactionType) + '</td>' +
-                '<td><code>' + escapeHtml(line.itemCode) + '</code> ' + escapeHtml(line.itemName) + '</td>' +
-                '<td>' + escapeHtml(line.stackNo || '—') + '</td>' +
-                '<td>' + escapeHtml(line.lotNo || '—') + '</td>' +
-                '<td>' + escapeHtml(line.warehouseName) + '</td>' +
-                '<td class="text-end text-success">' + formatQty(line.qtyIn, false) + '</td>' +
-                '<td class="text-end text-danger">' + formatQty(line.qtyOut, false) + '</td>' +
-                '<td class="text-end text-success">' + formatQty(line.cartonsIn, true) + '</td>' +
-                '<td class="text-end text-danger">' + formatQty(line.cartonsOut, true) + '</td>' +
-                '<td class="text-end">' + formatQty(line.adjustmentQty, false) + '</td>' +
-                '<td class="text-end">' + formatAmount(line.totalCost) + '</td>' +
+                '<td>' + formatDate(transactionDate) + '</td>' +
+                '<td>' + (referenceNo ? '<code>' + escapeHtml(referenceNo) + '</code>' : '—') + '</td>' +
+                '<td>' + (vendorRefNo ? escapeHtml(vendorRefNo) : '—') + '</td>' +
+                '<td>' + escapeHtml(readValue(line, 'transactionType', 'TransactionType') || '') + '</td>' +
+                '<td><code>' + escapeHtml(readValue(line, 'itemCode', 'ItemCode') || '') + '</code> ' +
+                    escapeHtml(readValue(line, 'itemName', 'ItemName') || '') + '</td>' +
+                '<td>' + escapeHtml(readValue(line, 'stackNo', 'StackNo') || '—') + '</td>' +
+                '<td>' + escapeHtml(readValue(line, 'lotNo', 'LotNo') || '—') + '</td>' +
+                '<td>' + escapeHtml(readValue(line, 'warehouseName', 'WarehouseName') || '') + '</td>' +
+                '<td class="text-end text-success">' + formatQty(readValue(line, 'qtyIn', 'QtyIn'), false) + '</td>' +
+                '<td class="text-end text-danger">' + formatQty(readValue(line, 'qtyOut', 'QtyOut'), false) + '</td>' +
+                '<td class="text-end text-success">' + formatQty(readValue(line, 'cartonsIn', 'CartonsIn'), true) + '</td>' +
+                '<td class="text-end text-danger">' + formatQty(readValue(line, 'cartonsOut', 'CartonsOut'), true) + '</td>' +
+                '<td class="' + weightClass + '">' + (inPeriod ? formatRemaining(remainingWeight, false) : '—') + '</td>' +
+                '<td class="' + cartonClass + '">' + (inPeriod ? formatRemaining(remainingCartons, true) : '—') + '</td>' +
                 '</tr>'
             );
         });
 
-        $('#report-total-in').text(formatAmount(data.totalQtyIn));
-        $('#report-total-out').text(formatAmount(data.totalQtyOut));
-        $('#report-total-ctn-in').text(formatQty(data.totalCartonsIn, true));
-        $('#report-total-ctn-out').text(formatQty(data.totalCartonsOut, true));
+        var totalRemainingWeight = Object.keys(lastWeight).reduce(function (sum, key) {
+            return sum + lastWeight[key];
+        }, 0);
+        var totalRemainingCartons = Object.keys(lastCartons).reduce(function (sum, key) {
+            return sum + lastCartons[key];
+        }, 0);
+
+        $('#report-total-in').text(formatAmount(readValue(data, 'totalQtyIn', 'TotalQtyIn')));
+        $('#report-total-out').text(formatAmount(readValue(data, 'totalQtyOut', 'TotalQtyOut')));
+        $('#report-total-ctn-in').text(formatQty(readValue(data, 'totalCartonsIn', 'TotalCartonsIn'), true));
+        $('#report-total-ctn-out').text(formatQty(readValue(data, 'totalCartonsOut', 'TotalCartonsOut'), true));
+        $('#report-total-remaining-weight').text(formatRemaining(totalRemainingWeight, false));
+        $('#report-total-remaining-ctn').text(formatRemaining(totalRemainingCartons, true));
         $('#report-footer').removeClass('d-none');
     }
 
