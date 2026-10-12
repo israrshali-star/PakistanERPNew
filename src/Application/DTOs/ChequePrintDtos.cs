@@ -13,7 +13,8 @@ public record ChequePrintDto(
     float DateOffsetXmm = 0,
     float DateOffsetYmm = 0,
     float PayWordsOffsetXmm = 0,
-    float PayWordsOffsetYmm = 0);
+    float PayWordsOffsetYmm = 0,
+    bool CentreInFeeder = true);
 
 public enum ChequePayeeMode
 {

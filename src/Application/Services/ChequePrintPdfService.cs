@@ -11,8 +11,8 @@ namespace PakistanAccountingERP.Application.Services;
 /// Date digits are centered in the eight boxes, the payee sits on the Pay rule,
 /// the amount sits in the figures box, and the words sit on the rupees rules.
 /// Party cheques are crossed A/C Payee Only. MICR and the signature stay blank.
-/// Landscape matches the cheque as you write it. Portrait is the same artwork
-/// rotated for a printer that feeds the cheque short-edge first.
+/// The page is A4 portrait. The date end leads, on the left of the page or in
+/// the centre of the feeder.
 /// </summary>
 public class ChequePrintPdfService : IChequePrintPdfService
 {
@@ -27,32 +27,23 @@ public class ChequePrintPdfService : IChequePrintPdfService
     public byte[] GeneratePdf(ChequePrintDto model)
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        var originX = model.CentreInFeeder ? ChequeLeafLayout.CentreFeedOriginX : 0f;
         return Document.Create(container =>
         {
             container.Page(page =>
             {
-                var landscape = model.Orientation != ChequePageOrientation.Portrait;
-                if (landscape)
-                {
-                    page.Size(ChequeLeafLayout.WidthMm, ChequeLeafLayout.HeightMm, Unit.Millimetre);
-                }
-                else
-                {
-                    page.Size(ChequeLeafLayout.HeightMm, ChequeLeafLayout.WidthMm, Unit.Millimetre);
-                }
-
+                page.Size(ChequeLeafLayout.A4WidthMm, ChequeLeafLayout.A4HeightMm, Unit.Millimetre);
                 page.Margin(0);
                 page.DefaultTextStyle(style => style.FontFamily(ChequeFontFamily).FontColor("#111111").LineHeight(1));
 
                 page.Content().Element(content =>
                 {
-                    if (landscape)
-                    {
-                        ComposeLeaf(content, model);
-                        return;
-                    }
-
+                    // RotateLeft anchors to the bottom. The spare A4 height is padded
+                    // away so the date end stays on the top edge.
+                    var spareHeight = ChequeLeafLayout.A4HeightMm - ChequeLeafLayout.WidthMm;
                     content
+                        .PaddingLeft(originX, Unit.Millimetre)
+                        .PaddingBottom(spareHeight, Unit.Millimetre)
                         .RotateLeft()
                         .Width(ChequeLeafLayout.WidthMm, Unit.Millimetre)
                         .Height(ChequeLeafLayout.HeightMm, Unit.Millimetre)

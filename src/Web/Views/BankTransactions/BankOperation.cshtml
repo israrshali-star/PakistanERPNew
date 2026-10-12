@@ -156,26 +156,7 @@
                 <div class="col-12 d-none" id="cheque-live">
                     <div class="border rounded p-3">
                         <div class="fw-semibold mb-1">On the cheque</div>
-                        <p class="small mb-2">Tick one name. Cash writes Cash. Party name writes the account selected in Pay To. Other name writes the text you type.</p>
-                        <div class="d-flex flex-wrap gap-4 mb-2">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="cheque-payee-cash" value="cash" />
-                                <label class="form-check-label" for="cheque-payee-cash">Cash</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="cheque-payee-party" value="party" checked />
-                                <label class="form-check-label" for="cheque-payee-party" id="cheque-payee-party-label">Party name</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="cheque-payee-text" value="text" />
-                                <label class="form-check-label" for="cheque-payee-text">Other name</label>
-                            </div>
-                            <div class="w-100 d-none" id="cheque-payee-text-wrap">
-                                <label class="form-label small mb-1" for="cheque-payee-text-input">Name written on the cheque</label>
-                                <input type="text" class="form-control" id="cheque-payee-text-input" maxlength="80" autocomplete="off" />
-                            </div>
-                        </div>
-                        <p class="small mb-2" id="cheque-live-effect">The name, date, amount, and words appear on the Meezan cheque as you type.</p>
+                        <p class="small mb-2" id="cheque-live-effect">The name, date, amount, and words appear here as you type.</p>
                         <div class="cheque-preview-wrap mb-3">
                             <div class="cheque-preview-leaf">
                                 <div class="cheque-preview-cross">A/C PAYEE ONLY</div>
@@ -210,14 +191,31 @@
                         </div>
                         <div class="d-flex flex-wrap gap-3 mt-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-landscape" value="landscape" checked />
-                                <label class="form-check-label" for="cheque-orientation-landscape">Landscape</label>
+                                <input class="form-check-input" type="radio" name="cheque-feed" id="cheque-feed-centre" value="centre" checked />
+                                <label class="form-check-label" for="cheque-feed-centre">Cheque in the centre of the feeder</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="cheque-orientation" id="cheque-orientation-portrait" value="portrait" />
-                                <label class="form-check-label" for="cheque-orientation-portrait">Portrait</label>
+                                <input class="form-check-input" type="radio" name="cheque-feed" id="cheque-feed-left" value="left" />
+                                <label class="form-check-label" for="cheque-feed-left">Cheque against the left guide</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-party" value="party" checked />
+                                <label class="form-check-label" for="cheque-payee-party" id="cheque-payee-party-label">Party name</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-cash" value="cash" />
+                                <label class="form-check-label" for="cheque-payee-cash">Cash</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cheque-payee-mode" id="cheque-payee-text" value="text" />
+                                <label class="form-check-label" for="cheque-payee-text">Other name</label>
                             </div>
                         </div>
+                        <div class="mt-2 d-none" id="cheque-payee-text-wrap">
+                            <label class="form-label small mb-1" for="cheque-payee-text-input">Name on the Pay line</label>
+                            <input type="text" class="form-control form-control-sm" id="cheque-payee-text-input" maxlength="80" autocomplete="off" />
+                        </div>
+                        <p class="text-muted small mt-2 mb-0">Put the cheque in the centre of the feeder, date end in first. Select paper A4, orientation Portrait, margins None, and scale 100. The writing is centred on that paper, not in the corner. Cash prints the word Cash on the Pay line. Party name prints the selected name. Other name prints the name you type. Cash in Hand and Cash Withdrawal start on Cash.</p>
                     </div>
                 </div>
             }
@@ -298,25 +296,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="mb-2" id="cheque-print-summary"></p>
-                    <p class="text-muted small mb-2">Tick Cash, the party name, or Other name. The date goes in the eight boxes, that name on the Pay line, the amount in the PKR box, and the words on the Rupees lines. You still sign it.</p>
-                    <div class="d-flex flex-wrap gap-4 mb-2">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-cash" value="cash" />
-                            <label class="form-check-label" for="modal-cheque-payee-cash">Cash</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-party" value="party" checked />
-                            <label class="form-check-label" for="modal-cheque-payee-party" id="modal-cheque-payee-party-label">Party name</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="modal-cheque-payee-text" value="text" />
-                            <label class="form-check-label" for="modal-cheque-payee-text">Other name</label>
-                        </div>
-                        <div class="w-100 d-none" id="modal-cheque-payee-text-wrap">
-                            <label class="form-label small mb-1" for="modal-cheque-payee-text-input">Name written on the cheque</label>
-                            <input type="text" class="form-control" id="modal-cheque-payee-text-input" maxlength="80" autocomplete="off" />
-                        </div>
-                    </div>
+                    <p class="text-muted small mb-2">The date goes in the eight boxes, the name on the Pay line, the amount in the box, and the words on the Rupees lines. You still sign it.</p>
                     <div class="cheque-preview-wrap mb-2" id="cheque-preview-wrap">
                         <div class="cheque-preview-leaf" id="cheque-preview-leaf">
                             <div class="cheque-preview-cross">A/C PAYEE ONLY</div>
@@ -332,7 +312,25 @@
                         </div>
                     </div>
                     <p class="small mb-2" id="cheque-modal-effect"></p>
-                    <p class="text-muted small mb-0">Paper A4, same landscape or portrait, margins None, scale 100. The positions are the ones on the Write Cheque page.</p>
+                    <div class="d-flex flex-wrap gap-3 mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cheque-print-payee-mode" id="cheque-print-payee-party" value="party" checked />
+                            <label class="form-check-label" for="cheque-print-payee-party" id="cheque-print-payee-party-label">Party name</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cheque-print-payee-mode" id="cheque-print-payee-cash" value="cash" />
+                            <label class="form-check-label" for="cheque-print-payee-cash">Cash</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cheque-print-payee-mode" id="cheque-print-payee-text" value="text" />
+                            <label class="form-check-label" for="cheque-print-payee-text">Other name</label>
+                        </div>
+                    </div>
+                    <div class="mb-2 d-none" id="cheque-print-payee-text-wrap">
+                        <label class="form-label small mb-1" for="cheque-print-payee-text-input">Name on the Pay line</label>
+                        <input type="text" class="form-control form-control-sm" id="cheque-print-payee-text-input" maxlength="80" autocomplete="off" />
+                    </div>
+                    <p class="text-muted small mb-0">Paper A4, Portrait, margins None, scale 100. Cheque in the centre of the feeder, date end in first. Cash prints the word Cash and leaves off the crossing. Party name prints the selected name. Other name prints the name you type.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Skip</button>

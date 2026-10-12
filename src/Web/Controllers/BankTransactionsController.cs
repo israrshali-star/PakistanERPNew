@@ -255,11 +255,12 @@ public class BankTransactionsApiController : ControllerBase
         [FromQuery] string? dateY,
         [FromQuery] string? payX,
         [FromQuery] string? payY,
+        [FromQuery] string? feed,
         CancellationToken cancellationToken)
     {
         try
         {
-            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, cancellationToken);
+            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, feed, cancellationToken);
             if (built.Result is not null)
             {
                 return built.Result;
@@ -301,11 +302,12 @@ public class BankTransactionsApiController : ControllerBase
         [FromQuery] string? dateY,
         [FromQuery] string? payX,
         [FromQuery] string? payY,
+        [FromQuery] string? feed,
         CancellationToken cancellationToken)
     {
         try
         {
-            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, cancellationToken);
+            var built = await BuildChequePrintAsync(id, payee, payeeText, orientation, shiftX, shiftY, dateX, dateY, payX, payY, feed, cancellationToken);
             if (built.Result is not null)
             {
                 return built.Result;
@@ -331,6 +333,7 @@ public class BankTransactionsApiController : ControllerBase
         string? dateY,
         string? payX,
         string? payY,
+        string? feed,
         CancellationToken cancellationToken)
     {
         var transaction = await _bankTransactionService.GetByIdAsync(id, cancellationToken);
@@ -363,7 +366,8 @@ public class BankTransactionsApiController : ControllerBase
             ParseChequeShift(dateX),
             ParseChequeShift(dateY),
             ParseChequeShift(payX),
-            ParseChequeShift(payY)));
+            ParseChequeShift(payY),
+            IsCentreFeed(feed)));
     }
 
     private void SetChequeNoStore()
@@ -408,4 +412,7 @@ public class BankTransactionsApiController : ControllerBase
 
         return Math.Clamp(value, -ChequeLeafLayout.MaxShiftMm, ChequeLeafLayout.MaxShiftMm);
     }
+
+    private static bool IsCentreFeed(string? feed) =>
+        !string.Equals(feed, "left", StringComparison.OrdinalIgnoreCase);
 }
