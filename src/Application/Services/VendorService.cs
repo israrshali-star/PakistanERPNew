@@ -596,6 +596,58 @@ public partial class VendorService : IVendorService
                 Array.Empty<VendorLedgerAttachmentLinkDto>()));
         }
 
+        var journalQuery = _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.VendorId == vendorId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual);
+
+        if (fromDate.HasValue)
+        {
+            journalQuery = journalQuery.Where(l => l.JournalEntry.EntryDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            journalQuery = journalQuery.Where(l => l.JournalEntry.EntryDate <= toDate.Value);
+        }
+
+        var journalLines = await journalQuery
+            .Select(l => new
+            {
+                l.Id,
+                l.JournalEntry.EntryDate,
+                l.JournalEntry.EntryNumber,
+                l.JournalEntry.Description,
+                l.Debit,
+                l.Credit,
+                l.Memo
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var journal in journalLines)
+        {
+            if (journal.Debit == 0m && journal.Credit == 0m)
+            {
+                continue;
+            }
+
+            var description = !string.IsNullOrWhiteSpace(journal.Memo)
+                ? journal.Memo.Trim()
+                : journal.Description ?? "Journal Entry";
+
+            movements.Add((
+                journal.EntryDate,
+                3_000_000 + journal.Id,
+                journal.EntryNumber,
+                description,
+                journal.Debit,
+                journal.Credit,
+                null,
+                null,
+                Array.Empty<VendorLedgerAttachmentLinkDto>()));
+        }
+
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
         {
             balance += movement.Credit - movement.Debit;
@@ -647,7 +699,15 @@ public partial class VendorService : IVendorService
                 && bt.TransactionDate < beforeDate)
             .SumAsync(bt => (decimal?)bt.Amount, cancellationToken) ?? 0m;
 
-        return opening + billTotal - paymentTotal - chequeTotal;
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.VendorId == vendorId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual
+                        && l.JournalEntry.EntryDate < beforeDate)
+            .SumAsync(l => (decimal?)(l.Credit - l.Debit), cancellationToken) ?? 0m;
+
+        return opening + billTotal - paymentTotal - chequeTotal + journalNet;
     }
 
     private IQueryable<VendorListItemDto> ProjectVendorListItems(IQueryable<Vendor> query) =>
@@ -669,7 +729,11 @@ public partial class VendorService : IVendorService
                     .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal
                                  && !bt.IsDeleted
                                  && bt.JournalEntryId != null)
-                    .Sum(bt => bt.Amount),
+                    .Sum(bt => bt.Amount)
+                + v.JournalEntryLines
+                    .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                    .Sum(l => l.Credit - l.Debit),
             v.IsActive));
 
     private IQueryable<VendorDto> ProjectVendorDto(IQueryable<Vendor> query) =>
@@ -688,7 +752,11 @@ public partial class VendorService : IVendorService
                     .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal
                                  && !bt.IsDeleted
                                  && bt.JournalEntryId != null)
-                    .Sum(bt => bt.Amount),
+                    .Sum(bt => bt.Amount)
+                + v.JournalEntryLines
+                    .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                    .Sum(l => l.Credit - l.Debit),
             v.Address,
             v.ProvinceId,
             v.Province != null ? v.Province.Name : null,

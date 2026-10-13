@@ -32,4 +32,5 @@ public class Customer : CompanyAuditableEntity
     public ICollection<SalesInvoice> SalesInvoices { get; set; } = new List<SalesInvoice>();
     public ICollection<CustomerReceipt> CustomerReceipts { get; set; } = new List<CustomerReceipt>();
     public ICollection<BankTransaction> WriteChequePayments { get; set; } = new List<BankTransaction>();
+    public ICollection<JournalEntryLine> JournalEntryLines { get; set; } = new List<JournalEntryLine>();
 }

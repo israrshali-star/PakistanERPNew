@@ -228,6 +228,10 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                             && !bt.IsDeleted
                             && bt.JournalEntryId != null)
                         .Sum(bt => bt.CustomerBalanceEffect)
+                    + c.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Debit - l.Credit)
             })
             .ToDictionaryAsync(c => c.Id, c => c.Balance, cancellationToken);
 
@@ -2416,7 +2420,15 @@ public partial class SalesInvoiceService : ISalesInvoiceService
                 && bt.TransactionDate <= asOf)
             .SumAsync(bt => bt.CustomerBalanceEffect, cancellationToken);
 
-        return opening + invoiceMovement - receiptTotal + bankEffect;
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.CustomerId == customerId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual
+                        && l.JournalEntry.EntryDate <= asOf)
+            .SumAsync(l => (decimal?)(l.Debit - l.Credit), cancellationToken) ?? 0m;
+
+        return opening + invoiceMovement - receiptTotal + bankEffect + journalNet;
     }
 
     private async Task<(bool Success, string? Message, FbrSubmissionRequest? Request, string? FbrPostUrl, string? ApiToken)>

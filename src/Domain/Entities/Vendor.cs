@@ -23,4 +23,5 @@ public class Vendor : CompanyAuditableEntity
     public ICollection<VendorBill> VendorBills { get; set; } = new List<VendorBill>();
     public ICollection<VendorPayment> VendorPayments { get; set; } = new List<VendorPayment>();
     public ICollection<BankTransaction> WriteChequePayments { get; set; } = new List<BankTransaction>();
+    public ICollection<JournalEntryLine> JournalEntryLines { get; set; } = new List<JournalEntryLine>();
 }

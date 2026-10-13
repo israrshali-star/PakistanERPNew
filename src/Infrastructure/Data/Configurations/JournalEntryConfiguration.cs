@@ -20,6 +20,15 @@ public class JournalEntryLineConfiguration : IEntityTypeConfiguration<JournalEnt
     public void Configure(EntityTypeBuilder<JournalEntryLine> builder)
     {
         // Keep line visibility aligned with both required, soft-deletable principals.
+        builder.Property(x => x.PartyName).HasMaxLength(200);
+        builder.HasOne(x => x.Customer)
+            .WithMany(x => x.JournalEntryLines)
+            .HasForeignKey(x => x.CustomerId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Vendor)
+            .WithMany(x => x.JournalEntryLines)
+            .HasForeignKey(x => x.VendorId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasQueryFilter(x =>
             !x.JournalEntry.IsDeleted
             && !x.ChartOfAccount.IsDeleted);

@@ -98,12 +98,25 @@
         $('#bank-op-form-error').addClass('d-none').text('');
     }
 
+    var formSuccessTimer = null;
+
     function showFormSuccess(message) {
         $('#bank-op-form-error').addClass('d-none').text('');
         $('#bank-op-form-success').removeClass('d-none').text(message);
+        if (formSuccessTimer) {
+            clearTimeout(formSuccessTimer);
+        }
+        formSuccessTimer = setTimeout(function () {
+            formSuccessTimer = null;
+            clearFormSuccess();
+        }, 2500);
     }
 
     function clearFormSuccess() {
+        if (formSuccessTimer) {
+            clearTimeout(formSuccessTimer);
+            formSuccessTimer = null;
+        }
         $('#bank-op-form-success').addClass('d-none').text('');
     }
 

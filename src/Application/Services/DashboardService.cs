@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PakistanAccountingERP.Application.Common;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -51,7 +52,11 @@ public class DashboardService : IDashboardService
                         .Sum(r => r.Amount)
                     + c.WriteChequePayments
                         .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.CustomerBalanceEffect)));
+                        .Sum(bt => bt.CustomerBalanceEffect)
+                    + c.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Debit - l.Credit)));
 
     private sealed record CustomerBalanceRow(int Id, string BuyerId, string BuyerName, decimal Balance);
 
@@ -519,7 +524,15 @@ public class DashboardService : IDashboardService
                          && bt.JournalEntryId != null)
             .SumAsync(bt => (decimal?)bt.Amount, cancellationToken) ?? 0m;
 
-        return Math.Round(openingTotal + billTotal - paymentTotal - chequeTotal, 2);
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.VendorId != null
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+            .SumAsync(l => (decimal?)(l.Credit - l.Debit), cancellationToken) ?? 0m;
+
+        return Math.Round(openingTotal + billTotal - paymentTotal - chequeTotal + journalNet, 2);
     }
 
     private async Task<decimal> GetGlAccountBalanceAsync(

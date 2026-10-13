@@ -16,11 +16,28 @@ window.formatCurrency = function (value) {
             return data;
         }
 
+        if (data.children && data.children.length) {
+            var children = [];
+            for (var i = 0; i < data.children.length; i++) {
+                var match = containsMatcher(params, data.children[i]);
+                if (match) {
+                    children.push(match);
+                }
+            }
+            if (!children.length) {
+                return null;
+            }
+
+            var group = $.extend(true, {}, data);
+            group.children = children;
+            return group;
+        }
+
         if (typeof data.text === 'undefined') {
             return null;
         }
 
-        if (data.text.toLowerCase().indexOf(params.term.toLowerCase()) > -1) {
+        if (String(data.text).toLowerCase().indexOf(params.term.toLowerCase()) > -1) {
             return data;
         }
 
@@ -111,7 +128,7 @@ window.formatCurrency = function (value) {
                         var data = {
                             entity: entity,
                             q: params.term || '',
-                            limit: options.limit || 20
+                            limit: options.limit || (entity === 'account' ? 500 : 20)
                         };
                         if (typeof options.extraData === 'function') {
                             $.extend(data, options.extraData());

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PakistanAccountingERP.Application.Common;
+using PakistanAccountingERP.Application.Common.Constants;
 using PakistanAccountingERP.Application.DTOs;
 using PakistanAccountingERP.Application.Interfaces;
 using PakistanAccountingERP.Application.Interfaces.Services;
@@ -327,6 +328,37 @@ public class SalesReportService : ISalesReportService
             }
 
             ApplyDatedNet(totals, movement.TransactionDate.Date, fromDate, toDate, movement.CustomerBalanceEffect);
+        }
+
+        var journalQuery = _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.CustomerId != null
+                        && l.JournalEntry.CompanyId == companyId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual);
+
+        if (request.CustomerId.HasValue)
+        {
+            journalQuery = journalQuery.Where(l => l.CustomerId == request.CustomerId.Value);
+        }
+
+        var journalLines = await journalQuery
+            .Select(l => new
+            {
+                CustomerId = l.CustomerId!.Value,
+                l.JournalEntry.EntryDate,
+                Net = l.Debit - l.Credit
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var journal in journalLines)
+        {
+            if (!periodByCustomer.TryGetValue(journal.CustomerId, out var totals))
+            {
+                continue;
+            }
+
+            ApplyDatedNet(totals, journal.EntryDate.Date, fromDate, toDate, journal.Net);
         }
 
         var lines = customers

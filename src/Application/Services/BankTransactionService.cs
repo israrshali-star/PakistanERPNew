@@ -258,7 +258,8 @@ public class BankTransactionService : IBankTransactionService
 
         foreach (var account in accounts.Where(a => arAccountIds.Contains(a.Id)))
         {
-            if (IsGenericArApName(account.AccountName))
+            var isControlReceivable = string.Equals(account.AccountNumber, AccountsReceivable, StringComparison.OrdinalIgnoreCase);
+            if (IsGenericArApName(account.AccountName) && !isControlReceivable)
             {
                 continue;
             }
@@ -268,7 +269,8 @@ public class BankTransactionService : IBankTransactionService
 
         foreach (var account in accounts.Where(a => apAccountIds.Contains(a.Id)))
         {
-            if (IsGenericArApName(account.AccountName))
+            var isControlPayable = string.Equals(account.AccountNumber, AccountsPayable, StringComparison.OrdinalIgnoreCase);
+            if (IsGenericArApName(account.AccountName) && !isControlPayable)
             {
                 continue;
             }
@@ -1354,7 +1356,11 @@ public class BankTransactionService : IBankTransactionService
                     .Sum(r => r.Amount)
                 + c.WriteChequePayments
                     .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                    .Sum(bt => bt.CustomerBalanceEffect))
+                    .Sum(bt => bt.CustomerBalanceEffect)
+                + c.JournalEntryLines
+                    .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                    .Sum(l => l.Debit - l.Credit))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -1374,7 +1380,11 @@ public class BankTransactionService : IBankTransactionService
                 - v.VendorPayments.Sum(p => p.Amount)
                 - v.WriteChequePayments
                     .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                    .Sum(bt => bt.Amount))
+                    .Sum(bt => bt.Amount)
+                + v.JournalEntryLines
+                    .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                    .Sum(l => l.Credit - l.Debit))
             .FirstOrDefaultAsync(cancellationToken);
     }
 

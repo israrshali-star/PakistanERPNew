@@ -210,7 +210,10 @@ public partial class JournalEntryService : IJournalEntryService
                     l.ChartOfAccount.AccountName,
                     l.Debit,
                     l.Credit,
-                    l.Memo)).ToList()
+                    l.Memo,
+                    l.CustomerId,
+                    l.VendorId,
+                    l.PartyName)).ToList()
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -736,13 +739,29 @@ public partial class JournalEntryService : IJournalEntryService
         var validAccounts = await _unitOfWork.Repository<ChartOfAccount>()
             .Query()
             .Where(a => a.CompanyId == companyId && a.IsActive && accountIds.Contains(a.Id))
-            .Select(a => a.Id)
+            .Select(a => new { a.Id, a.AccountNumber })
             .ToListAsync(cancellationToken);
 
         if (validAccounts.Count != accountIds.Count)
         {
             return (false, "One or more accounts are invalid.", []);
         }
+
+        var accountNumberById = validAccounts.ToDictionary(a => a.Id, a => a.AccountNumber);
+        var customerIds = lines.Where(l => l.CustomerId is > 0).Select(l => l.CustomerId!.Value).Distinct().ToList();
+        var vendorIds = lines.Where(l => l.VendorId is > 0).Select(l => l.VendorId!.Value).Distinct().ToList();
+        var customers = customerIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _unitOfWork.Repository<Customer>()
+                .Query()
+                .Where(c => c.CompanyId == companyId && c.IsActive && customerIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.BuyerName, cancellationToken);
+        var vendors = vendorIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _unitOfWork.Repository<Vendor>()
+                .Query()
+                .Where(v => v.CompanyId == companyId && v.IsActive && vendorIds.Contains(v.Id))
+                .ToDictionaryAsync(v => v.Id, v => v.VendorName, cancellationToken);
 
         var entities = new List<JournalEntryLine>();
         decimal totalDebit = 0m;
@@ -766,12 +785,51 @@ public partial class JournalEntryService : IJournalEntryService
             totalDebit += debit;
             totalCredit += credit;
 
+            var accountNumber = accountNumberById[line.ChartOfAccountId];
+            var wantsCustomer = accountNumber is "11110" or "11000";
+            var wantsVendor = accountNumber == "20000";
+            int? customerId = wantsCustomer ? line.CustomerId : null;
+            int? vendorId = wantsVendor ? line.VendorId : null;
+            string? partyName = null;
+
+            if (wantsCustomer)
+            {
+                if (customerId is null or <= 0)
+                {
+                    return (false, "Select a customer for Accounts Receivable.", []);
+                }
+
+                if (!customers.TryGetValue(customerId.Value, out var customerName))
+                {
+                    return (false, "Select a customer for Accounts Receivable.", []);
+                }
+
+                partyName = customerName;
+            }
+            else if (wantsVendor)
+            {
+                if (vendorId is null or <= 0)
+                {
+                    return (false, "Select a vendor for Accounts Payable.", []);
+                }
+
+                if (!vendors.TryGetValue(vendorId.Value, out var vendorName))
+                {
+                    return (false, "Select a vendor for Accounts Payable.", []);
+                }
+
+                partyName = vendorName;
+            }
+
             entities.Add(new JournalEntryLine
             {
                 ChartOfAccountId = line.ChartOfAccountId,
                 Debit = debit,
                 Credit = credit,
-                Memo = line.Memo?.Trim()
+                Memo = line.Memo?.Trim(),
+                CustomerId = customerId,
+                VendorId = vendorId,
+                PartyName = partyName
             });
         }
 

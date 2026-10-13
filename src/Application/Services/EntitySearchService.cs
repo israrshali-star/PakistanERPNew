@@ -11,8 +11,9 @@ namespace PakistanAccountingERP.Application.Services;
 
 public class EntitySearchService : IEntitySearchService
 {
-    private const int MaxLimit = 50;
+    private const int MaxLimit = 500;
     private const int DefaultLimit = 20;
+    private const int AccountListLimit = 500;
 
     private static readonly string[] SplitTaxPayableAccountNumbers =
     [
@@ -162,6 +163,10 @@ public class EntitySearchService : IEntitySearchService
                 Balance = v.OpeningBalance
                     + v.VendorBills.Where(b => b.Status == BillStatus.Approved).Sum(b => b.NetAmount)
                     - v.VendorPayments.Sum(p => p.Amount)
+                    + v.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Credit - l.Debit)
             })
             .ToListAsync(cancellationToken);
     }
@@ -236,7 +241,7 @@ public class EntitySearchService : IEntitySearchService
 
         return await query
             .OrderBy(a => a.AccountNumber)
-            .Take(take)
+            .Take(Math.Max(take, AccountListLimit))
             .Select(a => new EntitySearchItemDto
             {
                 Id = a.Id.ToString(),
@@ -622,6 +627,10 @@ public class EntitySearchService : IEntitySearchService
                         + c.WriteChequePayments
                             .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
                             .Sum(bt => bt.CustomerBalanceEffect)
+                        + c.JournalEntryLines
+                            .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                            .Sum(l => l.Debit - l.Credit)
                 })
                 .ToListAsync(cancellationToken);
 
@@ -674,6 +683,10 @@ public class EntitySearchService : IEntitySearchService
                         - v.WriteChequePayments
                             .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
                             .Sum(bt => bt.Amount)
+                        + v.JournalEntryLines
+                            .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                            .Sum(l => l.Credit - l.Debit)
                 })
                 .ToListAsync(cancellationToken);
 
@@ -721,7 +734,7 @@ public class EntitySearchService : IEntitySearchService
 
             var accounts = await accountQuery
                 .OrderBy(a => a.AccountNumber)
-                .Take(take)
+                .Take(AccountListLimit)
                 .Select(a => new
                 {
                     a.Id,

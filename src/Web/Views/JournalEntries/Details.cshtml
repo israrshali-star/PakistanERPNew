@@ -125,6 +125,7 @@
                 <tr>
                     <th>Account #</th>
                     <th>Account Name</th>
+                    <th>Customer / Vendor</th>
                     <th>Memo</th>
                     <th class="text-end">Debit</th>
                     <th class="text-end">Credit</th>
@@ -136,6 +137,7 @@
                     <tr>
                         <td><code>@line.AccountNumber</code></td>
                         <td>@line.AccountName</td>
+                        <td>@(line.PartyName ?? "—")</td>
                         <td>@(line.Memo ?? "—")</td>
                         <td class="text-end text-currency">@(line.Debit > 0 ? line.Debit.ToString("N2") : "—")</td>
                         <td class="text-end text-currency">@(line.Credit > 0 ? line.Credit.ToString("N2") : "—")</td>
@@ -144,7 +146,7 @@
             </tbody>
             <tfoot class="table-light">
                 <tr>
-                    <th colspan="3" class="text-end">Totals</th>
+                    <th colspan="4" class="text-end">Totals</th>
                     <th class="text-end text-currency">@Model.TotalDebit.ToString("N2")</th>
                     <th class="text-end text-currency">@Model.TotalCredit.ToString("N2")</th>
                 </tr>

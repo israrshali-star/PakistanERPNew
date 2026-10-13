@@ -504,6 +504,10 @@ body.app-body {
     }
 }
 
+.je-account-results .select2-results__options {
+    max-height: 70vh;
+}
+
 .pa-typeahead {
     position: relative;
 }

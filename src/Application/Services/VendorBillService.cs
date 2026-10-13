@@ -162,6 +162,10 @@ public partial class VendorBillService : IVendorBillService
                             && !bt.IsDeleted
                             && bt.JournalEntryId != null)
                         .Sum(bt => bt.Amount)
+                    + v.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Credit - l.Debit)
             })
             .ToDictionaryAsync(v => v.Id, v => v.Balance, cancellationToken);
 

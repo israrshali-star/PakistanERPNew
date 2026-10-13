@@ -1,6 +1,15 @@
 /*
-  Company financial reports — SQL Server procedures for SSRS / ERP UI.
-  Parameterized by @CompanyId (Company 3 primary consumer).
+  Trial balance, profit and loss, and balance sheet.
+  @CompanyId 2, 3, 4, 5, 6, and 7.
+
+  Companies 2, 4, 5, 6, and 7 post sales tax (25500, 25510, 25520) with a
+  credit-minus-debit journal delta so invoice tax credits reduce the payable.
+  Company 6 places Accounts Receivable and those sales-tax accounts in the
+  opposite trial-balance column from the other companies.
+
+  EXEC dbo.usp_Rpt_TrialBalance    @CompanyId = 2, @FromDate = '2026-07-01', @ToDate = '2026-10-13';
+  EXEC dbo.usp_Rpt_ProfitAndLoss   @CompanyId = 2, @FromDate = '2026-07-01', @ToDate = '2026-10-13';
+  EXEC dbo.usp_Rpt_BalanceSheet    @CompanyId = 2, @AsOfDate = '2026-10-13';
 */
 SET NOCOUNT ON;
 GO
@@ -36,6 +45,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @ReduceSalesTax bit = CASE WHEN @CompanyId IN (2, 4, 5, 6, 7) THEN 1 ELSE 0 END;
+
     ;WITH Journal AS (
         SELECT
             l.ChartOfAccountId,
@@ -66,12 +77,16 @@ BEGIN
             ISNULL(j.CreditPeriod, 0) AS PeriodCredit,
             ISNULL(j.DebitUpTo, 0) AS DebitUpTo,
             ISNULL(j.CreditUpTo, 0) AS CreditUpTo,
-            /* Journal delta: equity/AR/AP credit-minus-debit; inverted liabilities use debit-minus-credit */
-            CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
+            /* Equity, AR, and AP use credit-minus-debit. Companies 2/4/5/6/7 do the same for sales tax. */
+            CASE WHEN a.TypeId = 3
+                      OR a.AccountNumber IN (N'11110', N'20000')
+                      OR (@ReduceSalesTax = 1 AND a.AccountNumber IN (N'25500', N'25510', N'25520'))
                 THEN ISNULL(j.CreditBefore, 0) - ISNULL(j.DebitBefore, 0)
                 ELSE ISNULL(j.DebitBefore, 0) - ISNULL(j.CreditBefore, 0)
             END AS OpeningJournalDelta,
-            CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
+            CASE WHEN a.TypeId = 3
+                      OR a.AccountNumber IN (N'11110', N'20000')
+                      OR (@ReduceSalesTax = 1 AND a.AccountNumber IN (N'25500', N'25510', N'25520'))
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS ClosingJournalDelta
@@ -116,6 +131,8 @@ BEGIN
         CAST(ROUND(DisplayClosing, 2) AS DECIMAL(18, 2)) AS ClosingBalance,
         CAST(ROUND(
             CASE
+                WHEN @CompanyId = 6 AND AccountNumber = N'11110' THEN CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN @CompanyId = 6 AND AccountNumber IN (N'25500', N'25510', N'25520') THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'11110' THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'20000' THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'30000' THEN CASE WHEN ClosingNet > 0 THEN ABS(ClosingNet) ELSE 0 END
@@ -126,6 +143,8 @@ BEGIN
             END, 2) AS DECIMAL(18, 2)) AS ClosingDebit,
         CAST(ROUND(
             CASE
+                WHEN @CompanyId = 6 AND AccountNumber = N'11110' THEN CASE WHEN ClosingNet < 0 THEN ABS(ClosingNet) ELSE 0 END
+                WHEN @CompanyId = 6 AND AccountNumber IN (N'25500', N'25510', N'25520') THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'11110' THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'20000' THEN CASE WHEN ClosingNet >= 0 THEN ABS(ClosingNet) ELSE 0 END
                 WHEN AccountNumber = N'30000' THEN CASE WHEN ClosingNet <= 0 THEN ABS(ClosingNet) ELSE 0 END
@@ -199,6 +218,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @ReduceSalesTax bit = CASE WHEN @CompanyId IN (2, 4, 5, 6, 7) THEN 1 ELSE 0 END;
+
     ;WITH Journal AS (
         SELECT
             l.ChartOfAccountId,
@@ -238,7 +259,9 @@ BEGIN
                 WHEN 2 THEN N'Liabilities'
                 ELSE N'Equity'
             END AS Section,
-            a.OpeningBalance + CASE WHEN a.TypeId = 3 OR a.AccountNumber IN (N'11110', N'20000')
+            a.OpeningBalance + CASE WHEN a.TypeId = 3
+                      OR a.AccountNumber IN (N'11110', N'20000')
+                      OR (@ReduceSalesTax = 1 AND a.AccountNumber IN (N'25500', N'25510', N'25520'))
                 THEN ISNULL(j.CreditUpTo, 0) - ISNULL(j.DebitUpTo, 0)
                 ELSE ISNULL(j.DebitUpTo, 0) - ISNULL(j.CreditUpTo, 0)
             END AS StoredNet

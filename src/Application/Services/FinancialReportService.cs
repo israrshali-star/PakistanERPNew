@@ -35,7 +35,8 @@ public class FinancialReportService : IFinancialReportService
     }
 
     private static bool UsesSqlReporting(int companyId) =>
-        companyId == TradeInvoiceLayout.TradeInvoiceCompanyId;
+        companyId == TradeInvoiceLayout.TradeInvoiceCompanyId
+        || TradeInvoiceLayout.InvoiceCreditsReduceSalesTaxBalance(companyId);
 
     public async Task<TrialBalanceReportDto> GetTrialBalanceAsync(
         FinancialReportDateRangeRequest request,

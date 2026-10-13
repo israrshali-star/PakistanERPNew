@@ -93,7 +93,11 @@ public partial class CustomerService : ICustomerService
                         .Sum(r => r.Amount)
                     + c.WriteChequePayments
                         .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.CustomerBalanceEffect),
+                        .Sum(bt => bt.CustomerBalanceEffect)
+                    + c.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Debit - l.Credit),
                 c.IsActive))
             .ToListAsync(cancellationToken);
 
@@ -127,7 +131,11 @@ public partial class CustomerService : ICustomerService
                         .Sum(r => r.Amount)
                     + c.WriteChequePayments
                         .Where(bt => bt.TransactionType == BankTransactionType.Withdrawal && !bt.IsDeleted)
-                        .Sum(bt => bt.CustomerBalanceEffect),
+                        .Sum(bt => bt.CustomerBalanceEffect)
+                    + c.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Debit - l.Credit),
                 c.Address,
                 c.ProvinceId,
                 c.Province != null ? c.Province.Name : null,
@@ -728,6 +736,60 @@ public partial class CustomerService : ICustomerService
                 Array.Empty<CustomerLedgerAttachmentLinkDto>()));
         }
 
+        var journalQuery = _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.CustomerId == customerId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual);
+
+        if (fromDate.HasValue)
+        {
+            journalQuery = journalQuery.Where(l => l.JournalEntry.EntryDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            journalQuery = journalQuery.Where(l => l.JournalEntry.EntryDate <= toDate.Value);
+        }
+
+        var journalLines = await journalQuery
+            .Select(l => new
+            {
+                l.Id,
+                l.JournalEntry.EntryDate,
+                l.JournalEntry.EntryNumber,
+                l.JournalEntry.Description,
+                l.Debit,
+                l.Credit,
+                l.Memo
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var journal in journalLines)
+        {
+            if (journal.Debit == 0m && journal.Credit == 0m)
+            {
+                continue;
+            }
+
+            var description = !string.IsNullOrWhiteSpace(journal.Memo)
+                ? journal.Memo.Trim()
+                : journal.Description ?? "Journal Entry";
+
+            movements.Add((
+                journal.EntryDate,
+                3_000_000 + journal.Id,
+                journal.EntryNumber,
+                description,
+                journal.Debit,
+                journal.Credit,
+                0m,
+                null,
+                null,
+                false,
+                Array.Empty<CustomerLedgerAttachmentLinkDto>()));
+        }
+
         foreach (var movement in movements.OrderBy(m => m.Date).ThenBy(m => m.SortKey))
         {
             balance += movement.Debit - movement.Credit;
@@ -790,7 +852,15 @@ public partial class CustomerService : ICustomerService
                 && bt.TransactionDate < beforeDate)
             .SumAsync(bt => bt.CustomerBalanceEffect, cancellationToken);
 
-        return customer + movement - receiptTotal + chequeTotal;
+        var journalNet = await _unitOfWork.Repository<JournalEntryLine>()
+            .Query()
+            .Where(l => l.CustomerId == customerId
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.ReferenceType == ReferenceTypes.Manual
+                        && l.JournalEntry.EntryDate < beforeDate)
+            .SumAsync(l => (decimal?)(l.Debit - l.Credit), cancellationToken) ?? 0m;
+
+        return customer + movement - receiptTotal + chequeTotal + journalNet;
     }
 
     private async Task<CustomerSaveResult> ValidateSaveRequestAsync(

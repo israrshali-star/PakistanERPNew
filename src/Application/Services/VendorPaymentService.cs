@@ -167,7 +167,11 @@ public partial class VendorPaymentService : IVendorPaymentService
                     + v.VendorBills
                         .Where(b => b.Status == BillStatus.Approved)
                         .Sum(b => b.NetAmount)
-                    - v.VendorPayments.Sum(p => p.Amount)))
+                    - v.VendorPayments.Sum(p => p.Amount)
+                    + v.JournalEntryLines
+                        .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                                    && l.JournalEntry.ReferenceType == ReferenceTypes.Manual)
+                        .Sum(l => l.Credit - l.Debit)))
             .ToListAsync(cancellationToken);
     }
 

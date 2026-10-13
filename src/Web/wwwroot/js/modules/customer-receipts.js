@@ -95,12 +95,25 @@
         $('#receipt-form-error').addClass('d-none').text('');
     }
 
+    var formSuccessTimer = null;
+
     function showFormSuccess(message) {
         $('#receipt-form-error').addClass('d-none').text('');
         $('#receipt-form-success').removeClass('d-none').text(message);
+        if (formSuccessTimer) {
+            clearTimeout(formSuccessTimer);
+        }
+        formSuccessTimer = setTimeout(function () {
+            formSuccessTimer = null;
+            clearFormSuccess();
+        }, 2500);
     }
 
     function clearFormSuccess() {
+        if (formSuccessTimer) {
+            clearTimeout(formSuccessTimer);
+            formSuccessTimer = null;
+        }
         $('#receipt-form-success').addClass('d-none').text('');
     }
 

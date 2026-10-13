@@ -1491,6 +1491,9 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<decimal>("Credit")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Debit")
                         .HasColumnType("decimal(18,2)");
 
@@ -1500,11 +1503,22 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                     b.Property<string>("Memo")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PartyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ChartOfAccountId");
 
+                    b.HasIndex("CustomerId");
+
                     b.HasIndex("JournalEntryId");
+
+                    b.HasIndex("VendorId");
 
                     b.ToTable("JournalEntryLines");
                 });
@@ -2965,15 +2979,29 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PakistanAccountingERP.Domain.Entities.Customer", "Customer")
+                        .WithMany("JournalEntryLines")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PakistanAccountingERP.Domain.Entities.JournalEntry", "JournalEntry")
                         .WithMany("Lines")
                         .HasForeignKey("JournalEntryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PakistanAccountingERP.Domain.Entities.Vendor", "Vendor")
+                        .WithMany("JournalEntryLines")
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("ChartOfAccount");
 
+                    b.Navigation("Customer");
+
                     b.Navigation("JournalEntry");
+
+                    b.Navigation("Vendor");
                 });
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.RolePermission", b =>
@@ -3264,6 +3292,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
                 {
                     b.Navigation("CustomerReceipts");
 
+                    b.Navigation("JournalEntryLines");
+
                     b.Navigation("SalesInvoices");
 
                     b.Navigation("WriteChequePayments");
@@ -3328,6 +3358,8 @@ namespace PakistanAccountingERP.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PakistanAccountingERP.Domain.Entities.Vendor", b =>
                 {
+                    b.Navigation("JournalEntryLines");
+
                     b.Navigation("VendorBills");
 
                     b.Navigation("VendorPayments");

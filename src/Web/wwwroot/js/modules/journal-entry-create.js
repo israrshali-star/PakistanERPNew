@@ -26,27 +26,99 @@
         return num.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    function escapeHtml(text) {
+        return $('<div>').text(text ?? '').html();
+    }
+
+    function accountField(account, camel, pascal) {
+        if (!account) {
+            return '';
+        }
+        var value = account[camel];
+        return value == null || value === '' ? account[pascal] : value;
+    }
+
+    function accountNumberOf(account) {
+        return String(accountField(account, 'accountNumber', 'AccountNumber') || '');
+    }
+
+    function accountOptionLabel(account) {
+        var number = accountNumberOf(account);
+        var name = accountField(account, 'accountName', 'AccountName');
+        if (number === '11110') {
+            name = 'Accounts Receivable';
+        } else if (number === '20000') {
+            name = 'Accounts Payable';
+        }
+        return [name, number].filter(Boolean).join(' — ');
+    }
+
+    function isReceivableOrPayable(account) {
+        var number = accountNumberOf(account);
+        return number === '11110' || number === '20000';
+    }
+
+    function accountOptionHtml(account, selected) {
+        var id = String(accountField(account, 'id', 'Id') || '');
+        if (!id) {
+            return '';
+        }
+        var isSelected = id === selected;
+        return '<option value="' + id + '"' + (isSelected ? ' selected' : '') + '>' +
+            escapeHtml(accountOptionLabel(account)) + '</option>';
+    }
+
+    function orderedAccounts() {
+        var controlAccounts = [];
+        var otherAccounts = [];
+        (accounts || []).forEach(function (account) {
+            if (isReceivableOrPayable(account)) {
+                controlAccounts.push(account);
+            } else {
+                otherAccounts.push(account);
+            }
+        });
+        controlAccounts.sort(function (a, b) {
+            return accountNumberOf(a).localeCompare(accountNumberOf(b));
+        });
+        return controlAccounts.concat(otherAccounts);
+    }
+
     function buildAccountOptions(selectedId, selectedText) {
-        var html = '<option value="">— Type to search account —</option>';
-        if (selectedId) {
-            html += '<option value="' + selectedId + '" selected>' +
-                (selectedText || selectedId) + '</option>';
+        var html = '<option value="">— Select account —</option>';
+        var selected = selectedId ? String(selectedId) : '';
+        var found = false;
+
+        orderedAccounts().forEach(function (account) {
+            if (String(accountField(account, 'id', 'Id')) === selected) {
+                found = true;
+            }
+            html += accountOptionHtml(account, selected);
+        });
+
+        if (selected && !found) {
+            html += '<option value="' + selected + '" selected>' +
+                escapeHtml(selectedText || selected) + '</option>';
         }
         return html;
     }
 
     function initAccountSelect($select) {
-        if (window.initPaAjaxSelect2) {
-            window.initPaAjaxSelect2($select, {
-                entity: 'account',
-                dropdownParent: '#journal-entry-form',
-                placeholder: 'Type to search account'
-            });
+        if (!$.fn.select2) {
             return;
         }
 
-        if ($.fn.select2) {
-            $select.select2({ theme: 'bootstrap-5', width: '100%', dropdownParent: $('#journal-entry-form') });
+        try {
+            $select.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('#journal-entry-form'),
+                placeholder: 'Select account',
+                allowClear: true,
+                minimumResultsForSearch: 0
+            });
+        } catch (e) {
+            // Keep the native list usable if the enhanced dropdown cannot start.
         }
     }
 
@@ -81,14 +153,63 @@
             '</select></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-debit" min="0" step="0.01" value="' + ((prefill && prefill.debit) || 0) + '" /></td>' +
             '<td><input type="number" class="form-control form-control-sm text-end line-credit" min="0" step="0.01" value="' + ((prefill && prefill.credit) || 0) + '" /></td>' +
-            '<td><input type="text" class="form-control form-control-sm line-memo" maxlength="200" value="' + ((prefill && prefill.memo) || '') + '" /></td>' +
+            '<td><input type="text" class="form-control form-control-sm line-memo" maxlength="200" value="' + escapeHtml((prefill && prefill.memo) || '') + '" /></td>' +
+            '<td><select class="form-select form-select-sm line-party d-none"><option value=""></option></select></td>' +
             '<td class="text-end"><button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-line" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>' +
             '</tr>'
         );
 
         $('#je-lines-body').append($row);
+        $row.data('syncing-account', true);
         initAccountSelect($row.find('.line-account'));
+        $row.data('syncing-account', false);
+        syncPartySelect($row, prefill);
         recalcTotals();
+    }
+
+    function partyModeForAccountId(accountId) {
+        var account = (accounts || []).filter(function (item) {
+            return String(accountField(item, 'id', 'Id')) === String(accountId || '');
+        })[0];
+        var number = account ? accountNumberOf(account) : '';
+        if (number === '11110' || number === '11000') {
+            return 'customer';
+        }
+        if (number === '20000') {
+            return 'vendor';
+        }
+        return '';
+    }
+
+    function syncPartySelect($row, prefill) {
+        var mode = partyModeForAccountId($row.find('.line-account').val());
+        var $party = $row.find('.line-party');
+        var previousMode = $party.data('party-mode') || '';
+        if ($party.data('select2')) {
+            $party.select2('destroy');
+        }
+        $party.empty().append('<option value=""></option>');
+        $party.data('party-mode', mode);
+        $party.toggleClass('d-none', !mode);
+        if (!mode || !window.initPaAjaxSelect2) {
+            return;
+        }
+
+        var placeholder = mode === 'customer' ? 'Select customer' : 'Select vendor';
+        window.initPaAjaxSelect2($party, {
+            entity: mode,
+            dropdownParent: '#journal-entry-form',
+            placeholder: placeholder,
+            allowClear: true,
+            limit: 100
+        });
+
+        var partyId = prefill && (prefill.customerId || prefill.vendorId || prefill.partyId);
+        var partyText = prefill && (prefill.partyName || prefill.partyText);
+        var prefillMode = prefill && prefill.customerId ? 'customer' : (prefill && prefill.vendorId ? 'vendor' : previousMode);
+        if (partyId && prefillMode === mode && window.setPaSelect2Value) {
+            window.setPaSelect2Value($party, partyId, partyText || partyId, { trigger: false });
+        }
     }
 
     function loadExistingLines() {
@@ -119,7 +240,10 @@
                         ([line.accountNumber, line.accountName].filter(Boolean).join(' — ')),
                     debit: line.debit,
                     credit: line.credit,
-                    memo: line.memo
+                    memo: line.memo,
+                    customerId: line.customerId,
+                    vendorId: line.vendorId,
+                    partyName: line.partyName
                 });
             });
             return;
@@ -130,13 +254,19 @@
     }
 
     function loadLookups() {
-        if (editEntryId) {
-            populateLines();
-            return $.Deferred().resolve().promise();
-        }
+        var accountsRequest = $.getJSON('/api/journal-entries/accounts').done(function (list) {
+            accounts = $.isArray(list) ? list : [];
+        });
+        var numberRequest = editEntryId
+            ? $.Deferred().resolve().promise()
+            : $.getJSON('/api/journal-entries/next-entry-number').done(function (numberRes) {
+                var number = numberRes && (numberRes.entryNumber || numberRes.EntryNumber);
+                if (number) {
+                    $('#entry-number').val(number);
+                }
+            });
 
-        return $.getJSON('/api/journal-entries/next-entry-number').then(function (numberRes) {
-            $('#entry-number').val(numberRes.entryNumber);
+        return $.when(accountsRequest, numberRequest).done(function () {
             populateLines();
         });
     }
@@ -153,6 +283,7 @@
 
         var lines = [];
         var lineValid = true;
+        var lineError = '';
 
         $('#je-lines-body tr').each(function () {
             var $row = $(this);
@@ -162,6 +293,20 @@
 
             if (!accountId) {
                 lineValid = false;
+                lineError = 'Each line must have an account selected.';
+                return false;
+            }
+
+            var partyMode = $row.find('.line-party').data('party-mode') || '';
+            var partyId = parseInt($row.find('.line-party').val(), 10) || null;
+            if (partyMode === 'customer' && !partyId) {
+                lineError = 'Select a customer for Accounts Receivable.';
+                lineValid = false;
+                return false;
+            }
+            if (partyMode === 'vendor' && !partyId) {
+                lineError = 'Select a vendor for Accounts Payable.';
+                lineValid = false;
                 return false;
             }
 
@@ -169,12 +314,14 @@
                 chartOfAccountId: accountId,
                 debit: debit,
                 credit: credit,
-                memo: $row.find('.line-memo').val().trim() || null
+                memo: $row.find('.line-memo').val().trim() || null,
+                customerId: partyMode === 'customer' ? partyId : null,
+                vendorId: partyMode === 'vendor' ? partyId : null
             });
         });
 
         if (!lineValid) {
-            showError('Each line must have an account selected.');
+            showError(lineError || 'Each line must have an account selected.');
             return;
         }
 
@@ -233,8 +380,11 @@
 
         $.getJSON('/api/company/current')
             .done(function () {
-                loadLookups().fail(function () {
-                    showError('Failed to load journal entry data.');
+                loadLookups().fail(function (xhr) {
+                    if (!$('#je-lines-body tr').length) {
+                        populateLines();
+                    }
+                    showError(getApiErrorMessage(xhr, 'Failed to load journal entry data.'));
                 });
             })
             .fail(function () {
@@ -244,15 +394,24 @@
             });
 
         $('#je-lines-body').on('input', '.line-debit, .line-credit', recalcTotals);
+        $('#je-lines-body').on('change', '.line-account', function () {
+            var $row = $(this).closest('tr');
+            if ($row.data('syncing-account')) {
+                return;
+            }
+            syncPartySelect($row);
+        });
         $('#je-lines-body').on('click', '.btn-remove-line', function () {
             if ($('#je-lines-body tr').length <= 2) {
                 alert('At least two lines are required.');
                 return;
             }
-            var $select = $(this).closest('tr').find('.line-account');
-            if ($select.data('select2')) {
-                $select.select2('destroy');
-            }
+            var $select = $(this).closest('tr').find('.line-account, .line-party');
+            $select.each(function () {
+                if ($(this).data('select2')) {
+                    $(this).select2('destroy');
+                }
+            });
             $(this).closest('tr').remove();
             recalcTotals();
         });

@@ -23,7 +23,10 @@ public record JournalEntryLineDto(
     string AccountName,
     decimal Debit,
     decimal Credit,
-    string? Memo);
+    string? Memo,
+    int? CustomerId = null,
+    int? VendorId = null,
+    string? PartyName = null);
 
 public record JournalEntryDetailDto(
     int Id,
@@ -50,6 +53,8 @@ public class JournalEntryLineSaveRequest
     public decimal Debit { get; set; }
     public decimal Credit { get; set; }
     public string? Memo { get; set; }
+    public int? CustomerId { get; set; }
+    public int? VendorId { get; set; }
 }
 
 public class JournalEntrySaveRequest
