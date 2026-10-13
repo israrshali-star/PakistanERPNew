@@ -379,6 +379,40 @@
         };
     }
 
+    function saveChequePlacement(align, feed) {
+        align = align || readChequeAlign();
+        feed = feed || currentChequeFeed();
+        try {
+            localStorage.setItem('pa-erp-cheque-date-x-20261012', String(align.dateX));
+            localStorage.setItem('pa-erp-cheque-date-y-20261012', String(align.dateY));
+            localStorage.setItem('pa-erp-cheque-pay-x-20261012', String(align.payX));
+            localStorage.setItem('pa-erp-cheque-pay-y-20261012', String(align.payY));
+            localStorage.setItem('pa-erp-cheque-feed-place', feed);
+        } catch (e) {
+            // Ignore private-mode storage failures.
+        }
+    }
+
+    function restoreChequePlacement(align, feed) {
+        align = align || {
+            dateX: storedChequeShift('pa-erp-cheque-date-x-20261012'),
+            dateY: storedChequeShift('pa-erp-cheque-date-y-20261012'),
+            payX: storedChequeShift('pa-erp-cheque-pay-x-20261012'),
+            payY: storedChequeShift('pa-erp-cheque-pay-y-20261012')
+        };
+        $('#cheque-date-x').val(align.dateX);
+        $('#cheque-date-y').val(align.dateY);
+        $('#cheque-pay-x').val(align.payX);
+        $('#cheque-pay-y').val(align.payY);
+        if (feed) {
+            var left = feed === 'left';
+            $('#cheque-feed-left').prop('checked', left);
+            $('#cheque-feed-centre').prop('checked', !left);
+        } else {
+            applyStoredChequeFeed();
+        }
+    }
+
     function printChequePdf(transactionId, payeeMode, orientation, align, payeeText) {
         var url = chequePdfUrl(transactionId, payeeMode, orientation, align, payeeText);
         var printWindow = window.open(url, '_blank');
@@ -1487,11 +1521,15 @@
                 showFormSuccess(postedSuccessMessage(selectedMethod, postedChequeNumber));
                 var postedPayeeMode = payeeModeForPost(selectedMethod);
                 var postedPayeeText = payeeTextForPost();
+                var postedAlign = readChequeAlign();
+                var postedFeed = currentChequeFeed();
+                saveChequePlacement(postedAlign, postedFeed);
                 var postedTransaction = result && (result.transaction || result.Transaction);
                 if (postedTransaction && usesChequeNumber(selectedMethod)) {
                     openChequePrintModal(postedTransaction, postedPayeeMode, postedPayeeText);
                 }
                 $('#bank-op-form')[0].reset();
+                restoreChequePlacement(postedAlign, postedFeed);
                 $('#op-date').val(new Date().toISOString().slice(0, 10));
                 $('#op-party-balance').text('');
                 selectedPartyCache = null;
@@ -1624,19 +1662,7 @@
             }
             setPrintPayeeMode(payeeMode, payeeText);
             var align = readChequeAlign();
-            $('#cheque-date-x').val(align.dateX);
-            $('#cheque-date-y').val(align.dateY);
-            $('#cheque-pay-x').val(align.payX);
-            $('#cheque-pay-y').val(align.payY);
-            try {
-                localStorage.setItem('pa-erp-cheque-date-x-20261012', String(align.dateX));
-                localStorage.setItem('pa-erp-cheque-date-y-20261012', String(align.dateY));
-                localStorage.setItem('pa-erp-cheque-pay-x-20261012', String(align.payX));
-                localStorage.setItem('pa-erp-cheque-pay-y-20261012', String(align.payY));
-                localStorage.setItem('pa-erp-cheque-feed-place', currentChequeFeed());
-            } catch (e) {
-                // Ignore private-mode storage failures.
-            }
+            saveChequePlacement(align, currentChequeFeed());
             if (chequePrintModal) {
                 chequePrintModal.hide();
             }
@@ -1645,7 +1671,13 @@
 
         $(document).on('change input', 'input[name="cheque-payee-mode"], #cheque-payee-text-input, #cheque-date-x, #cheque-date-y, #cheque-pay-x, #cheque-pay-y', function () {
             syncPayeeTextVisibility(false);
+            if ($(this).is('#cheque-date-x, #cheque-date-y, #cheque-pay-x, #cheque-pay-y')) {
+                saveChequePlacement();
+            }
             renderChequePreview();
+        });
+        $(document).on('change', 'input[name="cheque-feed"]', function () {
+            saveChequePlacement();
         });
         $(document).on('change input', 'input[name="cheque-print-payee-mode"], #cheque-print-payee-text-input', function () {
             if ($(this).is('input[name="cheque-print-payee-mode"]')) {
