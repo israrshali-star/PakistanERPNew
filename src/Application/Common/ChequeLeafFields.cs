@@ -60,7 +60,7 @@ public static class ChequeLeafFields
                 ChequeLeafLayout.DateTopMm + dateY,
                 ChequeLeafLayout.DateBoxPitchMm,
                 ChequeLeafLayout.DateHeightMm,
-                12f,
+                ChequeLeafLayout.DateDigitFontPt,
                 true,
                 ChequeInkAlign.MiddleCenter));
         }
@@ -79,7 +79,7 @@ public static class ChequeLeafFields
         inks.Add(new ChequeInk(
             model.AmountFigures.Trim(),
             ChequeLeafLayout.FiguresLeftMm + ChequeLeafLayout.FiguresTextInsetMm + offsetX,
-            ChequeLeafLayout.FiguresTopMm + offsetY,
+            ChequeLeafLayout.FiguresTopMm - ChequeLeafLayout.FiguresTextLiftMm + offsetY,
             ChequeLeafLayout.FiguresWidthMm - ChequeLeafLayout.FiguresTextInsetMm - ChequeLeafLayout.FiguresTextRightPadMm,
             ChequeLeafLayout.FiguresHeightMm,
             FitFontSize(model.AmountFigures, ChequeLeafLayout.FiguresWidthMm - ChequeLeafLayout.FiguresTextInsetMm, lines: 1, maxSize: 11f, minSize: 8f),
@@ -145,7 +145,7 @@ public static class ChequeLeafFields
         inks.Add(new ChequeInk(
             text.Trim(),
             leftMm + offsetX,
-            ruleMm - emMm - 0.4f + offsetY,
+            ruleMm - emMm - ChequeLeafLayout.RuleClearanceMm + offsetY,
             widthMm,
             emMm,
             fontSize,

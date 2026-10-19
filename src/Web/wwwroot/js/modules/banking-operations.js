@@ -21,8 +21,8 @@
     var chequeLeaf = {
         width: 190.5,
         height: 88.9,
-        dateLeft: 135.2,
-        dateTop: 17.7,
+        dateLeft: 137.2,
+        dateTop: 16.8,
         dateHeight: 8.3,
         datePitch: 6.41,
         payeeLine: 41.2,
@@ -36,7 +36,8 @@
         figuresTop: 38.7,
         figuresWidth: 52.6,
         figuresHeight: 7.5,
-        figuresInset: 11,
+        figuresInset: 16,
+        figuresLift: 0.8,
         crossingLeft: 58,
         crossingTop: 26,
         crossingWidth: 42,
@@ -488,7 +489,7 @@
 
     function placeChequeInkOnRule(el, leftMm, ruleMm, widthMm, fontSize, shiftX, shiftY) {
         var em = chequeEmMm(fontSize);
-        placeChequePreview(el, leftMm + shiftX, ruleMm - em - 0.4 + shiftY, widthMm, em);
+        placeChequePreview(el, leftMm + shiftX, ruleMm - em - 1.9 + shiftY, widthMm, em);
         var leaf = el && el.closest ? el.closest('.cheque-preview-leaf') : null;
         var pxPerMm = leaf && leaf.clientWidth ? leaf.clientWidth / chequeLeaf.width : 3.78;
         el.style.fontSize = (em * pxPerMm) + 'px';
@@ -668,7 +669,7 @@
                 placeChequePreview(
                     figuresEl,
                     chequeLeaf.figuresLeft + chequeLeaf.figuresInset,
-                    chequeLeaf.figuresTop,
+                    chequeLeaf.figuresTop - chequeLeaf.figuresLift,
                     chequeLeaf.figuresWidth - chequeLeaf.figuresInset - 2,
                     chequeLeaf.figuresHeight
                 );

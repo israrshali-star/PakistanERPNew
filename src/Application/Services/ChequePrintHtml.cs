@@ -22,7 +22,7 @@ public static class ChequePrintHtml
         var bandClass = model.CentreInFeeder ? "centre" : "left";
         var html = new StringBuilder();
         html.AppendLine("<!DOCTYPE html>");
-        html.AppendLine("<!-- cheque-layout:a4-date-first cheque-nudges-2026-10-06 -->");
+        html.AppendLine("<!-- cheque-layout:a4-date-first cheque-nudges-2026-10-19 -->");
         html.AppendLine("<html lang=\"en\">");
         html.AppendLine("<head>");
         html.AppendLine("<meta charset=\"utf-8\" />");
