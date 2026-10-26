@@ -83,7 +83,8 @@ public record CustomerBalanceReportDto(
     decimal TotalPeriodCredit,
     decimal TotalClosingDebit,
     decimal TotalClosingCredit,
-    IReadOnlyList<CustomerBalanceLineDto> Lines);
+    IReadOnlyList<CustomerBalanceLineDto> Lines,
+    bool ClosingBalancesOnly);
 
 public class SalesReportRequest
 {

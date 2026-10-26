@@ -18,8 +18,9 @@ public class CustomerBalancePdfService : ICustomerBalancePdfService
 
     public byte[] GeneratePdf(CustomerBalanceReportDto report, string companyName)
     {
-        var period = $"Period: {report.FromDate:dd/MM/yyyy} to {report.ToDate:dd/MM/yyyy}" +
-                     $" — {report.CustomerCount} customer(s) with balances";
+        var period = report.ClosingBalancesOnly
+            ? $"As of {report.ToDate:dd/MM/yyyy} — {report.CustomerCount} customer(s) with balances"
+            : $"Period: {report.FromDate:dd/MM/yyyy} to {report.ToDate:dd/MM/yyyy} — {report.CustomerCount} customer(s) with balances";
         if (!string.IsNullOrWhiteSpace(report.CustomerLabel))
         {
             period += $" — {report.CustomerLabel}";
@@ -29,7 +30,7 @@ public class CustomerBalancePdfService : ICustomerBalancePdfService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4.Landscape());
+                page.Size(report.ClosingBalancesOnly ? PageSizes.A4 : PageSizes.A4.Landscape());
                 page.Margin(14);
                 page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
@@ -63,16 +64,23 @@ public class CustomerBalancePdfService : ICustomerBalancePdfService
 
     private static void ComposeTable(IContainer container, CustomerBalanceReportDto report)
     {
+        var closingOnly = report.ClosingBalancesOnly;
+        var columnCount = closingOnly ? 4u : 8u;
+
         container.Table(table =>
         {
             table.ColumnsDefinition(columns =>
             {
                 columns.ConstantColumn(70);
                 columns.RelativeColumn(2.4f);
-                columns.ConstantColumn(78);
-                columns.ConstantColumn(78);
-                columns.ConstantColumn(78);
-                columns.ConstantColumn(78);
+                if (!closingOnly)
+                {
+                    columns.ConstantColumn(78);
+                    columns.ConstantColumn(78);
+                    columns.ConstantColumn(78);
+                    columns.ConstantColumn(78);
+                }
+
                 columns.ConstantColumn(82);
                 columns.ConstantColumn(82);
             });
@@ -81,17 +89,21 @@ public class CustomerBalancePdfService : ICustomerBalancePdfService
             {
                 header.Cell().Element(HeaderCell).Text("Code");
                 header.Cell().Element(HeaderCell).Text("Customer");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Opening Dr");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Opening Cr");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Period Dr");
-                header.Cell().Element(HeaderCell).AlignRight().Text("Period Cr");
+                if (!closingOnly)
+                {
+                    header.Cell().Element(HeaderCell).AlignRight().Text("Opening Dr");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("Opening Cr");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("Period Dr");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("Period Cr");
+                }
+
                 header.Cell().Element(HeaderCell).AlignRight().Text("Closing Dr");
                 header.Cell().Element(HeaderCell).AlignRight().Text("Closing Cr");
             });
 
             if (report.Lines.Count == 0)
             {
-                table.Cell().ColumnSpan(8).Element(BodyCell)
+                table.Cell().ColumnSpan(columnCount).Element(BodyCell)
                     .AlignCenter().Text("No customer balances found.").FontColor(Colors.Grey.Darken1);
                 return;
             }
@@ -100,19 +112,27 @@ public class CustomerBalancePdfService : ICustomerBalancePdfService
             {
                 table.Cell().Element(BodyCell).Text(line.CustomerCode);
                 table.Cell().Element(BodyCell).Text(line.CustomerName);
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.OpeningDebit));
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.OpeningCredit));
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.PeriodDebit));
-                table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.PeriodCredit));
+                if (!closingOnly)
+                {
+                    table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.OpeningDebit));
+                    table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.OpeningCredit));
+                    table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.PeriodDebit));
+                    table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.PeriodCredit));
+                }
+
                 table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.ClosingDebit)).SemiBold();
                 table.Cell().Element(BodyCell).AlignRight().Text(FormatAmount(line.ClosingCredit)).SemiBold();
             }
 
             table.Cell().ColumnSpan(2).Element(TotalCell).AlignRight().Text("Totals").Bold();
-            table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalOpeningDebit)).Bold();
-            table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalOpeningCredit)).Bold();
-            table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalPeriodDebit)).Bold();
-            table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalPeriodCredit)).Bold();
+            if (!closingOnly)
+            {
+                table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalOpeningDebit)).Bold();
+                table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalOpeningCredit)).Bold();
+                table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalPeriodDebit)).Bold();
+                table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalPeriodCredit)).Bold();
+            }
+
             table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalClosingDebit)).Bold();
             table.Cell().Element(TotalCell).AlignRight().Text(FormatAmount(report.TotalClosingCredit)).Bold();
         });

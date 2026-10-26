@@ -401,7 +401,8 @@ public class SalesReportService : ISalesReportService
             lines.Sum(l => l.PeriodCredit),
             lines.Sum(l => l.ClosingDebit),
             lines.Sum(l => l.ClosingCredit),
-            lines);
+            lines,
+            TradeInvoiceLayout.ShowsClosingOnlyCustomerBalances(companyId));
     }
 
     public async Task<IReadOnlyList<SalesReportCustomerLookupDto>> GetCustomerLookupsAsync(

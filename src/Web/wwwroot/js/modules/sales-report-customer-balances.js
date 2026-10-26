@@ -3,6 +3,22 @@
 
     var lastReport = null;
     var companyName = '';
+    var closingOnlyCompanyIds = [2, 4, 5, 6, 7];
+    var closingBalancesOnly = false;
+
+    function columnCount() {
+        return closingBalancesOnly ? 4 : 8;
+    }
+
+    function applyColumnLayout(isClosingOnly) {
+        closingBalancesOnly = !!isClosingOnly;
+        $('body').toggleClass('closing-balances-only', closingBalancesOnly);
+        $('#report-content').toggleClass('report-print-landscape', !closingBalancesOnly);
+        $('#report-lines td[colspan]').attr('colspan', columnCount());
+        $('#report-hint').text(closingBalancesOnly
+            ? 'Closing debit and credit balances. Balances of 1,000 or less are hidden.'
+            : 'Customer debit and credit balances for a date range. Balances of 1,000 or less are hidden.');
+    }
 
     function escapeHtml(text) {
         return $('<div>').text(text ?? '').html();
@@ -53,7 +69,9 @@
 
     function renderReport(data) {
         lastReport = data;
-        var period = 'Period: ' + formatDate(data.fromDate) + ' to ' + formatDate(data.toDate) +
+        applyColumnLayout(!!readValue(data, 'closingBalancesOnly', 'ClosingBalancesOnly'));
+
+        var period = (closingBalancesOnly ? 'As of ' + formatDate(data.toDate) : 'Period: ' + formatDate(data.fromDate) + ' to ' + formatDate(data.toDate)) +
             ' — ' + (data.customerCount || 0) + ' customer(s) with balances';
         if (data.customerLabel) {
             period += ' — ' + data.customerLabel;
@@ -65,20 +83,22 @@
 
         var lines = data.lines || data.Lines || [];
         if (!lines.length) {
-            $tbody.append('<tr><td colspan="8" class="text-muted text-center">No customer balances found.</td></tr>');
+            $tbody.append('<tr><td colspan="' + columnCount() + '" class="text-muted text-center">No customer balances found.</td></tr>');
             $('#report-footer').addClass('d-none');
             return;
         }
 
         lines.forEach(function (line) {
+            var movement = closingBalancesOnly ? '' :
+                '<td class="text-end report-movement-col">' + formatAmount(readValue(line, 'openingDebit', 'OpeningDebit'), true) + '</td>' +
+                '<td class="text-end report-movement-col">' + formatAmount(readValue(line, 'openingCredit', 'OpeningCredit'), true) + '</td>' +
+                '<td class="text-end report-movement-col">' + formatAmount(readValue(line, 'periodDebit', 'PeriodDebit'), true) + '</td>' +
+                '<td class="text-end report-movement-col">' + formatAmount(readValue(line, 'periodCredit', 'PeriodCredit'), true) + '</td>';
             $tbody.append(
                 '<tr>' +
                 '<td><code>' + escapeHtml(readValue(line, 'customerCode', 'CustomerCode') || '') + '</code></td>' +
                 '<td>' + escapeHtml(readValue(line, 'customerName', 'CustomerName') || '') + '</td>' +
-                '<td class="text-end">' + formatAmount(readValue(line, 'openingDebit', 'OpeningDebit'), true) + '</td>' +
-                '<td class="text-end">' + formatAmount(readValue(line, 'openingCredit', 'OpeningCredit'), true) + '</td>' +
-                '<td class="text-end">' + formatAmount(readValue(line, 'periodDebit', 'PeriodDebit'), true) + '</td>' +
-                '<td class="text-end">' + formatAmount(readValue(line, 'periodCredit', 'PeriodCredit'), true) + '</td>' +
+                movement +
                 '<td class="text-end fw-semibold">' + formatAmount(readValue(line, 'closingDebit', 'ClosingDebit'), true) + '</td>' +
                 '<td class="text-end fw-semibold">' + formatAmount(readValue(line, 'closingCredit', 'ClosingCredit'), true) + '</td>' +
                 '</tr>'
@@ -120,7 +140,7 @@
         var from = $('#filter-from').val();
         var to = $('#filter-to').val();
         var params = {
-            fromDate: from,
+            fromDate: closingBalancesOnly ? to : from,
             toDate: to
         };
 
@@ -268,6 +288,8 @@
         $.getJSON('/api/company/current')
             .done(function (company) {
                 companyName = (company && (company.companyName || company.CompanyName)) || '';
+                var companyId = parseInt(company && (company.id || company.Id), 10) || 0;
+                applyColumnLayout(closingOnlyCompanyIds.indexOf(companyId) >= 0);
                 if (companyName) {
                     $('#report-company-name').text(companyName);
                 }

@@ -19,6 +19,12 @@ public static class TradeInvoiceLayout
     public static readonly int[] BulkInvoicePrintCompanyIds = [2, 4, 5, 6, 7];
 
     /// <summary>
+    /// Companies whose customer balance report shows closing debit and credit only.
+    /// Opening and period columns stay on other companies.
+    /// </summary>
+    public static readonly int[] ClosingOnlyCustomerBalanceCompanyIds = BulkInvoicePrintCompanyIds;
+
+    /// <summary>
     /// Companies where sales tax payable (25500/25510/25520) display balance is reduced
     /// when a sales invoice posts tax credits (opening credit − invoice tax).
     /// </summary>
@@ -167,6 +173,9 @@ public static class TradeInvoiceLayout
 
     public static bool SupportsBulkInvoicePrint(int companyId) =>
         BulkInvoicePrintCompanyIds.Contains(companyId);
+
+    public static bool ShowsClosingOnlyCustomerBalances(int companyId) =>
+        ClosingOnlyCustomerBalanceCompanyIds.Contains(companyId);
 
     public static bool InvoiceCreditsReduceSalesTaxBalance(int companyId) =>
         InvoiceCreditsReduceSalesTaxCompanyIds.Contains(companyId);
