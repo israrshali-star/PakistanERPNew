@@ -24,7 +24,7 @@
         dateLeft: 137.2,
         dateTop: 16.8,
         dateHeight: 8.3,
-        datePitch: 6.41,
+        datePitch: 6.0,
         payeeLine: 41.2,
         payeeLeft: 30,
         payeeWidth: 92,

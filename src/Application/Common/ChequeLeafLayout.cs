@@ -12,14 +12,13 @@ public static class ChequeLeafLayout
     public const float HeightMm = 88.9f;
 
     // Eight DDMMYYYY boxes under the cheque number. Pitch is the border-to-border step.
-    // Measured on the 19 Oct print: the digits were a size too large and the first
-    // digit sat on the left border of the first box. The row starts further right
-    // and the type is smaller so each digit sits inside its box.
+    // Tight pitch keeps each figure in its box. 10.5 pt bold is large enough to read
+    // and still clears the box borders.
     public const float DateLeftMm = 137.2f;
     public const float DateTopMm = 16.8f;
     public const float DateHeightMm = 8.3f;
-    public const float DateBoxPitchMm = 6.41f;
-    public const float DateDigitFontPt = 9f;
+    public const float DateBoxPitchMm = 6.0f;
+    public const float DateDigitFontPt = 10.5f;
 
     // Pay rule. The name starts after "Pay" and stops before "or bearer".
     // The writing sits this far above the rule, so the baseline clears the line.
